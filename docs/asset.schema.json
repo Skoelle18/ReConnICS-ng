@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReConICS observation (parser -> Inventory input)",
+  "description": "One entry per observation. Needs ip or mac. Unknown keys are ignored. See docs/inventory.md.",
+  "type": "object",
+  "properties": {
+    "asset_number": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/scalar"
+        },
+        {
+          "$ref": "#/$defs/field"
+        }
+      ]
+    },
+    "criticality": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/scalar"
+        },
+        {
+          "$ref": "#/$defs/field"
+        }
+      ]
+    },
+    "deviceType": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/scalar"
+        },
+        {
+          "$ref": "#/$defs/field"
+        }
+      ]
+    },
+    "firmware": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/scalar"
+        },
+        {
+          "$ref": "#/$defs/field"
+        }
+      ]
+    },
+    "hostname": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/scalar"
+        },
+        {
+          "$ref": "#/$defs/field"
+        }
+      ]
+    },
+    "ip": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/scalar"
+        },
+        {
+          "$ref": "#/$defs/field"
+        }
+      ]
+    },
+    "location": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/scalar"
+        },
+        {
+          "$ref": "#/$defs/field"
+        }
+      ]
+    },
+    "logging": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/scalar"
+        },
+        {
+          "$ref": "#/$defs/field"
+        }
+      ]
+    },
+    "mac": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/scalar"
+        },
+        {
+          "$ref": "#/$defs/field"
+        }
+      ]
+    },
+    "model": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/scalar"
+        },
+        {
+          "$ref": "#/$defs/field"
+        }
+      ]
+    },
+    "os": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/scalar"
+        },
+        {
+          "$ref": "#/$defs/field"
+        }
+      ]
+    },
+    "ports": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "$ref": "#/$defs/listField"
+        }
+      ]
+    },
+    "protocols": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "$ref": "#/$defs/listField"
+        }
+      ]
+    },
+    "role": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/scalar"
+        },
+        {
+          "$ref": "#/$defs/field"
+        }
+      ]
+    },
+    "serial": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/scalar"
+        },
+        {
+          "$ref": "#/$defs/field"
+        }
+      ]
+    },
+    "subaddr": {
+      "type": "string",
+      "pattern": "^(u[0-9]{1,3}|slot[0-9]{1,3})$"
+    },
+    "user_accounts": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "$ref": "#/$defs/listField"
+        }
+      ]
+    },
+    "vendor": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/scalar"
+        },
+        {
+          "$ref": "#/$defs/field"
+        }
+      ]
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "ip"
+      ]
+    },
+    {
+      "required": [
+        "mac"
+      ]
+    }
+  ],
+  "$defs": {
+    "scalar": {
+      "type": "string",
+      "maxLength": 256
+    },
+    "field": {
+      "type": "object",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": {
+          "type": "string"
+        },
+        "confidence": {
+          "enum": [
+            "HIGH",
+            "MEDIUM",
+            "LOW"
+          ]
+        },
+        "evidence": {
+          "type": "string"
+        }
+      }
+    },
+    "listField": {
+      "type": "object",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "confidence": {
+          "enum": [
+            "HIGH",
+            "MEDIUM",
+            "LOW"
+          ]
+        },
+        "evidence": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

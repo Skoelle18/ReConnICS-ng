@@ -1,0 +1,249 @@
+{
+  "source": {
+    "tool": "reconics-parse",
+    "version": "0.1",
+    "pcap": "lab-cell1.pcapng"
+  },
+  "assets": [
+    {
+      "ip": "10.0.1.10",
+      "mac": {
+        "value": "00:1d:9c:c1:00:10",
+        "confidence": "HIGH",
+        "evidence": "pcap#12 eth.src"
+      },
+      "protocols": {
+        "value": [
+          "enip"
+        ],
+        "confidence": "HIGH",
+        "evidence": "pcap#12"
+      },
+      "ports": {
+        "value": [
+          "44818/tcp"
+        ],
+        "confidence": "HIGH",
+        "evidence": "pcap#12"
+      },
+      "vendor": {
+        "value": "Rockwell Automation",
+        "confidence": "HIGH",
+        "evidence": "pcap#40 ListIdentity vendor id 1"
+      },
+      "model": {
+        "value": "1756-EN2T",
+        "confidence": "HIGH",
+        "evidence": "pcap#40 ListIdentity product name"
+      },
+      "deviceType": {
+        "value": "cip:0x0C",
+        "confidence": "HIGH",
+        "evidence": "pcap#40 ListIdentity device type"
+      }
+    },
+    {
+      "ip": "10.0.1.10",
+      "subaddr": "slot0",
+      "vendor": {
+        "value": "Rockwell Automation",
+        "confidence": "HIGH",
+        "evidence": "pcap#88 CIP route 1,0 identity"
+      },
+      "model": {
+        "value": "1756-L61 ControlLogix",
+        "confidence": "HIGH",
+        "evidence": "pcap#88"
+      },
+      "firmware": {
+        "value": "20.011",
+        "confidence": "HIGH",
+        "evidence": "pcap#88 revision 20.11"
+      },
+      "serial": {
+        "value": "00C0FFEE",
+        "confidence": "HIGH",
+        "evidence": "pcap#88"
+      },
+      "deviceType": {
+        "value": "cip:0x0E",
+        "confidence": "HIGH",
+        "evidence": "pcap#88"
+      }
+    },
+    {
+      "ip": "10.0.1.20",
+      "mac": {
+        "value": "00:80:f4:00:00:20",
+        "confidence": "HIGH",
+        "evidence": "pcap#3 eth.src"
+      },
+      "protocols": {
+        "value": [
+          "modbus"
+        ],
+        "confidence": "HIGH",
+        "evidence": "pcap#3"
+      },
+      "ports": {
+        "value": [
+          "502/tcp"
+        ],
+        "confidence": "HIGH",
+        "evidence": "pcap#3"
+      },
+      "role": "server",
+      "vendor": {
+        "value": "Schneider Electric",
+        "confidence": "HIGH",
+        "evidence": "pcap#77 FC43/14 VendorName"
+      },
+      "model": {
+        "value": "M221",
+        "confidence": "HIGH",
+        "evidence": "pcap#77 FC43/14 ProductCode"
+      },
+      "firmware": {
+        "value": "1.6.2.0",
+        "confidence": "HIGH",
+        "evidence": "pcap#77 FC43/14 MajorMinorRevision"
+      }
+    },
+    {
+      "ip": "10.0.1.30",
+      "mac": {
+        "value": "00:80:f4:00:00:30",
+        "confidence": "HIGH",
+        "evidence": "pcap#5"
+      },
+      "protocols": {
+        "value": [
+          "modbus"
+        ],
+        "confidence": "HIGH",
+        "evidence": "pcap#5"
+      },
+      "ports": {
+        "value": [
+          "502/tcp"
+        ],
+        "confidence": "HIGH",
+        "evidence": "pcap#5"
+      }
+    },
+    {
+      "ip": "10.0.1.30",
+      "subaddr": "u3",
+      "vendor": {
+        "value": "Schneider Electric",
+        "confidence": "HIGH",
+        "evidence": "pcap#91 FC43 unit 3"
+      },
+      "model": {
+        "value": "ATV320",
+        "confidence": "HIGH",
+        "evidence": "pcap#91"
+      }
+    },
+    {
+      "ip": "10.0.1.30",
+      "subaddr": "u7",
+      "vendor": {
+        "value": "Schneider Electric",
+        "confidence": "HIGH",
+        "evidence": "pcap#93 FC43 unit 7"
+      },
+      "model": {
+        "value": "ATV630",
+        "confidence": "HIGH",
+        "evidence": "pcap#93"
+      }
+    },
+    {
+      "ip": "10.0.1.40",
+      "mac": {
+        "value": "00:1b:1b:00:00:40",
+        "confidence": "HIGH",
+        "evidence": "pcap#7"
+      },
+      "protocols": {
+        "value": [
+          "s7comm"
+        ],
+        "confidence": "HIGH",
+        "evidence": "pcap#7"
+      },
+      "ports": {
+        "value": [
+          "102/tcp"
+        ],
+        "confidence": "HIGH",
+        "evidence": "pcap#7"
+      },
+      "vendor": {
+        "value": "Siemens",
+        "confidence": "HIGH",
+        "evidence": "pcap#120 SZL 0x0011"
+      },
+      "model": {
+        "value": "6ES7 515-2AM01-0AB0",
+        "confidence": "HIGH",
+        "evidence": "pcap#120 SZL 0x0011"
+      },
+      "deviceType": {
+        "value": "s7:CPU 1515-2 PN",
+        "confidence": "HIGH",
+        "evidence": "pcap#120"
+      },
+      "hostname": {
+        "value": "PLC_LINE2",
+        "confidence": "HIGH",
+        "evidence": "pcap#121 SZL 0x001C station name"
+      }
+    },
+    {
+      "ip": "10.0.1.50",
+      "mac": {
+        "value": "00:0c:29:00:00:50",
+        "confidence": "HIGH",
+        "evidence": "pcap#9"
+      },
+      "protocols": {
+        "value": [
+          "enip",
+          "s7comm",
+          "modbus"
+        ],
+        "confidence": "HIGH",
+        "evidence": "pcap#9"
+      },
+      "role": "client",
+      "hostname": {
+        "value": "EWS-01",
+        "confidence": "HIGH",
+        "evidence": "pcap#2 NetBIOS name"
+      },
+      "os": {
+        "value": "Windows 10",
+        "confidence": "MEDIUM",
+        "evidence": "pcap#2 SMB native OS"
+      }
+    },
+    {
+      "ip": "10.0.2.1",
+      "mac": {
+        "value": "00:00:5e:00:01:01",
+        "confidence": "HIGH",
+        "evidence": "pcap#14 VRRP"
+      }
+    },
+    {
+      "ip": "10.0.1.60",
+      "mac": {
+        "value": "00:00:5e:00:01:01",
+        "confidence": "HIGH",
+        "evidence": "pcap#14 via router"
+      }
+    }
+  ]
+}
