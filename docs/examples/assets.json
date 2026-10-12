@@ -1,0 +1,35 @@
+{
+  "source": {"tool": "reconics-pcap", "version": "0.1", "pcap": "grfics-run1.pcap", "pcapSha256": "<sha256 of capture>"},
+  "assets": [
+    {
+      "id": "10.10.1.20",
+      "ip": "10.10.1.20",
+      "mac": "00:1b:1b:aa:bb:cc",
+      "protocols": ["ethernet-ip"],
+      "vendor":   {"value": "Siemens", "confidence": "HIGH", "evidence": "OUI 00:1b:1b"},
+      "model":    {"value": "RUGGEDCOM APE1808", "confidence": "MEDIUM", "evidence": "HTTP banner in pcap frame 1182"},
+      "firmware": null,
+      "attributes": {"role": "router", "zone": "L3"}
+    },
+    {
+      "ip": "10.10.1.31",
+      "protocols": ["modbus"],
+      "vendor":   {"value": "Lantronix", "confidence": "HIGH", "evidence": "Modbus FC43/14 VendorName"},
+      "model":    {"value": "EDS5000", "confidence": "HIGH", "evidence": "Modbus FC43/14 ProductCode"},
+      "firmware": {"value": "2.0.0.0R1", "confidence": "HIGH", "evidence": "Modbus FC43/14 MajorMinorRevision"}
+    },
+    {
+      "ip": "10.10.1.32",
+      "vendor": "Lantronix", "model": "EDS5000", "firmware": "3.0.0.0"
+    },
+    {
+      "ip": "10.10.1.40",
+      "protocols": ["s7comm"],
+      "vendor": {"value": "Schneider Electric", "confidence": "LOW", "evidence": "OUI only"}
+    },
+    {
+      "ip": "10.10.1.99",
+      "protocols": ["modbus"]
+    }
+  ]
+}
