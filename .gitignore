@@ -10,3 +10,4 @@ keys/
 *.key
 out/
 *.class
+target/

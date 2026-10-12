@@ -9,7 +9,7 @@ import java.util.Map;
 
 public final class Main {
     private static final String USAGE = """
-            usage: java src/reconics/Main.java <command> [options]
+            usage: java -jar target/reconics.jar <command> [options]
 
             Online side (has internet):
               keygen      --keys DIR                       Ed25519 keypair for signing the index

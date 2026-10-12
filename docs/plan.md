@@ -55,9 +55,10 @@ Rules every connector must follow:
 - Carry `evidence` and `confidence` on every identity field.
 - Never open a socket toward plant address space.
 
-## 3. Java core (`src/reconics/`)
+## 3. Java core (`src/main/java/reconics/`)
 
-Java 22+ (tested on 25), **standard library only**. There are no dependencies to vet or vendor onto an air-gapped machine.
+Maven build, Java 21+ (tested on 25). The runtime is **standard library only**, with JUnit in test scope.
+`mvn package` produces `target/reconics.jar`, the one file that goes onto the air-gapped machine.
 
 | File | What it does |
 |---|---|
@@ -69,7 +70,7 @@ Java 22+ (tested on 25), **standard library only**. There are no dependencies to
 | `IngestServer.java` | Loopback HTTP API on JDK `HttpServer` |
 | `Report.java` | JSON, CSV, and single-file HTML outputs |
 | `Json.java` | Minimal JSON reader and writer (the stdlib has none) |
-| `SelfTest.java` | Assert-based checks: `java -ea src/reconics/SelfTest.java` |
+| `src/test/.../SelfTest.java` | Assert-based checks, run by `mvn test` |
 
 ## Open questions for the team
 

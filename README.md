@@ -23,15 +23,15 @@ Not done: Explore beyond USB for file transfer protocols and also see what OT de
 
 ![swimlane diagram of end users](/docs/local-advisory-swimlane.png)
 
-## Running it (Java 22+, no dependencies)
+## Running it (Java 21+, Maven; no runtime dependencies)
 
 ```
-java -ea src/reconics/SelfTest.java                         # self-check
-java src/reconics/Main.java keygen --keys keys              # once, on the online side
-java src/reconics/Main.java build-index --sign-key keys/index-signing.key   # -> data/index.json(.sig)
+mvn package                                                 # builds + tests -> target/reconics.jar
+java -jar target/reconics.jar keygen --keys keys              # once, on the online side
+java -jar target/reconics.jar build-index --sign-key keys/index-signing.key   # -> data/index.json(.sig)
 # copy data/index.json, data/index.json.sig to the offline side (pubkey copied once, separately)
-java src/reconics/Main.java match --index data/index.json --pubkey keys/index-signing.pub --format html --out report.html docs/examples/assets.json
-java src/reconics/Main.java serve --index data/index.json --pubkey keys/index-signing.pub   # ingest API for the PCAP project
+java -jar target/reconics.jar match --index data/index.json --pubkey keys/index-signing.pub --format html --out report.html docs/examples/assets.json
+java -jar target/reconics.jar serve --index data/index.json --pubkey keys/index-signing.pub   # ingest API for the PCAP project
 ```
 
 Plan and connector design: [docs/plan.md](docs/plan.md). Ingest contract for the PCAP project: [docs/ingest-api.md](docs/ingest-api.md).

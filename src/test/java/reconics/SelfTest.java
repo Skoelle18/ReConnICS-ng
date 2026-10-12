@@ -1,13 +1,16 @@
 package reconics;
 
+import org.junit.jupiter.api.Test;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import static reconics.AdvisoryMatcher.Level.*;
 
-public final class SelfTest {
-    public static void main(String[] a) {
+class SelfTest {
+    @Test
+    void selfTest() {
         if (!SelfTest.class.desiredAssertionStatus()) throw new AssertionError("run with -ea");
 
         assert AdvisoryMatcher.cmp("1.10", "1.9") > 0;
@@ -52,8 +55,6 @@ public final class SelfTest {
 
         try { Asset.from(Map.of("vendor", "x")); assert false; } catch (IllegalArgumentException expected) {}
         assert Asset.from(Map.of("ip", "10.0.0.1", "vendor", Map.of("value", "Acme", "confidence", "HIGH"))).vendor().equals("Acme");
-
-        System.out.println("SelfTest OK");
     }
 
     private static AdvisoryMatcher.Level level(AdvisoryMatcher m, String v, String mo, String fw) {

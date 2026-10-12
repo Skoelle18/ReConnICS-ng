@@ -6,13 +6,13 @@ advisory matcher. Both run on the same analyst laptop. The API listens on **127.
 Start it with:
 
 ```
-java src/reconics/Main.java serve --index data/index.json --pubkey keys/index-signing.pub --port 8088
+java -jar target/reconics.jar serve --index data/index.json --pubkey keys/index-signing.pub --port 8088
 ```
 
 There's also a file mode with no server, for batch use or CI:
 
 ```
-java src/reconics/Main.java match --index data/index.json --format json|csv|html ASSETS.json
+java -jar target/reconics.jar match --index data/index.json --format json|csv|html ASSETS.json
 ```
 
 The file uses the same payload as `POST /api/v1/assets`.
