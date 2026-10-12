@@ -131,7 +131,7 @@ range).
 2. Match level: EXACT, then PROBABLE, POSSIBLE, NONE.
 3. Criticality: high/critical, then medium, low, unknown.
 4. Highest CVSS at that match level. This is ignored for POSSIBLE, where it is a vendor-wide number.
-5. IP order.
+5. Fewest attributes filled (most work left), then IP order. Records not run through the matcher rank below NONE.
 
 A NONE result is labelled "no matching advisory in index (generated <date>)". It is not a clean bill of health.
 
@@ -140,7 +140,7 @@ A NONE result is labelled "no matching advisory in index (generated <date>)". It
 | File | Contents |
 |------|----------|
 | `inventory.json` | `summary`, `assets[]` (each field `{value, confidence, evidence, conflict?, inherited?}`, `completeness`, `match`), `rejected[]`. `Asset.from` reads these records directly, so the file can be fed back to the matcher. |
-| `inventory.csv` | One ranked row per asset. Cells starting `= + - @ tab CR space` get a leading `'` (formula injection). |
+| `inventory.csv` | One ranked row per asset (`rank` column; list cells joined with "; "; `conflicts` lists fields with disagreeing values). Cells starting `= + - @ tab CR space` get a leading `'` (formula injection). |
 | `report.html` | One file. Everything is escaped. CSP `default-src 'none'`, with no scripts or remote loads. Banners for "matcher not run", "index UNVERIFIED" and "OUI not run". Shows up to 5 000 rows; the rest are in CSV/JSON. |
 
 **Output rules**

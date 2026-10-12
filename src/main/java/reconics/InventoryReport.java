@@ -22,9 +22,10 @@ final class InventoryReport {
     static List<Inventory.Rec> rank(Inventory inv) {
         List<Inventory.Rec> l = new ArrayList<>(inv.records);
         Comparator<Inventory.Rec> c = Comparator.comparing((Inventory.Rec r) -> r.match == null || !r.match.kevAtModel())
-                .thenComparing(r -> r.match == null ? NONE : r.match.level())
+                .thenComparingInt(r -> r.match == null ? 4 : r.match.level().ordinal())   // unmatched below NONE
                 .thenComparingInt(InventoryReport::crit)
-                .thenComparing(r -> r.match == null || r.match.level() == POSSIBLE ? 0 : -r.match.maxCvss());
+                .thenComparing(r -> r.match == null || r.match.level() == POSSIBLE ? 0 : -r.match.maxCvss())
+                .thenComparingInt(r -> r.filled);              // least-known first: most work left
         l.sort(c);                                            // stable: ties keep record (IP) order
         return l;
     }
@@ -38,6 +39,7 @@ final class InventoryReport {
             case PROBABLE -> (m.kevAtModel() ? "PROBABLE: KEV advisory for this model, version unverified" : "PROBABLE: model matches, version unverified");
             case POSSIBLE -> "POSSIBLE: vendor only, unconfirmed";
             case NONE -> r.ceiling == NONE ? "NONE: no vendor identity to match"
+                    : r.ceiling == EXACT ? "NONE: checked, no advisory in index (generated " + gen + ") affects firmware " + r.v("firmware")
                     : "NONE: no matching advisory in index (generated " + gen + ")";
         };
     }
@@ -66,6 +68,17 @@ final class InventoryReport {
         if (inv.matched) {
             s.put("index", inv.indexMeta);
             s.put("kevAtModelAssets", inv.records.stream().filter(r -> r.match != null && r.match.kevAtModel()).count());
+        }
+        Map<String, String> fill = new LinkedHashMap<>();
+        for (var a : Inventory.Attr.values()) {
+            long n = inv.records.stream().filter(r -> Inventory.has(r, a)).count();
+            fill.put(a.key, String.format(Locale.ROOT, "%.3f", inv.records.isEmpty() ? 0.0 : (double) n / inv.records.size()));
+        }
+        s.put("fillRate", fill);
+        if (inv.matched) {
+            Map<String, Long> lv = new LinkedHashMap<>();
+            for (var l : AdvisoryMatcher.Level.values()) lv.put(l.name(), inv.records.stream().filter(r -> r.match != null && r.match.level() == l).count());
+            s.put("matchLevels", lv);
         }
         Map<String, Long> ceil = new LinkedHashMap<>();
         for (var l : AdvisoryMatcher.Level.values()) ceil.put(l.name(), inv.records.stream().filter(r -> r.ceiling == l).count());
@@ -113,7 +126,9 @@ final class InventoryReport {
 
     static String cell(Object o) {
         String s = o == null ? "" : o instanceof List<?> l ? String.join("; ", l.stream().map(String::valueOf).toList()) : o.toString();
-        if (!s.isEmpty() && "=+-@\t\r ".indexOf(s.charAt(0)) >= 0) s = "'" + s;    // spreadsheet formula injection
+        int i = 0;
+        while (i < s.length() && (Character.isSpaceChar(s.charAt(i)) || Character.isWhitespace(s.charAt(i)))) i++;
+        if (i > 0 || (!s.isEmpty() && "=+-@".indexOf(s.charAt(0)) >= 0)) s = "'" + s;   // spreadsheet formula injection
         if (s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0 || s.indexOf('\r') >= 0)
             s = '"' + s.replace("\"", "\"\"") + '"';
         return s;
@@ -122,7 +137,7 @@ final class InventoryReport {
     static String csv(Inventory inv, List<Inventory.Rec> ranked) {
         List<String> cols = new ArrayList<>(List.of("rank", "id"));
         for (var a : Inventory.Attr.values()) cols.add(a.key);
-        cols.addAll(List.of("firmware", "vendor_oui", "filled", "matchCeiling", "match", "kevAtModel", "maxCvss", "advisories"));
+        cols.addAll(List.of("firmware", "vendor_oui", "conflicts", "filled", "matchCeiling", "match", "kevAtModel", "maxCvss", "advisories"));
         StringBuilder b = new StringBuilder(String.join(",", cols)).append("\r\n");
         int n = 0;
         for (var r : ranked) {
@@ -131,6 +146,7 @@ final class InventoryReport {
             row.add(cell(r.id));
             for (var a : Inventory.Attr.values()) { var f = r.f.get(a.key); row.add(cell(f == null ? null : f.value())); }
             for (String k : List.of("firmware", "vendor_oui")) { var f = r.f.get(k); row.add(cell(f == null ? null : f.value())); }
+            row.add(cell(r.f.entrySet().stream().filter(e -> e.getValue().conflict()).map(Map.Entry::getKey).toList()));
             row.add(cell(r.filled));
             row.add(cell(r.ceiling));
             row.add(cell(label(inv, r)));
@@ -175,9 +191,14 @@ final class InventoryReport {
         if (!inv.matched) b.append("<div class=\"b warn\">Matcher not run: no advisory index given (--index). Match columns are empty.</div>\n");
         else if (!inv.verified) b.append("<div class=\"b bad\">Advisory index UNVERIFIED (no --pubkey). An altered index can hide vulnerable devices.</div>\n");
         else b.append("<p class=\"dim\">Advisory index signature verified. Index: ").append(esc(inv.indexMeta)).append("</p>\n");
+        b.append("<details><summary>Fill rate per CISA attribute</summary><table><tr><th scope=\"col\">Attribute</th><th scope=\"col\">Filled</th><th scope=\"col\">How</th></tr>");
+        @SuppressWarnings("unchecked") var fr = (Map<String, String>) s.get("fillRate");
+        for (var a : Inventory.Attr.values())
+            b.append("<tr><td>").append(esc(a.label)).append("</td><td>").append(esc(fr.get(a.key))).append("</td><td>").append(esc(a.fillBy)).append("</td></tr>");
+        b.append("</table></details>\n");
         if (!inv.ouiRun) b.append("<div class=\"b warn\">MAC vendor (OUI) lookup not run (--oui). It never feeds matching.</div>\n");
 
-        b.append("<table><tr><th>#</th><th>Asset</th><th>Role</th><th>Vendor / model / firmware</th><th>Completeness</th><th>Advisory match</th><th>Missing (how to fill)</th></tr>\n");
+        b.append("<table><tr><th scope=\"col\">#</th><th scope=\"col\">Asset</th><th scope=\"col\">Role</th><th scope=\"col\">Vendor / model / firmware</th><th scope=\"col\">Completeness</th><th scope=\"col\">Advisory match</th><th scope=\"col\">Missing (how to fill)</th></tr>\n");
         int n = 0;
         for (var r : ranked) {
             if (++n > MAX_HTML_ROWS) break;
@@ -229,16 +250,19 @@ final class InventoryReport {
         out.put("inventory.json", json(inv));
         out.put("inventory.csv", csv(inv, ranked));
         out.put("report.html", html(inv, ranked));
-        for (var e : out.entrySet()) {
-            Path tmp = Files.createTempFile(dir, ".reconics-", ".tmp");
-            try {
+        Map<String, Path> tmps = new LinkedHashMap<>();
+        try {
+            for (var e : out.entrySet()) {                       // all writes first, so a full disk changes nothing
+                Path tmp = Files.createTempFile(dir, ".reconics-", ".tmp");
+                tmps.put(e.getKey(), tmp);
                 Files.writeString(tmp, e.getValue(), StandardCharsets.UTF_8);
-                Files.move(tmp, dir.resolve(e.getKey()), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AccessDeniedException x) {
-                throw new IllegalArgumentException("cannot replace " + e.getKey() + " (is it open in another program?)");
-            } finally {
-                Files.deleteIfExists(tmp);
             }
+            for (var e : tmps.entrySet()) {
+                try { Files.move(e.getValue(), dir.resolve(e.getKey()), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); }
+                catch (AccessDeniedException x) { throw new IllegalArgumentException("cannot replace " + e.getKey() + " (is it open in another program?)"); }
+            }
+        } finally {
+            for (Path t : tmps.values()) Files.deleteIfExists(t);
         }
     }
 }

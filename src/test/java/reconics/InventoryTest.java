@@ -67,8 +67,8 @@ class InventoryTest {
         assertEquals(List.of("10.0.0.7"), ids(i));
         assertEquals("plc7", v(rec(i, "10.0.0.7"), "hostname"));
 
-        i = inv("[{\"ip\":\"10.0.0.8\",\"mac\":\"00:1d:9c:00:00:02\"},{\"ip\":\"10.0.0.8\",\"mac\":\"00:1d:9c:00:00:01\"},"
-                + "{\"ip\":\"10.0.0.8\",\"mac\":\"00:1d:9c:00:00:01\"}]");
+        i = inv("[{\"ip\":\"10.0.0.8\"," + h("mac", "00:1d:9c:00:00:02") + "},{\"ip\":\"10.0.0.8\"," + h("mac", "00:1d:9c:00:00:01") + "},"
+                + "{\"ip\":\"10.0.0.8\"," + h("mac", "00:1d:9c:00:00:01") + "}]");
         var m = rec(i, "10.0.0.8").f.get("mac");
         assertEquals("00:1d:9c:00:00:01", m.str());
         assertEquals(MEDIUM, m.conf());
@@ -167,7 +167,7 @@ class InventoryTest {
         assertNull(rec(i, "10.0.0.2").f.get("vendor_oui"), "locally administered MAC");
         assertTrue(i.ouiRun);
 
-        i = inv("[{\"ip\":\"10.0.0.1\",\"deviceType\":\"cip:0x0e\",\"role\":\"server\"},{\"ip\":\"10.0.0.2\",\"deviceType\":\"cip:0x18\"},"
+        i = inv("[{\"ip\":\"10.0.0.1\"," + h("deviceType", "cip:0x0e") + ",\"role\":\"server\"},{\"ip\":\"10.0.0.2\",\"deviceType\":\"cip:0x18\"},"
                 + "{\"ip\":\"10.0.0.3\",\"deviceType\":\"cip:0x99\",\"role\":\"server\"},{\"ip\":\"10.0.0.4\",\"role\":\"server\"},{\"ip\":\"10.0.0.4\",\"role\":\"client\"},"
                 + "{\"ip\":\"10.0.0.5\",\"deviceType\":\"s7:CPU 1516-3 PN/DP\"},{\"ip\":\"10.0.0.6\",\"role\":\"Historian\"},"
                 + "{\"ip\":\"10.0.0.7\",\"deviceType\":\"cip:0x2C\"},{\"ip\":\"10.0.0.8\",\"deviceType\":\"cip:0x0C\"},{\"ip\":\"10.0.0.9\",\"deviceType\":\"cip:0x07\"},{\"ip\":\"10.0.0.10\",\"deviceType\":\"cip:0x02\"}]");
@@ -292,6 +292,49 @@ class InventoryTest {
         Files.copy(ex, in);
         assertEquals(2, run("--in", in.toString(), "--out", dir.toString()));
         assertEquals(Files.size(ex), Files.size(in), "input must not be overwritten");
+    }
+
+    // post-build review findings
+    @Test void reviewFixes() throws Exception {
+        var i = inv("[{\"ip\":\"10.0.0.1\",\"deviceType\":\"cip:0x0e\"},{\"ip\":\"10.0.0.2\",\"deviceType\":\"cip:0x13\"},{\"ip\":\"10.0.0.3\",\"deviceType\":\"cip:0x25\"}]");
+        assertEquals(LOW, rec(i, "10.0.0.1").f.get("role").conf(), "role confidence capped by device-type confidence");
+        assertEquals("drive", v(rec(i, "10.0.0.2"), "role"));
+        assertEquals("drive", v(rec(i, "10.0.0.3"), "role"));
+
+        i = inv("[{\"ip\":\"10.0.3.1\"," + h("vendor", "Rockwell Automation") + "," + h("model", "1756-EN2T") + "},"
+                + "{\"ip\":\"10.0.3.1\",\"subaddr\":\"slot0\"," + h("vendor", "Rockwell Automation") + "}]");
+        assertEquals(List.of("10.0.3.1"), ids(i), "sub with vendor only does not differ from parent");
+
+        i = inv("[{\"ip\":\"10.0.0.8\",\"mac\":\"00:1d:9c:00:00:02\"},{\"ip\":\"10.0.0.8\",\"mac\":\"00:1d:9c:00:00:01\"}]");
+        assertEquals(LOW, rec(i, "10.0.0.8").f.get("mac").conf());
+
+        i = inv("[{\"ip\":\"0.0.0.0\"},{\"ip\":\"255.255.255.255\"},{\"ip\":\"224.0.0.1\"},{\"ip\":\"10.0.0.9\",\"mac\":\"00:00:0c:9f:f0:01\"},"
+                + "{\"ip\":\"10.0.0.10\",\"mac\":\"00:00:0c:07:ac:01\"},{\"ip\":\"10.0.0.11\",\"subaddr\":\"u3\",\"mac\":\"00:1d:9c:00:00:11\"}]");
+        assertEquals(List.of("10.0.0.9", "10.0.0.10", "10.0.0.11"), ids(i));
+        assertNull(rec(i, "10.0.0.9").f.get("mac"), "HSRPv2");
+        assertNull(rec(i, "10.0.0.10").f.get("mac"), "HSRPv1");
+        assertTrue(i.rejected.stream().anyMatch(m -> m.get("reason").toString().contains("sub-address")));
+
+        i = inv("[{\"ip\":\"10.0.0.1\"," + h("hostname", "a") + "," + h("location", "b") + "},{\"ip\":\"10.0.0.2\"}]");
+        assertEquals(List.of("10.0.0.2", "10.0.0.1"), InventoryReport.rank(i).stream().map(r -> r.id).toList(), "least-filled first on a tie");
+        assertTrue(InventoryReport.cell("\u00a0=cmd").startsWith("'"));
+        assertTrue(inv("[{\"ip\":\"10.0.0.1\",\"hostname\":\"[[[[\"}]").records.size() == 1, "brackets in strings are not depth");
+
+        int[] code = new int[1];
+        String err = runErr(code, "--in", "a\0secret", "--out", tmp.resolve("o").toString());
+        assertEquals(2, code[0]);
+        assertFalse(err.contains("secret"), err);
+        assertEquals(2, run("--in", "x", "--out", "y", "--pubkey", "k"));
+
+        Path ex = Path.of("docs/examples/observations.json");
+        Path keys = tmp.resolve("k2");
+        AdvisoryIndex.keygen(keys);
+        Path idx = write("i2.json", index().toJson());
+        assertEquals(2, run("--in", ex.toString(), "--out", tmp.resolve("o").toString(), "--index", idx.toString(),
+                "--pubkey", keys.resolve("index-signing.pub").toString()), "missing .sig fails closed");
+        Path dir = Files.createDirectories(tmp.resolve("same2"));
+        Files.writeString(dir.resolve("report.html"), index().toJson());
+        assertEquals(2, run("--in", ex.toString(), "--out", dir.toString(), "--index", dir.resolve("report.html").toString()));
     }
 
     // signed index: verifies, tamper fails closed, hostile index fails closed

@@ -25,7 +25,7 @@ import static reconics.AdvisoryMatcher.Level.*;
  * Contract: docs/inventory.md, docs/asset.schema.json. Plan: docs/plans/2026-10-12-inventory-scoring-reports.md.
  */
 final class Inventory {
-    static final int MAX_IN = 16 << 20, MAX_INDEX = 64 << 20, MAX_KEY = 4096, MAX_ENTRIES = 100_000, MAX_ROWS = 200_000;
+    static final int MAX_IN = 16 << 20, MAX_INDEX = 64 << 20, MAX_SMALL = 4096, MAX_ENTRIES = 100_000, MAX_ROWS = 200_000;
     static final int MAX_STR = 256, MAX_LIST = 256, MAX_EVIDENCE = 512, MAX_DEPTH = 64, MAX_ADVISORIES = 64, MAX_LOSERS = 16;
     static final String NO_EVIDENCE = "no evidence supplied by parser";
 
@@ -135,10 +135,11 @@ final class Inventory {
     }
 
     static byte[] readBytes(Path p, long max) throws IOException {
-        if (Files.size(p) > max) throw new IllegalArgumentException("input file too large");
-        byte[] b = Files.readAllBytes(p);
-        if (b.length > max) throw new IllegalArgumentException("input file too large");
-        return b;
+        try (var in = Files.newInputStream(p)) {                // bounded even for FIFOs / growing files
+            byte[] b = in.readNBytes((int) Math.min(Integer.MAX_VALUE - 8, max + 1));
+            if (b.length > max) throw new IllegalArgumentException("input file too large");
+            return b;
+        }
     }
 
     static String decode(byte[] b) {
@@ -199,6 +200,11 @@ final class Inventory {
             try { parseField(o, en.getKey(), en.getValue()); }
             catch (IllegalArgumentException x) { reject(idx, en.getKey(), x.getMessage()); }
         }
+        if (o.subaddr != null && o.ip != null && o.mac != null) {   // a sub-device has no MAC of its own
+            reject(idx, "mac", "mac on a sub-address entry ignored");
+            o.mac = null;
+            o.f.remove("mac");
+        }
         if (o.ip == null && o.mac == null) { reject(idx, "*", "entry has no valid ip or mac"); return null; }
         return o;
     }
@@ -231,6 +237,7 @@ final class Inventory {
                 if (s == null) bad = true; else out.add(s);
             }
             if (bad) reject(o.index, k, "invalid list item dropped");
+            if (out.size() > MAX_LIST) reject(o.index, k, "list longer than 256; extra items dropped");
             if (!out.isEmpty()) o.f.put(k, new Field(List.copyOf(new ArrayList<>(out).subList(0, Math.min(out.size(), MAX_LIST))), conf, ev));
             return;
         }
@@ -238,6 +245,8 @@ final class Inventory {
         switch (k) {
             case "ip" -> {
                 if (!IP.matcher(s).matches()) throw new IllegalArgumentException("not a dotted-quad IPv4 address");
+                int first = Integer.parseInt(s.substring(0, s.indexOf('.')));
+                if (first == 0 || first >= 224) throw new IllegalArgumentException("unspecified, multicast or broadcast IPv4 address");
                 o.ip = s;
                 o.f.put(k, new Field(s, conf, ev));
             }
@@ -338,7 +347,7 @@ final class Inventory {
             for (String s : subs) {
                 Map<String, Field> sub = resolve(groups.get(s));
                 boolean sameDevice = same(parent, sub, "vendor") && same(parent, sub, "serial");
-                boolean differs = hasIdentity(parent) && hasIdentity(sub) && !(same(parent, sub, "vendor") && same(parent, sub, "model"));
+                boolean differs = conflicts(parent, sub, "vendor") || conflicts(parent, sub, "model");
                 if (!sameDevice && (subs.size() >= 2 || differs)) split.add(s);
                 else parentObs.addAll(groups.get(s));
             }
@@ -366,7 +375,10 @@ final class Inventory {
         return x != null && y != null && x.str() != null && x.str().equalsIgnoreCase(y.str());
     }
 
-    private static boolean hasIdentity(Map<String, Field> m) { return m.containsKey("vendor") || m.containsKey("model"); }
+    /** Both sides carry the field and disagree; a field missing on either side is no evidence of a different device. */
+    private static boolean conflicts(Map<String, Field> a, Map<String, Field> b, String k) {
+        return a.containsKey(k) && b.containsKey(k) && !same(a, b, k);
+    }
 
     private Rec record(String ip, String sub, List<Obs> obs, Set<String> gateway, Map<String, String> oui) {
         String id = ip == null ? obs.get(0).mac : sub == null ? ip : ip + "/" + sub;
@@ -443,7 +455,7 @@ final class Inventory {
         if (count.size() > 1) {
             List<String> others = new ArrayList<>(count.keySet());
             others.remove(mac);
-            r.f.put("mac", new Field(mac, Conf.MEDIUM, cap(bf.evidence() + "; also seen: " + String.join(", ", others)
+            r.f.put("mac", new Field(mac, min(Conf.MEDIUM, bf.conf()), cap(bf.evidence() + "; also seen: " + String.join(", ", others)
                     + "; redundant pair or IP conflict", MAX_EVIDENCE), true, false));
             return;                                           // ambiguous NIC: no OUI guess
         }
@@ -453,6 +465,8 @@ final class Inventory {
         if (org != null && !org.isEmpty())
             r.f.put("vendor_oui", new Field(org, Conf.LOW, "MAC OUI " + mac.substring(0, 8) + " (IEEE MA-L); NIC maker, may differ from device maker"));
     }
+
+    static Conf min(Conf a, Conf b) { return a.compareTo(b) <= 0 ? a : b; }
 
     static String[] deviceRole(String dt) {
         String d = dt.toLowerCase(Locale.ROOT);
@@ -474,7 +488,7 @@ final class Inventory {
         Field dt = r.f.get("deviceType");
         String[] m = dt == null ? null : deviceRole(dt.str());
         if (m != null) {
-            r.f.put("role", new Field(m[0], Conf.valueOf(m[1]), cap("from device type " + dt.str() + " (" + dt.evidence() + ")", MAX_EVIDENCE)));
+            r.f.put("role", new Field(m[0], min(Conf.valueOf(m[1]), dt.conf()), cap("from device type " + dt.str() + " (" + dt.evidence() + ")", MAX_EVIDENCE)));
             return;
         }
         Set<String> dirs = new TreeSet<>();
@@ -536,7 +550,7 @@ final class Inventory {
         if (raw.rows.size() > MAX_ROWS) throw new IllegalArgumentException("advisory index has too many rows");
         List<AdvisoryIndex.Row> rows = new ArrayList<>(raw.rows.size());
         for (var r : raw.rows)
-            rows.add(new AdvisoryIndex.Row(cleanOrNull(r.advisory()), cleanOrNull(r.title()), cleanOrNull(r.vendor()),
+            if (cleanOrNull(r.advisory()) != null) rows.add(new AdvisoryIndex.Row(cleanOrNull(r.advisory()), cleanOrNull(r.title()), cleanOrNull(r.vendor()),
                     cleanOrNull(r.product()), cleanOrNull(r.version()), cleanOrNull(r.range()), cleanList(r.cves()),
                     cleanList(r.kev()), cvss(r.cvss())));
         return new AdvisoryIndex(raw.meta, rows);
@@ -629,7 +643,7 @@ final class Inventory {
             for (String n : InventoryReport.OUTPUTS) {
                 Path t = out.resolve(n);
                 for (Path p : inputs)
-                    if (Files.exists(p) && (p.toRealPath().equals(t) || (Files.exists(t) && Files.isSameFile(p, t))))
+                    if (Files.exists(p) && Files.exists(t) && Files.isSameFile(p, t))
                         throw new IllegalArgumentException("an output file would overwrite an input file");
             }
             Map<String, String> oui = o.containsKey("oui") ? loadOui(decode(readBytes(Path.of(o.get("oui")), MAX_IN))) : null;
@@ -638,6 +652,8 @@ final class Inventory {
             InventoryReport.write(inv, out);
             err.printf("%d assets, %d rejected input items -> %s%n", inv.records.size(), inv.rejected.size(), out);
             return 0;
+        } catch (java.nio.file.InvalidPathException e) {
+            err.println("error: invalid file path");                // its message echoes the raw argument
         } catch (IllegalArgumentException | SecurityException e) {
             err.println("error: " + e.getMessage());
         } catch (IOException e) {
@@ -654,11 +670,11 @@ final class Inventory {
         boolean ok = false;
         if (pubkey != null) {
             try {
-                var key = KeyFactory.getInstance("Ed25519").generatePublic(new X509EncodedKeySpec(readBytes(pubkey, MAX_KEY)));
+                var key = KeyFactory.getInstance("Ed25519").generatePublic(new X509EncodedKeySpec(readBytes(pubkey, MAX_SMALL)));
                 Signature s = Signature.getInstance("Ed25519");
                 s.initVerify(key);
                 s.update(b);
-                byte[] sig = Base64.getDecoder().decode(new String(readBytes(AdvisoryIndex.sigPath(index), MAX_KEY), StandardCharsets.US_ASCII).strip());
+                byte[] sig = Base64.getDecoder().decode(new String(readBytes(AdvisoryIndex.sigPath(index), MAX_SMALL), StandardCharsets.US_ASCII).strip());
                 ok = s.verify(sig);
             } catch (GeneralSecurityException | IOException | IllegalArgumentException e) { ok = false; }
             if (!ok) throw new SecurityException("advisory index signature missing or INVALID");
