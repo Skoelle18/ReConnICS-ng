@@ -20,6 +20,10 @@ reconics=${RECONICS_JAR:-$here/target/reconics.jar}
 for j in "$parser" "$reconics"; do
   [ -f "$j" ] || { echo "error: jar not found: $j (set PARSER_JAR / RECONICS_JAR)" >&2; exit 2; }
 done
+# Git Bash on Windows: java is a native program and cannot open /c/... paths
+if command -v cygpath >/dev/null 2>&1; then
+  parser=$(cygpath -m "$parser"); reconics=$(cygpath -m "$reconics"); out=$(cygpath -m "$out"); pcap=$(cygpath -m "$pcap")
+fi
 
 mkdir -p "$out"
 obs="$out/observations.json"
