@@ -216,10 +216,20 @@ final class Inventory {
     private Obs parseEntry(int idx, Object e) {
         if (!(e instanceof Map<?, ?>)) { reject(idx, "*", "entry is not an object"); return null; }
         Obs o = new Obs(idx);
-        for (var en : Json.obj(e).entrySet()) {
-            if (!INPUT_KEYS.contains(en.getKey())) continue;
-            try { parseField(o, en.getKey(), en.getValue()); }
+        var entry = Json.obj(e);
+        String parserEv = parserEvidence(Json.obj(entry.get("attributes")));
+        for (var en : entry.entrySet()) {
+            if (!INPUT_KEYS.contains(en.getKey()) || en.getValue() == null) continue;   // null = absent (data-contract.md)
+            Object val = en.getValue();
+            if (parserEv != null && HEADER_KEYS.contains(en.getKey()) && !(val instanceof Map<?, ?>))
+                val = Map.of("value", val, "confidence", parserEv.contains("PORT_HEURISTIC only") ? "LOW" : "MEDIUM", "evidence", parserEv);
+            try { parseField(o, en.getKey(), val); }
             catch (IllegalArgumentException x) { reject(idx, en.getKey(), x.getMessage()); }
+        }
+        if (!o.f.containsKey("serial") && Json.obj(entry.get("attributes")).get("serialNumbers") instanceof List<?> sn
+                && !sn.isEmpty() && sn.get(0) instanceof String s0) {
+            try { parseField(o, "serial", Map.of("value", s0, "confidence", "MEDIUM", "evidence", "reconnics-ng attributes.serialNumbers")); }
+            catch (IllegalArgumentException x) { reject(idx, "serial", x.getMessage()); }
         }
         if (o.subaddr != null && o.ip != null && o.mac != null) {   // a sub-device has no MAC of its own
             reject(idx, "mac", "mac on a sub-address entry ignored");
@@ -228,6 +238,23 @@ final class Inventory {
         }
         if (o.ip == null && o.mac == null) { reject(idx, "*", "entry has no valid ip or mac"); return null; }
         return o;
+    }
+
+    private static final Set<String> HEADER_KEYS = Set.of("ip", "mac", "protocols");
+
+    /**
+     * reconnics-ng (Nikhil's parser, docs/data-contract.md) sends ip/mac/protocols as plain values and puts their
+     * provenance in attributes {firstFrame, lastFrame, detectionBases}. Turn that into evidence instead of "none".
+     */
+    static String parserEvidence(Map<String, Object> attrs) {
+        if (!(attrs.get("detectionBases") instanceof List<?> bases) || bases.isEmpty()) return null;
+        TreeSet<String> b = new TreeSet<>();
+        for (Object x : bases) if (x instanceof String s && s.matches("[A-Z_]{1,32}")) b.add(s);
+        if (b.isEmpty()) return null;
+        String frames = attrs.get("firstFrame") instanceof Double f && attrs.get("lastFrame") instanceof Double l
+                && Double.isFinite(f) && Double.isFinite(l) ? ", frames " + f.longValue() + "-" + l.longValue() : "";
+        boolean portOnly = b.equals(Set.of("PORT_HEURISTIC"));
+        return "reconnics-ng " + String.join("+", b) + (portOnly ? " only" : "") + frames;
     }
 
     /** All messages are fixed text: an input value never reaches a reason string or the terminal. */

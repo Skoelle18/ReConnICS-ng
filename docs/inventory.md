@@ -167,6 +167,15 @@ A NONE result is labelled "no matching advisory in index (generated <date>)". It
 **Language**
 - The proposal sketched Python. This stage is Java 21 so it shares Bhuwan's matcher in-process.
 
+**Nikhil's parser output (reconnics-ng, `feature/pcap-reader`) is accepted as-is**
+- `{source, assets:[…]}` from `reconnics-ng analyze --output` feeds straight in as `--in`.
+- `null` fields count as absent.
+- Plain `ip`/`mac`/`protocols` get their evidence from `attributes.detectionBases` and the first/last frame. The
+  confidence is MEDIUM when the protocol header was validated, and LOW for a port heuristic alone.
+- `attributes.serialNumbers[0]` fills `serial`.
+- Checked on `assets/modbus.pcap`: 60 227 frames, 7 devices, 0 rejected.
+- One command for the whole chain: `scripts/reconics-run.sh CAPTURE.pcap OUTDIR [--index … --pubkey …]`.
+
 **Relation to `docs/ingest-api.md`**
 - That API takes the matcher's payload (`{source, assets:[{id, ip, mac, vendor, model, firmware, …}]}`).
 - `observations.json` is the parser's richer output, with confidence, evidence and sub-addresses. It is the canonical

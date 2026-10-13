@@ -337,6 +337,23 @@ class InventoryTest {
         assertEquals(2, run("--in", ex.toString(), "--out", dir.toString(), "--index", dir.resolve("report.html").toString()));
     }
 
+    @Test void nikhilParserFormat() {
+        String doc = "{\"source\":{\"tool\":\"reconnics-ng\",\"version\":\"0.1.0\",\"pcap\":\"modbus.pcap\",\"executedAt\":\"x\"},\"assets\":["
+                + "{\"id\":\"00:11:22:33:44:55\",\"ip\":\"10.10.1.31\",\"mac\":\"00:11:22:33:44:55\",\"protocols\":[\"modbus\"],"
+                + "\"vendor\":{\"value\":\"Lantronix\",\"confidence\":\"HIGH\",\"evidence\":\"modbus FC43/14 objectId=0x00, frame 1\"},\"model\":null,"
+                + "\"attributes\":{\"firstFrame\":8,\"lastFrame\":66,\"detectionBases\":[\"HEADER_VALIDATED\"],\"serialNumbers\":[\"SN1\"]}},"
+                + "{\"ip\":\"10.10.1.32\",\"attributes\":{\"detectionBases\":[\"PORT_HEURISTIC\"]}}]}";
+        var i = inv(doc);
+        assertTrue(i.rejected.isEmpty(), i.rejected.toString());
+        assertEquals("reconnics-ng", i.source.get("tool"));
+        var r = rec(i, "10.10.1.31");
+        assertEquals(MEDIUM, r.f.get("ip").conf());
+        assertEquals("reconnics-ng HEADER_VALIDATED, frames 8-66", r.f.get("mac").evidence());
+        assertEquals(HIGH, r.f.get("vendor").conf());
+        assertEquals("SN1", v(r, "serial"));
+        assertEquals(LOW, rec(i, "10.10.1.32").f.get("ip").conf(), "port heuristic alone stays LOW");
+    }
+
     @Test void siemensOrderNumbers() {
         assertEquals("SIMATIC S7-1500", Inventory.modelFamily("Siemens", "6ES7 515-2AM01-0AB0"));
         assertEquals("SIMATIC S7-1200", Inventory.modelFamily("Siemens AG", "6ES7214-1AG40-0XB0"));
