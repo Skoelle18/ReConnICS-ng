@@ -51,6 +51,7 @@ public final class CliCommand {
         boolean force = false;
         boolean verbose = false;
         boolean formatJson = false;
+        String post = null;
 
         for (int i = 0; i < tokens.size(); i++) {
             String t = tokens.get(i);
@@ -67,6 +68,13 @@ public final class CliCommand {
                         return ExitCode.USAGE;
                     }
                     output = Path.of(tokens.get(++i));
+                }
+                case "--post" -> {
+                    if (i + 1 >= tokens.size()) {
+                        err.println("error: --post requires a URL");
+                        return ExitCode.USAGE;
+                    }
+                    post = tokens.get(++i);
                 }
                 case "--format" -> {
                     if (i + 1 >= tokens.size()) {
@@ -93,7 +101,7 @@ public final class CliCommand {
                 }
             }
         }
-        return new AnalyzeCommand(input, output, force, verbose, formatJson, out, err).run();
+        return new AnalyzeCommand(input, output, force, verbose, formatJson, post, out, err).run();
     }
 
     public static void printHelp(PrintStream ps) {
@@ -103,12 +111,15 @@ public final class CliCommand {
         ps.println("  java -jar reconnics-ng.jar --help");
         ps.println("  java -jar reconnics-ng.jar --version");
         ps.println("  java -jar reconnics-ng.jar analyze <file.pcap> [options]");
+        ps.println("  java -jar reconnics-ng.jar keygen|build-index|match|serve|inventory ...  (advisory side)");
         ps.println();
         ps.println("Options:");
         ps.println("  -o, --output <path>   Write ingest JSON to path (atomic; refuses overwrite)");
         ps.println("  -f, --force           Overwrite existing output file");
         ps.println("      --format json     Emit machine-readable JSON on stdout");
         ps.println("      --format summary  Human-readable summary on stderr (default)");
+        ps.println("      --post <url>      POST ingest JSON to a loopback ingest API, e.g.");
+        ps.println("                        http://127.0.0.1:8088/api/v1/assets (see 'serve')");
         ps.println("  -v, --verbose         Diagnostic logging on stderr (includes stack traces)");
         ps.println();
         ps.println("Exit codes:");

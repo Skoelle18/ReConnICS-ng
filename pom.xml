@@ -9,7 +9,7 @@
     <version>0.1.0-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>Reconnics NG</name>
-    <description>Passive OT asset inventory from PCAP captures (Modbus, EtherNet/IP, S7comm)</description>
+    <description>Passive OT asset inventory from PCAP captures (Modbus, EtherNet/IP, S7comm) with an offline CSAF/KEV advisory matcher</description>
 
     <properties>
         <maven.compiler.release>21</maven.compiler.release>

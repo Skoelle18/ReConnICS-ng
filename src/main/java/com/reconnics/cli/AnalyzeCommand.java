@@ -4,8 +4,14 @@ import com.reconnics.output.IngestJsonWriter;
 import com.reconnics.pcap.PcapException;
 import com.reconnics.service.AnalysisService;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.net.InetAddress;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.logging.ConsoleHandler;
@@ -18,6 +24,7 @@ public final class AnalyzeCommand {
     private final boolean force;
     private final boolean verbose;
     private final boolean formatJson;
+    private final String post;
     private final PrintStream out;
     private final PrintStream err;
 
@@ -27,6 +34,7 @@ public final class AnalyzeCommand {
             boolean force,
             boolean verbose,
             boolean formatJson,
+            String post,
             PrintStream out,
             PrintStream err) {
         this.input = input;
@@ -34,6 +42,7 @@ public final class AnalyzeCommand {
         this.force = force;
         this.verbose = verbose;
         this.formatJson = formatJson;
+        this.post = post;
         this.out = out;
         this.err = err;
     }
@@ -43,6 +52,14 @@ public final class AnalyzeCommand {
         if (input == null) {
             err.println("error: missing capture path");
             return ExitCode.USAGE;
+        }
+        URI postUri = null;
+        if (post != null) {
+            postUri = loopbackUri(post);
+            if (postUri == null) {
+                err.println("error: --post must be an http URL on a loopback address (127.0.0.1, ::1, localhost)");
+                return ExitCode.USAGE;
+            }
         }
         if (!Files.isRegularFile(input)) {
             err.println("error: capture file not found or not a file: " + input);
@@ -78,6 +95,9 @@ public final class AnalyzeCommand {
             } else {
                 err.print(result.report().summaryText());
             }
+            if (postUri != null) {
+                return postDocument(postUri, writer, result);
+            }
             return ExitCode.OK;
         } catch (PcapException e) {
             err.println("error: " + e.getMessage());
@@ -110,6 +130,44 @@ public final class AnalyzeCommand {
             } catch (IllegalStateException ignored) {
                 // JVM already shutting down
             }
+        }
+    }
+
+    /** Only loopback targets: the ingest API is local-only and captures must not leave the machine. */
+    static URI loopbackUri(String s) {
+        try {
+            URI u = URI.create(s);
+            if (!"http".equalsIgnoreCase(u.getScheme()) || u.getHost() == null) {
+                return null;
+            }
+            String host = u.getHost().replaceAll("^\\[|\\]$", "");
+            if (host.equalsIgnoreCase("localhost")) {
+                return u;
+            }
+            // IP literals only, so no DNS lookup can redirect the capture elsewhere
+            return host.matches("[0-9.]+|[0-9a-fA-F:]+") && InetAddress.getByName(host).isLoopbackAddress() ? u : null;
+        } catch (IllegalArgumentException | IOException e) {
+            return null;
+        }
+    }
+
+    private int postDocument(URI uri, IngestJsonWriter writer, AnalysisService.AnalysisResult result) {
+        try {
+            ByteArrayOutputStream body = new ByteArrayOutputStream();
+            writer.writeStdout(result.document(), body);
+            HttpRequest req = HttpRequest.newBuilder(uri)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray()))
+                    .build();
+            HttpResponse<String> resp = HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.ofString());
+            err.println("POST " + uri + " -> " + resp.statusCode() + " " + resp.body());
+            return resp.statusCode() == 200 ? ExitCode.OK : ExitCode.OUTPUT_ERROR;
+        } catch (IOException e) {
+            err.println("error: POST to " + uri + " failed: " + e.getMessage());
+            return ExitCode.OUTPUT_ERROR;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return ExitCode.OUTPUT_ERROR;
         }
     }
 

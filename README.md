@@ -1,9 +1,6 @@
-
-# ReConnICS-ng
-OT-Asset Management System
 # Reconnics NG
 
-Passive OT asset inventory from classic PCAP captures. CLI-only Java 21 application that identifies industrial devices via Modbus TCP device identification, EtherNet/IP `ListIdentity`, and a conservative S7comm SZL subset, then exports JSON for the advisory ingest API.
+Passive OT asset inventory from classic PCAP captures. CLI-only Java 21 application that identifies industrial devices via Modbus TCP device identification, EtherNet/IP `ListIdentity`, and a conservative S7comm SZL subset, then exports JSON for the advisory ingest API. The same jar also builds and queries the offline CSAF/KEV advisory index.
 
 **Not** a scanner. No packets are sent. Results are passive observations and may be incomplete or spoofed.
 
@@ -45,6 +42,9 @@ java -jar target/reconnics-ng.jar analyze assets/modbus.pcap \
 
 # Machine-readable JSON on stdout (no banners)
 java -jar target/reconnics-ng.jar analyze assets/modbus.pcap --format json
+
+# Send straight to a running ingest API (loopback only; see "Advisory matching")
+java -jar target/reconnics-ng.jar analyze assets/modbus.pcap --post http://127.0.0.1:8088/api/v1/assets
 ```
 
 ### Exit codes
@@ -97,6 +97,66 @@ Passive PCAP results may be incomplete or spoofed.
 - [`docs/ethics.md`](docs/ethics.md) — passive-only rules
 - [`docs/examples/assets.json`](docs/examples/assets.json) — sanitized example payload
 
+## End-to-end
+
+```bash
+# File mode: PCAP -> observations.json -> inventory.json/csv + report.html
+scripts/reconics-run.sh assets/modbus.pcap results/ --index data/index.json --pubkey keys/index-signing.pub
+
+# Live mode: ingest API + parser posting to it
+java -jar target/reconnics-ng.jar serve --index data/index.json --pubkey keys/index-signing.pub &
+java -jar target/reconnics-ng.jar analyze assets/modbus.pcap --post http://127.0.0.1:8088/api/v1/assets
+curl 'http://127.0.0.1:8088/api/v1/matches?format=html' > report.html
+```
+
 ## License
 
 See `LICENSE` if present in the repository root.
+
+## About - Arsenal FOSS Project
+
+Operational technology (OT) is the hardware and software that directly monitors, controls and automates physical processes and infrastructure in industrial settings.
+
+We are building a FOSS alternative for an asset inventoy system  that OT platforms already use through existing solutions
+
+## Advisory matching (local advisory index)
+
+### What we do here
+
+We cannnot actively allow internet access to OT devices to learn of latest or past CVEs, since internet access is a security flaw. So we instead do a scheduled update of local advisory index that contains CISA's CSAF OT advisores through KEV (Known Exploted Vulnerabilities) list.
+
+We use git as a distribution source to build a advisory DB that can be exported to offline devices via USB or any supported file transfer interface.
+
+Not done: Explore beyond USB for file transfer protocols and also see what OT devices really work like.
+
+### Architecture
+
+![architecture of local advisory index](/docs/local-advisory-arch.png)
+
+
+### End users
+
+![swimlane diagram of end users](/docs/local-advisory-swimlane.png)
+
+### Running it
+
+```
+mvn package                                                 # builds + tests -> target/reconnics-ng.jar
+java -jar target/reconnics-ng.jar keygen --keys keys              # once, on the online side
+java -jar target/reconnics-ng.jar build-index --sign-key keys/index-signing.key   # -> data/index.json(.sig)
+# copy data/index.json, data/index.json.sig to the offline side (pubkey copied once, separately)
+java -jar target/reconnics-ng.jar match --index data/index.json --pubkey keys/index-signing.pub --format html --out report.html docs/examples/assets.json
+java -jar target/reconnics-ng.jar serve --index data/index.json --pubkey keys/index-signing.pub   # ingest API for the PCAP project
+```
+
+Plan and connector design: [docs/plan.md](docs/plan.md). Ingest contract for the PCAP project: [docs/ingest-api.md](docs/ingest-api.md).
+
+### Implementation progress
+
+- [x] Plan architecture - Dataflow Level 1
+- [ ] Plan architecture - Swimlane Diagram
+- [x] CSAF OT mirror + KEV -> signed local advisory index (Java)
+- [x] EXACT / PROBABLE / POSSIBLE / NONE matcher, JSON/CSV/HTML reports
+- [x] Loopback ingest API for the PCAP project
+- [x] PCAP parser and advisory matcher in one jar; `analyze --post` feeds the ingest API
+- [ ] CSAF PGP signature verification, staleness warning, vendor aliases (see docs/plan.md)

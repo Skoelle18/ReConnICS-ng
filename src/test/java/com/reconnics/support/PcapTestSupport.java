@@ -115,4 +115,31 @@ public final class PcapTestSupport {
         }
         return b;
     }
+
+    /** MBAP + Modbus FC43/14 Read Device Identification response with VendorName, ProductCode, Revision. */
+    public static byte[] modbusIdentityResponse(String vendor, String product, String rev) {
+        ByteArrayOutputStream objs = new ByteArrayOutputStream();
+        String[] values = {vendor, product, rev};
+        for (int id = 0; id < values.length; id++) {
+            byte[] b = values[id].getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+            objs.write(id);
+            objs.write(b.length);
+            objs.writeBytes(b);
+        }
+        byte[] pdu = new byte[7 + objs.size()];
+        pdu[0] = (byte) com.reconnics.protocol.modbus.ModbusIdentityParser.FC_READ_DEVICE_ID;
+        pdu[1] = (byte) com.reconnics.protocol.modbus.ModbusIdentityParser.MEI_READ_DEVICE_ID;
+        pdu[2] = 1;
+        pdu[3] = 1;
+        pdu[6] = (byte) values.length;
+        System.arraycopy(objs.toByteArray(), 0, pdu, 7, objs.size());
+        byte[] out = new byte[7 + pdu.length];
+        out[1] = 1;
+        int len = 1 + pdu.length;
+        out[4] = (byte) (len >> 8);
+        out[5] = (byte) len;
+        out[6] = 1;
+        System.arraycopy(pdu, 0, out, 7, pdu.length);
+        return out;
+    }
 }

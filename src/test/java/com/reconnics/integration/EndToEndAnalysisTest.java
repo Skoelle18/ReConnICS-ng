@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.reconnics.cli.CliCommand;
 import com.reconnics.cli.ExitCode;
-import com.reconnics.protocol.modbus.ModbusIdentityParser;
 import com.reconnics.service.AnalysisService;
 import com.reconnics.support.PcapTestSupport;
 import org.junit.jupiter.api.Test;
@@ -25,8 +24,7 @@ class EndToEndAnalysisTest {
 
     @Test
     void analyzesSyntheticModbusIdentityCapture() throws Exception {
-        byte[] pdu = fc43("Acme", "PLC-1", "1.2.3");
-        byte[] mbap = mbap(pdu);
+        byte[] mbap = PcapTestSupport.modbusIdentityResponse("Acme", "PLC-1", "1.2.3");
         byte[] frame = PcapTestSupport.ethernetIpv4Tcp(
                 PcapTestSupport.mac("00:11:22:33:44:55"),
                 PcapTestSupport.mac("00:11:22:33:44:66"),
@@ -92,52 +90,5 @@ class EndToEndAnalysisTest {
         assertTrue(result.report().schemaValid());
         // Do not claim identity fields exist — report only what is present
         assertNotNull(result.document().assets);
-    }
-
-    private static byte[] fc43(String vendor, String product, String rev) {
-        return new ModbusIdentityParserTestHelper().response(vendor, product, rev);
-    }
-
-    private static byte[] mbap(byte[] pdu) {
-        byte[] out = new byte[7 + pdu.length];
-        out[0] = 0;
-        out[1] = 1;
-        int len = 1 + pdu.length;
-        out[4] = (byte) (len >> 8);
-        out[5] = (byte) len;
-        out[6] = 1;
-        System.arraycopy(pdu, 0, out, 7, pdu.length);
-        return out;
-    }
-
-    /** Local helper to avoid coupling test packages. */
-    static final class ModbusIdentityParserTestHelper {
-        byte[] response(String vendor, String product, String rev) {
-            byte[] v = obj(0, vendor);
-            byte[] p = obj(1, product);
-            byte[] r = obj(2, rev);
-            byte[] pdu = new byte[7 + v.length + p.length + r.length];
-            pdu[0] = (byte) ModbusIdentityParser.FC_READ_DEVICE_ID;
-            pdu[1] = (byte) ModbusIdentityParser.MEI_READ_DEVICE_ID;
-            pdu[2] = 1;
-            pdu[3] = 1;
-            pdu[6] = 3;
-            int pos = 7;
-            System.arraycopy(v, 0, pdu, pos, v.length);
-            pos += v.length;
-            System.arraycopy(p, 0, pdu, pos, p.length);
-            pos += p.length;
-            System.arraycopy(r, 0, pdu, pos, r.length);
-            return pdu;
-        }
-
-        private byte[] obj(int id, String s) {
-            byte[] b = s.getBytes(StandardCharsets.US_ASCII);
-            byte[] o = new byte[2 + b.length];
-            o[0] = (byte) id;
-            o[1] = (byte) b.length;
-            System.arraycopy(b, 0, o, 2, b.length);
-            return o;
-        }
     }
 }
