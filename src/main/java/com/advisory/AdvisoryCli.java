@@ -18,12 +18,13 @@ public final class AdvisoryCli {
                           mirror CSAF OT advisories into --cache, build index (--offline: cache only)
 
             Offline side (air-gapped analyst laptop):
+              verify --index FILE --pubkey FILE                 exit 0 only if the signature is valid
               match --index FILE [--pubkey FILE] [--format json|csv|html] [--out FILE] ASSETS.json
               serve --index FILE [--pubkey FILE] [--port 8088]     ingest API for the PCAP project
               inventory --in OBSERVATIONS.json --out DIR [--oui oui.csv] [--index FILE [--pubkey FILE]]
             """;
 
-    public static final java.util.Set<String> COMMANDS = java.util.Set.of("keygen", "build-index", "match", "serve", "inventory");
+    public static final java.util.Set<String> COMMANDS = java.util.Set.of("keygen", "build-index", "match", "serve", "inventory", "verify");
 
     public static void main(String[] argv) throws Exception {
         if (argv.length == 0) { System.err.print(USAGE); System.exit(2); }
@@ -73,6 +74,16 @@ public final class AdvisoryCli {
                 int port = Integer.parseInt(o.getOrDefault("port", "8088"));
                 new IngestServer(loadIndex(o)).start(port);
                 System.err.println("ingest API on http://127.0.0.1:" + port + "/api/v1/");
+            }
+            case "verify" -> {
+                if (!o.containsKey("pubkey")) die("verify needs --pubkey");
+                try {
+                    var idx = loadIndex(o);
+                    System.err.printf("verify: OK, generated %s, %d rows%n", idx.meta.get("generated"), idx.rows.size());
+                } catch (SecurityException e) {
+                    System.err.println("verify: " + e.getMessage());
+                    System.exit(1);
+                }
             }
             default -> { System.err.print(USAGE); System.exit(2); }
         }

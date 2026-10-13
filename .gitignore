@@ -67,7 +67,8 @@ build/
 
 ### Advisory index: local CSAF cache, built index, signing keys (never commit the private key) ###
 data/
-keys/
+keys/*
+!keys/index-signing.pub
 *.key
 out/
 __pycache__/
