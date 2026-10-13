@@ -55,7 +55,7 @@ Rules every connector must follow:
 - Carry `evidence` and `confidence` on every identity field.
 - Never open a socket toward plant address space.
 
-## 3. Java core (`src/main/java/reconics/`)
+## 3. Java core (`src/main/java/com/advisory/`)
 
 Maven build, Java 21+ (tested on 25). The runtime is **standard library only**, with JUnit in test scope.
 `mvn package` produces `target/reconnics-ng.jar`, the one file that goes onto the air-gapped machine.

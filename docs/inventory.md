@@ -1,6 +1,6 @@
 # Inventory, CISA-14 scoring and reports
 
-Stage 3 of the ReConICS pipeline: `com.reconnics.advisory.Inventory` (`inventory` command). It reads the parser's observations and writes an asset
+Stage 3 of the ReConICS pipeline: `com.advisory.Inventory` (`inventory` command). It reads the parser's observations and writes an asset
 inventory. That inventory is scored against the 14 high-priority attributes in CISA's *Foundations for OT
 Cybersecurity: Asset Inventory Guidance* (Aug 2025, Appendix A), ranked against ICS advisories, and written as JSON,
 CSV and a self-contained HTML report.
