@@ -337,6 +337,25 @@ class InventoryTest {
         assertEquals(2, run("--in", ex.toString(), "--out", dir.toString(), "--index", dir.resolve("report.html").toString()));
     }
 
+    @Test void siemensOrderNumbers() {
+        assertEquals("SIMATIC S7-1500", Inventory.modelFamily("Siemens", "6ES7 515-2AM01-0AB0"));
+        assertEquals("SIMATIC S7-1200", Inventory.modelFamily("Siemens AG", "6ES7214-1AG40-0XB0"));
+        assertEquals("SIMATIC S7-300", Inventory.modelFamily("SIEMENS", "6es7 315-2EH14-0AB0"));
+        assertEquals("SIMATIC S7-400", Inventory.modelFamily("Siemens", "6ES7 416-3ES07-0AB0"));
+        assertNull(Inventory.modelFamily("Siemens", "6ES7 134-6GF00-0AA1"), "I/O module: no family guess");
+        assertNull(Inventory.modelFamily("Acme", "6ES7 515-2AM01-0AB0"));
+        assertNull(Inventory.modelFamily("Siemens", "SIMATIC S7-1500"));
+
+        var idx = new AdvisoryIndex(AdvisoryIndex.newMeta("t", "v", 1), List.of(new AdvisoryIndex.Row("ICSA-S", "S7-1500", "Siemens",
+                "SIMATIC S7-1500 CPU family", null, "<V2.9", List.of("CVE-1"), List.of(), 7.5)));
+        var i = inv("[{\"ip\":\"10.0.0.1\"," + h("vendor", "Siemens") + "," + h("model", "6ES7 515-2AM01-0AB0") + "," + h("firmware", "V2.8.1") + "}]");
+        i.match(idx, true);
+        var r = rec(i, "10.0.0.1");
+        assertEquals(EXACT, r.match.level());
+        assertEquals("SIMATIC S7-1500", r.match.matchedAs());
+        assertEquals("6ES7 515-2AM01-0AB0", v(r, "model"), "inventory keeps the order number");
+    }
+
     // signed index: verifies, tamper fails closed, hostile index fails closed
     @Test void indexTrustBoundary() throws Exception {
         Path keys = tmp.resolve("keys");

@@ -105,6 +105,7 @@ final class InventoryReport {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("level", r.match.level());
                 m.put("kevAtModel", r.match.kevAtModel());
+                if (r.match.matchedAs() != null) m.put("matchedAs", r.match.matchedAs());
                 m.put("maxCvss", r.match.maxCvss());
                 m.put("advisories", r.match.advisories());
                 if (r.match.truncated() > 0) m.put("truncated", r.match.truncated());
@@ -209,6 +210,7 @@ final class InventoryReport {
              .append("</td><td>").append(r.filled).append("/14<br><span class=\"dim\">ceiling ").append(r.ceiling).append("</span></td><td");
             if (r.match != null && r.match.kevAtModel()) b.append(" class=\"kev\"");
             b.append('>').append(esc(label(inv, r)));
+            if (r.match != null && r.match.matchedAs() != null) b.append("<br><span class=\"dim\">matched as ").append(esc(r.match.matchedAs())).append("</span>");
             if (r.match != null && !r.match.advisories().isEmpty()) {
                 b.append("<details><summary>").append(r.match.advisories().size()).append(" advisories")
                  .append(r.match.truncated() > 0 ? " (+" + r.match.truncated() + " more)" : "").append("</summary><ul>");

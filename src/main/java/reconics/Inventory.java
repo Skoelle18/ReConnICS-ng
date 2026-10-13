@@ -86,7 +86,28 @@ final class Inventory {
         String v(String k) { Field x = f.get(k); return x == null ? null : x.str(); }
     }
 
-    record MatchResult(AdvisoryMatcher.Level level, boolean kevAtModel, double maxCvss, List<Map<String, Object>> advisories, int truncated) {}
+    record MatchResult(AdvisoryMatcher.Level level, boolean kevAtModel, double maxCvss, List<Map<String, Object>> advisories, int truncated,
+                       String matchedAs) {}
+
+    private static final Pattern SIEMENS_ORDER = Pattern.compile("^6ES7\\s?([1-5])([0-9])", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * S7 identity (SZL 0x0011) reports an order number like "6ES7 515-2AM01-0AB0"; CISA advisories name the family
+     * ("SIMATIC S7-1500"). Token matching shares no word between the two, so map the order-number prefix to the family
+     * for matching only; the inventory keeps the order number. Prefixes per Siemens order-number scheme.
+     */
+    static String modelFamily(String vendor, String model) {
+        if (vendor == null || model == null || !vendor.toLowerCase(Locale.ROOT).contains("siemens")) return null;
+        Matcher m = SIEMENS_ORDER.matcher(model.strip());
+        if (!m.find()) return null;
+        return switch (m.group(1) + m.group(2)) {
+            case "51" -> "SIMATIC S7-1500";                   // 6ES7 51x: S7-1500 and ET 200SP CPUs
+            case "21" -> "SIMATIC S7-1200";
+            case "31" -> "SIMATIC S7-300";
+            case "41" -> "SIMATIC S7-400";
+            default -> null;
+        };
+    }
 
     final List<Rec> records = new ArrayList<>();
     final List<Map<String, Object>> rejected = new ArrayList<>();
@@ -568,6 +589,8 @@ final class Inventory {
             Map<String, Object> a = new LinkedHashMap<>();
             a.put("id", r.id);
             for (String k : List.of("ip", "mac", "vendor", "model", "firmware")) if (r.v(k) != null) a.put(k, r.v(k));
+            String family = modelFamily(r.v("vendor"), r.v("model"));
+            if (family != null) a.put("model", family);
             List<AdvisoryMatcher.Match> ms;
             try { ms = matcher.match(Asset.from(a)); }
             catch (RuntimeException e) { reject(-1, "record", "record could not be matched"); continue; }
@@ -581,7 +604,7 @@ final class Inventory {
                 m.put("affected", cleanOrNull(x.affected())); m.put("cves", x.cves()); m.put("kev", x.kev()); m.put("cvss", cvss(x.cvss()));
                 adv.add(m);
             }
-            r.match = new MatchResult(level, kev, max, adv, Math.max(0, ms.size() - MAX_ADVISORIES));
+            r.match = new MatchResult(level, kev, max, adv, Math.max(0, ms.size() - MAX_ADVISORIES), family);
         }
     }
 

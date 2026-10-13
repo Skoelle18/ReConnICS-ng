@@ -118,6 +118,11 @@ When the ceiling is below EXACT, `nextStep` says which capture lifts it.
 Matching uses Bhuwan's `AdvisoryMatcher` (vendor/model token overlap, then firmware against the affected version
 range).
 
+**Siemens order numbers.** An S7 identity reply gives an order number such as `6ES7 515-2AM01-0AB0`, while CISA
+advisories name the family ("SIMATIC S7-1500"). The two share no word, so matching would always return NONE. For
+matching only, `6ES7 51x/21x/31x/41x` maps to S7-1500/1200/300/400. The inventory keeps the order number, and the match
+records `matchedAs`. Other order numbers (I/O, CPs) get no guess.
+
 **Loading the index**
 - The index is treated as untrusted. File cap 64 MiB, strict UTF-8, depth check, at most 200 000 rows.
 - Every string is cleaned and every CVSS clamped to 0–10; a non-finite CVSS becomes 0.
