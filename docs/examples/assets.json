@@ -1,0 +1,36 @@
+{
+  "source": {
+    "tool": "reconnics-ng",
+    "version": "0.1.0",
+    "pcap": "synthetic-modbus-id.pcap",
+    "pcapSha256": "<sha256 of capture>"
+  },
+  "assets": [
+    {
+      "id": "00:11:22:33:44:55",
+      "ip": "10.10.1.31",
+      "mac": "00:11:22:33:44:55",
+      "protocols": ["modbus"],
+      "vendor": {
+        "value": "Lantronix",
+        "confidence": "HIGH",
+        "evidence": "modbus FC43/14 Read Device Identification objectId=0x00, frame 1, txn 1, unit=1"
+      },
+      "model": {
+        "value": "EDS5000",
+        "confidence": "HIGH",
+        "evidence": "modbus FC43/14 Read Device Identification objectId=0x01, frame 1, txn 1"
+      },
+      "firmware": {
+        "value": "2.0.0.0R1",
+        "confidence": "HIGH",
+        "evidence": "modbus FC43/14 Read Device Identification objectId=0x02, frame 1, txn 1"
+      },
+      "attributes": {
+        "firstFrame": 1,
+        "lastFrame": 1,
+        "detectionBases": ["MESSAGE_DECODED"]
+      }
+    }
+  ]
+}
