@@ -64,3 +64,13 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### Advisory index: local CSAF cache, built index, signing keys (never commit the private key) ###
+data/
+keys/
+*.key
+out/
+__pycache__/
+.env
+.env.*
+venv/
