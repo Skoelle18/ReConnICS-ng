@@ -23,3 +23,16 @@ Results go to `eval/out/summary.md` and `summary.json`, with per-capture `score.
 | `captures/lab/` | where team lab captures go (pcaps ignored by git) |
 
 Public truth files were built with an independent byte-level decoder (not this project's code); every identity value cites its frame number.
+
+## Held-out set (headline numbers)
+
+`eval/heldout/` holds answer keys for 5 public captures, frozen on 16 Oct 2026 before any parser fix: 3 real
+(`iti_tia_s300_updateFirmware`, `iti_EIP-IPAddressChangeAttempt`, `icsnpp_enip_cip_example`) and 2 simulated
+(`icsnpp_s7ident`, `icsnpp_modbus_example`). Truth comes from an independent stdlib decoder written from the Wireshark
+dissector sources, with each value cited to a frame. Each file records the capture's SHA-256.
+Disclosure: these captures were run once with the pre-fix jar as a baseline and scanned by check_capture.py. No fix was
+developed or tuned against them. The decoder and the fixes share an author; a Wireshark cross-check is planned.
+
+`python eval/research_tables.py --runs eval/out --index ... --pubkey ...` produces the research-question tables:
+CISA-14 fill rate, identity availability, and risk hidden by missing fields. Groups: heldout-real, heldout-sim,
+dev-public, lab, synthetic.

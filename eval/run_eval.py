@@ -49,6 +49,8 @@ def main():
         for cap in sorted(p for p in d.iterdir() if p.suffix.lower() in CAP_EXT):
             stem = cap.name[: -len(cap.suffix)]
             truth = d / f"{stem}.truth.json"
+            if not truth.exists() and (ROOT / "eval" / "heldout" / f"{stem}.truth.json").exists():
+                truth = ROOT / "eval" / "heldout" / f"{stem}.truth.json"
             tag = stem + ("_ng" if cap.suffix == ".pcapng" and (d / f"{stem}.pcap").exists() else "")
             if a.only and stem not in a.only and tag not in a.only:
                 continue
@@ -59,7 +61,8 @@ def main():
         od = out_root / tag
         od.mkdir(parents=True, exist_ok=True)
         obs = od / "observations.json"
-        row = {"capture": tag, "file": str(cap), "bytes": cap.stat().st_size, "truth": bool(truth)}
+        row = {"capture": tag, "file": str(cap), "bytes": cap.stat().st_size, "truth": bool(truth),
+               "truth_file": str(truth) if truth else None}
         rc, s1, err = run(["java", "-jar", a.jar, "analyze", str(cap), "--output", str(obs), "--force"])
         row.update(analyze_exit=rc, analyze_s=s1)
         if rc != 0:
