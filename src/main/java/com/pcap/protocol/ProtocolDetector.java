@@ -48,7 +48,7 @@ public final class ProtocolDetector {
             out.add(portOnly(packet, ProtocolType.ENIP, packet.dstPort() == 44818));
         }
 
-        Optional<ProtocolMessage> s7Msg = s7.tryParse(data, off, len, frame);
+        Optional<ProtocolMessage> s7Msg = s7.tryParse(data, off, len, frame, flowKey(packet));
         if (s7Msg.isPresent()) {
             out.add(toObs(packet, s7Msg.get()));
         } else if (portS7) {
@@ -67,10 +67,15 @@ public final class ProtocolDetector {
             enip.tryParse(data, off, len, frame).ifPresent(m -> out.add(toObs(packet, m)));
         }
         if (!portS7 && s7Msg.isEmpty() && s7.looksLikeTpktS7(data, off, len)) {
-            s7.tryParse(data, off, len, frame).ifPresent(m -> out.add(toObs(packet, m)));
+            s7.tryParse(data, off, len, frame, flowKey(packet)).ifPresent(m -> out.add(toObs(packet, m)));
         }
 
         return out;
+    }
+
+    static String flowKey(ParsedPacket p) {
+        return p.srcIp().map(Object::toString).orElse("?") + ":" + p.srcPort()
+                + ">" + p.dstIp().map(Object::toString).orElse("?") + ":" + p.dstPort();
     }
 
     private static boolean matchesPort(ParsedPacket p, int port) {

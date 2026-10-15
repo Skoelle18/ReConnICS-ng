@@ -103,6 +103,9 @@ public final class IngestJsonWriter {
         a.vendor = field(ra.identity().vendor());
         a.model = field(ra.identity().model());
         a.firmware = field(ra.identity().firmware());
+        a.hostname = field(ra.identity().hostname());
+        a.serial = field(ra.identity().serial());
+        a.deviceType = field(ra.identity().deviceType());
 
         Map<String, Object> attrs = new LinkedHashMap<>();
         attrs.put("firstFrame", ra.device().firstFrame());

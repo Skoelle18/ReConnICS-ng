@@ -9,6 +9,8 @@ public final class IdentityField {
         FIRMWARE,
         SERIAL,
         PRODUCT_NAME,
+        HOSTNAME,
+        DEVICE_TYPE,
         OTHER
     }
 

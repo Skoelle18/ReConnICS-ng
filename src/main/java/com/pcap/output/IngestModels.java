@@ -29,6 +29,12 @@ public final class IngestModels {
         public Object vendor;
         public Object model;
         public Object firmware;
+        /** Station / module name (S7 SZL 0x001C index 2). */
+        public Object hostname;
+        /** Device serial number as reported by the identity object. */
+        public Object serial;
+        /** Device type for role derivation: {@code cip:0xNN} or {@code s7:<module type>}. */
+        public Object deviceType;
         public Map<String, Object> attributes;
     }
 

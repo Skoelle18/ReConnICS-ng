@@ -22,6 +22,9 @@ public final class IdentityResolver {
             Optional<ResolvedField> vendor,
             Optional<ResolvedField> model,
             Optional<ResolvedField> firmware,
+            Optional<ResolvedField> hostname,
+            Optional<ResolvedField> serial,
+            Optional<ResolvedField> deviceType,
             int conflictCount) {
     }
 
@@ -34,8 +37,11 @@ public final class IdentityResolver {
         Optional<ResolvedField> vendor = resolveKind(sorted, IdentityField.Kind.VENDOR);
         Optional<ResolvedField> model = resolveKind(sorted, IdentityField.Kind.MODEL);
         Optional<ResolvedField> firmware = resolveKind(sorted, IdentityField.Kind.FIRMWARE);
+        Optional<ResolvedField> hostname = resolveKind(sorted, IdentityField.Kind.HOSTNAME);
+        Optional<ResolvedField> serial = resolveKind(sorted, IdentityField.Kind.SERIAL);
+        Optional<ResolvedField> deviceType = resolveKind(sorted, IdentityField.Kind.DEVICE_TYPE);
         int conflicts = countConflicts(vendor) + countConflicts(model) + countConflicts(firmware);
-        return new ResolvedIdentity(vendor, model, firmware, conflicts);
+        return new ResolvedIdentity(vendor, model, firmware, hostname, serial, deviceType, conflicts);
     }
 
     private static int countConflicts(Optional<ResolvedField> f) {
