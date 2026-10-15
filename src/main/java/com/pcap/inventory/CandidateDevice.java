@@ -8,8 +8,10 @@ import com.pcap.util.IpAddress;
 import com.pcap.util.MacAddress;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -17,6 +19,9 @@ public final class CandidateDevice {
     private final String captureScopedId;
     private final Set<String> ips = new LinkedHashSet<>();
     private final Set<String> macs = new LinkedHashSet<>();
+    private final Map<String, Long> macLastFrame = new LinkedHashMap<>();
+    private final Set<String> ownMacs = new LinkedHashSet<>();
+    private boolean macsFinal;
     private final Set<String> protocols = new LinkedHashSet<>();
     private final Set<DetectionBasis> detectionBases = new LinkedHashSet<>();
     private final List<IdentityField> fields = new ArrayList<>();
@@ -47,10 +52,42 @@ public final class CandidateDevice {
         }
     }
 
-    public void observeMac(MacAddress mac) {
-        if (mac != null && !mac.isBroadcastOrMulticast()) {
+    public void observeMac(MacAddress mac, long frame) {
+        if (mac != null && !mac.isBroadcastOrMulticast() && !mac.value().equals("00:00:00:00:00:00")) {
             macs.add(mac.value());
+            macLastFrame.merge(mac.value(), frame, Math::max);
         }
+    }
+
+    /** The device announced this MAC itself (e.g. ARP sender), so it owns it even if others route via it. */
+    public void markOwnMac(MacAddress mac) {
+        if (mac != null) {
+            ownMacs.add(mac.value());
+        }
+    }
+
+    Set<String> ownMacs() {
+        return ownMacs;
+    }
+
+    Set<String> observedMacs() {
+        return macLastFrame.keySet();
+    }
+
+    List<String> observedMacsNewestFirst() {
+        return macLastFrame.entrySet().stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed()
+                        .thenComparing(Map.Entry.comparingByKey()))
+                .map(Map.Entry::getKey).toList();
+    }
+
+    /** Sets the single MAC this device is emitted with (null = none); other observed MACs are dropped. */
+    void assignMac(String mac) {
+        macs.clear();
+        if (mac != null) {
+            macs.add(mac);
+        }
+        macsFinal = true;
     }
 
     public void observeProtocol(ProtocolType type, DetectionBasis basis, long frame) {
@@ -81,7 +118,7 @@ public final class CandidateDevice {
     }
 
     public Optional<String> primaryMac() {
-        return macs.stream().sorted().findFirst();
+        return macsFinal ? macs.stream().findFirst() : macs.stream().sorted().findFirst();
     }
 
     public Set<String> ips() {

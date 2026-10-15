@@ -30,7 +30,7 @@ public final class DeviceAggregator {
         CandidateDevice device = matcher.match(obs);
         obs.ip().ifPresent(device::observeIp);
         if (device.subaddr().isEmpty()) {
-            obs.mac().ifPresent(device::observeMac);
+            obs.mac().ifPresent(m -> device.observeMac(m, obs.frameNumber()));
         }
         device.observeProtocol(obs.protocol(), obs.detectionBasis(), obs.frameNumber());
         for (IdentityField f : obs.identityFields()) {
@@ -40,6 +40,7 @@ public final class DeviceAggregator {
     }
 
     public List<ResolvedAsset> resolveAssets() {
+        matcher.finalizeMacs();
         List<CandidateDevice> candidates = matcher.candidates();
         candidates.sort(Comparator
                 .comparing((CandidateDevice d) -> d.primaryIp().orElse("~"))
