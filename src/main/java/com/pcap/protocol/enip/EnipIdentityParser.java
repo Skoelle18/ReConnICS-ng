@@ -267,7 +267,10 @@ public final class EnipIdentityParser {
         fields.add(new IdentityField(IdentityField.Kind.DEVICE_TYPE, String.format("cip:0x%02X", deviceType),
                 ProtocolType.ENIP, typeEv, Confidence.HIGH));
 
-        String rev = major + "." + minor;
+        // CIP revision as major.minor with a 3-digit minor ("33.011"): the Rockwell convention used by RSLinx,
+        // Studio 5000 and Rockwell advisories. Wireshark displays %d.%02d ("33.11"); we keep the vendor form so
+        // versions compare directly with advisory ranges.
+        String rev = major + "." + String.format("%03d", minor);
         Evidence revEv = new Evidence(
                 frameNumber, ProtocolType.ENIP, messageType,
                 "revision",
@@ -285,7 +288,7 @@ public final class EnipIdentityParser {
                 DetectionBasis.MESSAGE_DECODED);
         fields.add(new IdentityField(
                 IdentityField.Kind.SERIAL,
-                Long.toUnsignedString(serial),
+                String.format("%08X", serial),
                 ProtocolType.ENIP,
                 serialEv,
                 Confidence.HIGH));

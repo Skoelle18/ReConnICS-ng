@@ -22,8 +22,9 @@ class EnipIdentityParserTest {
         assertEquals(DetectionBasis.MESSAGE_DECODED, msg.basis());
         assertEquals("Rockwell Automation", field(msg, IdentityField.Kind.VENDOR));
         assertEquals("1756-L61", field(msg, IdentityField.Kind.MODEL));
-        assertEquals("12.34", field(msg, IdentityField.Kind.FIRMWARE));
-        assertTrue(msg.fields().stream().anyMatch(f -> f.kind() == IdentityField.Kind.SERIAL));
+        // P11: CIP revision is major.%03d minor (Rockwell/RSLinx display, advisory ranges use it)
+        assertEquals("12.034", field(msg, IdentityField.Kind.FIRMWARE));
+        assertEquals("ABCDEF01", field(msg, IdentityField.Kind.SERIAL));
     }
 
     @Test

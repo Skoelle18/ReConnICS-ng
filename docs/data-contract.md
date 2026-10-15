@@ -32,6 +32,20 @@ Missing fields are JSON `null` (omitted only when Jackson `NON_NULL` applies to 
 `deviceType` is `cip:0xNN` (CIP Identity device type) or `s7:<module type name>` (SZL 0x001C index 7); the
 inventory stage derives `role` from it.
 
+### CIP Identity formats (changed in this release)
+
+Values decoded from a CIP Identity object (ListIdentity or Get_Attributes_All) changed format; consumers that
+stored earlier output must re-key:
+
+| Field | Before | Now | Example |
+|---|---|---|---|
+| `firmware` (revision) | `major.minor`, minor as decimal (`20.11`) | `major.%03d` minor (`20.011`) | `33.011` |
+| `serial` | unsigned decimal (`3337514247`) | 8 hex digits, upper case (`%08X`) | `C6EE6D07` |
+
+The revision form is the Rockwell convention (RSLinx, Studio 5000 and Rockwell security advisories print
+`20.011`); Wireshark shows the same value as `20.11` (`%d.%02d`). The serial form matches the serial printed on
+the module label and in RSLinx. The raw values remain in the evidence string.
+
 ## Sub-devices
 
 `subaddr` is a top-level string on assets that sit behind the responding IP and have no MAC of their own:

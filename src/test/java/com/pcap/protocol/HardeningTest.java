@@ -43,6 +43,8 @@ class HardeningTest {
         var doc = new AnalysisService().analyze(writeTempPcap("r14.pcap", classicPcap(true, false, 1, f)), false).document();
         IngestModels.Asset a = asset(doc, "10.0.1.41");
         assertEquals("1769-L33ER<script>alert(1)</script>", v(a.model));
+        assertEquals("32.013", v(a.firmware), "CIP minor revision rendered as 3 digits");
+        assertEquals("6077DE10", v(a.serial), "CIP serial as %08X");
         String json = new ObjectMapper().writeValueAsString(doc);
         assertFalse(json.contains("\u001b") || json.contains("[31m"), "no ANSI escape");
         assertFalse(json.matches("(?s).*\\\\u00(0[0-8]|1[0-9a-fA-F]).*"), "no escaped control characters");
