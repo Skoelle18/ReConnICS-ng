@@ -4,9 +4,6 @@ import com.pcap.output.IngestModels;
 import com.pcap.service.AnalysisService;
 import org.junit.jupiter.api.Test;
 
-import java.io.ByteArrayOutputStream;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,39 +15,6 @@ import static org.junit.jupiter.api.Assertions.*;
 class CipGetAttributesAllTest {
     static final byte[] EWS_MAC = mac("00:0c:29:00:00:64");
     static final byte[] EN_MAC = mac("00:00:bc:00:00:10");
-
-    static byte[] sendRR(long session, byte[] ctx, byte[] cip) {
-        ByteBuffer bb = ByteBuffer.allocate(16 + cip.length).order(ByteOrder.LITTLE_ENDIAN);
-        bb.putInt(0).putShort((short) 0).putShort((short) 2);
-        bb.putShort((short) 0).putShort((short) 0);
-        bb.putShort((short) 0xB2).putShort((short) cip.length).put(cip);
-        return enip(0x006F, session, ctx, bb.array());
-    }
-
-    static byte[] gaa() {
-        return new byte[]{0x01, 0x02, 0x20, 0x01, 0x24, 0x01};
-    }
-
-    static byte[] unconnectedSend(byte[] embedded, int port, int slot) {
-        ByteArrayOutputStream o = new ByteArrayOutputStream();
-        o.writeBytes(new byte[]{0x52, 0x02, 0x20, 0x06, 0x24, 0x01, 0x07, (byte) 0xE9});
-        o.write(embedded.length & 0xFF);
-        o.write(embedded.length >> 8);
-        o.writeBytes(embedded);
-        if ((embedded.length & 1) == 1) {
-            o.write(0);
-        }
-        o.writeBytes(new byte[]{0x01, 0x00, (byte) port, (byte) slot});
-        return o.toByteArray();
-    }
-
-    static byte[] gaaReply(int vendor, int type, int code, int maj, int min, long serial, String name) {
-        byte[] attrs = cipIdentityAttrs(vendor, type, code, maj, min, serial, name);
-        byte[] out = new byte[4 + attrs.length];
-        out[0] = (byte) 0x81;
-        System.arraycopy(attrs, 0, out, 4, attrs.length);
-        return out;
-    }
 
     static int seqC = 1000;
     static int seqS = 900000;

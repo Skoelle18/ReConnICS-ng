@@ -329,4 +329,39 @@ public final class PcapTestSupport {
         bb.put(t, 0, Math.min(32, t.length));
         return bb.array();
     }
+
+    // ---- CIP SendRRData / Get_Attributes_All builders (shared by CIP and fuzz tests)
+
+    public static byte[] sendRR(long session, byte[] ctx, byte[] cip) {
+        ByteBuffer bb = ByteBuffer.allocate(16 + cip.length).order(ByteOrder.LITTLE_ENDIAN);
+        bb.putInt(0).putShort((short) 0).putShort((short) 2);
+        bb.putShort((short) 0).putShort((short) 0);
+        bb.putShort((short) 0xB2).putShort((short) cip.length).put(cip);
+        return enip(0x006F, session, ctx, bb.array());
+    }
+
+    public static byte[] gaa() {
+        return new byte[]{0x01, 0x02, 0x20, 0x01, 0x24, 0x01};
+    }
+
+    public static byte[] unconnectedSend(byte[] embedded, int port, int slot) {
+        ByteArrayOutputStream o = new ByteArrayOutputStream();
+        o.writeBytes(new byte[]{0x52, 0x02, 0x20, 0x06, 0x24, 0x01, 0x07, (byte) 0xE9});
+        o.write(embedded.length & 0xFF);
+        o.write(embedded.length >> 8);
+        o.writeBytes(embedded);
+        if ((embedded.length & 1) == 1) {
+            o.write(0);
+        }
+        o.writeBytes(new byte[]{0x01, 0x00, (byte) port, (byte) slot});
+        return o.toByteArray();
+    }
+
+    public static byte[] gaaReply(int vendor, int type, int code, int maj, int min, long serial, String name) {
+        byte[] attrs = cipIdentityAttrs(vendor, type, code, maj, min, serial, name);
+        byte[] out = new byte[4 + attrs.length];
+        out[0] = (byte) 0x81;
+        System.arraycopy(attrs, 0, out, 4, attrs.length);
+        return out;
+    }
 }
