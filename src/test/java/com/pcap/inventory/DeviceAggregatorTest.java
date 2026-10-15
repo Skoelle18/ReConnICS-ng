@@ -104,6 +104,20 @@ class DeviceAggregatorTest {
         assertTrue(fw.conflicts().get(0).startsWith("V1.0.0 (earlier"));
     }
 
+    // Security: a spoofed-source flood must not grow the candidate table without bound
+    @Test
+    void candidateTableIsCapped() {
+        DeviceAggregator agg = new DeviceAggregator();
+        int n = DeviceMatcher.MAX_CANDIDATES + 5000;
+        for (int i = 0; i < n; i++) {
+            String ip = "10." + ((i >> 16) & 0xFF) + "." + ((i >> 8) & 0xFF) + "." + (i & 0xFF);
+            agg.accept(new DeviceObservation(i, IpAddress.parse(ip), null, ProtocolType.MODBUS,
+                    DetectionBasis.PORT_HEURISTIC, "server", List.of(), ""));
+        }
+        assertEquals(DeviceMatcher.MAX_CANDIDATES, agg.resolveAssets().size());
+        assertEquals(5000, agg.droppedOverCap());
+    }
+
     @Test
     void deterministicOrdering() {
         DeviceAggregator agg = new DeviceAggregator();

@@ -156,6 +156,9 @@ public final class AnalysisService {
 
             IngestModels.Document doc = jsonWriter.build(draft);
             doc.source.put("tcpReassembly", reassembler.stats().toMap());
+            if (aggregator.droppedOverCap() > 0) {
+                doc.source.put("observationsDroppedOverAssetCap", aggregator.droppedOverCap());
+            }
             AnalysisReport report = new AnalysisReport(
                     draft.capturePath(),
                     draft.captureFormat(),

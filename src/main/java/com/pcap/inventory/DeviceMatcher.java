@@ -26,10 +26,17 @@ import java.util.TreeSet;
  *       the MAC itself (ARP sender, see {@link CandidateDevice#markOwnMac})</li>
  *   <li>an IP seen with several host MACs keeps the most recently seen one and records the others</li>
  * </ul>
+ * {@link #match} returns null when the candidate cap is reached (see {@link #MAX_CANDIDATES}).
  */
 public final class DeviceMatcher {
     /** A host NIC normally carries one IPv4 address; more means routed / proxied traffic. */
     public static final int MAX_IPS_PER_HOST_MAC = 1;
+    /**
+     * Hard cap on candidates (assets). A spoofed-source flood creates one candidate per IP; beyond the cap,
+     * observations for NEW addresses that carry no decoded identity are dropped and counted.
+     */
+    public static final int MAX_CANDIDATES = 65_536;
+    private long droppedOverCap;
 
     private final Map<String, CandidateDevice> byKey = new LinkedHashMap<>();
     private boolean finalized;
@@ -44,6 +51,9 @@ public final class DeviceMatcher {
             String id = ip.get().value() + "/" + obs.subaddr().get();
             CandidateDevice d = byKey.get("sub:" + id);
             if (d == null) {
+                if (overCap(obs)) {
+                    return null;
+                }
                 d = newDevice(id);
                 d.setSubaddr(obs.subaddr().get());
                 byKey.put("sub:" + id, d);
@@ -51,14 +61,38 @@ public final class DeviceMatcher {
             return d;
         }
         if (ip.isPresent()) {
-            return byKey.computeIfAbsent("ip:" + ip.get().value(), k -> newDevice(ip.get().value()));
+            String k = "ip:" + ip.get().value();
+            if (!byKey.containsKey(k) && overCap(obs)) {
+                return null;
+            }
+            return byKey.computeIfAbsent(k, x -> newDevice(ip.get().value()));
         }
         if (mac.isPresent()) {
-            return byKey.computeIfAbsent("mac:" + mac.get().value(), k -> newDevice(mac.get().value()));
+            String k = "mac:" + mac.get().value();
+            if (!byKey.containsKey(k) && overCap(obs)) {
+                return null;
+            }
+            return byKey.computeIfAbsent(k, x -> newDevice(mac.get().value()));
+        }
+        if (overCap(obs)) {
+            return null;
         }
         CandidateDevice d = newDevice("unknown-" + (byKey.size() + 1));
         byKey.put("id:" + d.captureScopedId(), d);
         return d;
+    }
+
+    private boolean overCap(DeviceObservation obs) {
+        if (byKey.size() < MAX_CANDIDATES || !obs.identityFields().isEmpty() && byKey.size() < MAX_CANDIDATES + 1024) {
+            return false;
+        }
+        droppedOverCap++;
+        return true;
+    }
+
+    /** Observations dropped because {@link #MAX_CANDIDATES} was reached. */
+    public long droppedOverCap() {
+        return droppedOverCap;
     }
 
     /** True for VRRP / HSRP virtual router MACs (shared by a router pair, never a host). */

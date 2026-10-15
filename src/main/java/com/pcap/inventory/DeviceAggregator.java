@@ -29,6 +29,9 @@ public final class DeviceAggregator {
             case MESSAGE_DECODED -> messageDecodedCount++;
         }
         CandidateDevice device = matcher.match(obs);
+        if (device == null) {
+            return; // candidate cap reached; counted in droppedOverCap()
+        }
         obs.ip().ifPresent(device::observeIp);
         if (obs.detectionBasis() != DetectionBasis.PORT_HEURISTIC) {
             device.observeRole(obs.role());
@@ -60,6 +63,10 @@ public final class DeviceAggregator {
             assets.add(new ResolvedAsset(c, id));
         }
         return assets;
+    }
+
+    public long droppedOverCap() {
+        return matcher.droppedOverCap();
     }
 
     public int observationCount() {
