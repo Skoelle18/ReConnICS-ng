@@ -243,6 +243,15 @@ public final class EnipIdentityParser {
                     IdentityField.Kind.MODEL, productName, ProtocolType.ENIP, nameEv, Confidence.HIGH));
         }
 
+        Evidence typeEv = new Evidence(
+                frameNumber, ProtocolType.ENIP, messageType,
+                "deviceType=" + deviceType,
+                corr,
+                "CIP Identity attribute 2 (ODVA device profile)",
+                DetectionBasis.MESSAGE_DECODED);
+        fields.add(new IdentityField(IdentityField.Kind.DEVICE_TYPE, String.format("cip:0x%02X", deviceType),
+                ProtocolType.ENIP, typeEv, Confidence.HIGH));
+
         String rev = major + "." + minor;
         Evidence revEv = new Evidence(
                 frameNumber, ProtocolType.ENIP, messageType,

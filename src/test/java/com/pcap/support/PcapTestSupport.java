@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -193,7 +194,7 @@ public final class PcapTestSupport {
     /** CIP Identity attributes 1..7 (vendor, type, product code, rev, status, serial, name). */
     public static byte[] cipIdentityAttrs(int vendor, int deviceType, int productCode, int major, int minor,
                                           long serial, String name) {
-        byte[] nb = name.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+        byte[] nb = name.getBytes(StandardCharsets.ISO_8859_1);
         ByteBuffer bb = ByteBuffer.allocate(15 + nb.length).order(ByteOrder.LITTLE_ENDIAN);
         bb.putShort((short) vendor).putShort((short) deviceType).putShort((short) productCode);
         bb.put((byte) major).put((byte) minor).putShort((short) 0x0060).putInt((int) serial);
@@ -272,5 +273,60 @@ public final class PcapTestSupport {
         out[6] = 1;
         System.arraycopy(pdu, 0, out, 7, pdu.length);
         return out;
+    }
+
+    // ---- S7comm Userdata / SZL builders (shared by S7, export and fuzz tests)
+
+    /**
+     * SZL answers are S7 Userdata (ROSCTR 7) with a 12-byte response parameter
+     * (00 01 12 08 12 84 01 seq dataUnitRef lastDataUnit err err); the userdata header has no
+     * error class/code. The earlier fixture used ROSCTR 3 (Ack-Data), which real CPUs never send for SZL.
+     */
+    public static byte[] s7AckUserData(byte[] dataSection) {
+        return s7UserDataResponse(dataSection, 0, true);
+    }
+
+    public static byte[] s7UserDataResponse(byte[] dataSection, int dataUnitRef, boolean last) {
+        byte[] param = new byte[]{0x00, 0x01, 0x12, 0x08, 0x12, (byte) 0x84, 0x01, 0x01,
+                (byte) dataUnitRef, (byte) (last ? 0x00 : 0x01), 0x00, 0x00};
+        int s7Header = 10; // userdata header has no error class/code
+        int s7Len = s7Header + param.length + dataSection.length;
+        int tpktLen = 4 + 3 + s7Len; // TPKT + COTP(LI=2) + S7
+        ByteBuffer bb = ByteBuffer.allocate(tpktLen);
+        bb.put((byte) 3).put((byte) 0).putShort((short) tpktLen);
+        bb.put((byte) 2).put((byte) 0xF0).put((byte) 0x80); // COTP DT
+        bb.put((byte) 0x32); // protocol id
+        bb.put((byte) 7); // Userdata
+        bb.putShort((short) 0); // redundancy
+        bb.putShort((short) 1); // pdu ref
+        bb.putShort((short) param.length);
+        bb.putShort((short) dataSection.length);
+        bb.put(param);
+        bb.put(dataSection);
+        return bb.array();
+    }
+
+    /** data header (FF 09 len) + SZL id/index + list len/count + records. */
+    public static byte[] szlData(int id, int index, int recLen, byte[]... records) {
+        int n = 0;
+        for (byte[] r : records) {
+            n += r.length;
+        }
+        ByteBuffer bb = ByteBuffer.allocate(4 + 8 + n)
+                .put((byte) 0xFF).put((byte) 0x09).putShort((short) (8 + n))
+                .putShort((short) id).putShort((short) index)
+                .putShort((short) recLen).putShort((short) records.length);
+        for (byte[] r : records) {
+            bb.put(r);
+        }
+        return bb.array();
+    }
+
+    public static byte[] rec001c(int index, String text) {
+        ByteBuffer bb = ByteBuffer.allocate(34);
+        bb.putShort((short) index);
+        byte[] t = text.getBytes(StandardCharsets.US_ASCII);
+        bb.put(t, 0, Math.min(32, t.length));
+        return bb.array();
     }
 }
