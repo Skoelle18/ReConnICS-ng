@@ -128,4 +128,25 @@ class AdvisoryMatcherTest {
                 row("P", "Schneider Electric", "Modicon Premium", null, "vers:all/*"));
         assertEquals(List.of("Q"), match(m, "Schneider Electric", "Modicon Quantum", null).stream().map(AdvisoryMatcher.Match::advisory).toList());
     }
+
+    // ---- A3: matching must not depend on the default locale (Turkish dotless i)
+
+    @Test
+    void turkishDefaultLocaleDoesNotBreakMatching() {
+        java.util.Locale saved = java.util.Locale.getDefault();
+        try {
+            java.util.Locale.setDefault(java.util.Locale.forLanguageTag("tr-TR"));
+            assertEquals("s\u0131emens", "SIEMENS".toLowerCase(), "precondition: Turkish lowercases I to dotless i");
+            var m = matcher(row("A", "SIEMENS AG", "SIMATIC S7-1500 CPU FAMILY", null, "VERS:INTDOT/<V2.9.2"),
+                    row("B", "Schneider Electric", "Modicon M221", "VERS:ALL/*", null));
+            assertEquals(EXACT, AdvisoryMatcher.level(match(m, "SIEMENS", "SIMATIC S7-1500", "V2.8.1")));
+            assertEquals(EXACT, AdvisoryMatcher.level(match(m, "Siemens", "S7-1500", "VERSION 2.8.1")));
+            assertEquals(EXACT, AdvisoryMatcher.level(match(m, "SCHNEIDER ELECTRIC", "MODICON M221", "1.6.2.0")));
+            assertEquals(0, AdvisoryMatcher.cmp("V2.8.1", "2.8.1"));
+            assertTrue(AdvisoryMatcher.tokens("FIRMWARE INC SIEMENS").contains("siemens"));
+            assertEquals("\"\\u0001\"", Json.write("\u0001"));
+        } finally {
+            java.util.Locale.setDefault(saved);
+        }
+    }
 }

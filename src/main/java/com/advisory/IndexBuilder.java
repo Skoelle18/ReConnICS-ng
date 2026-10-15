@@ -50,7 +50,7 @@ final class IndexBuilder {
                 var e = Json.obj(o);
                 String id = Json.str(e.get("id")), url = Json.str(Json.obj(e.get("content")).get("src"));
                 if (id == null || url == null || !id.matches("[A-Za-z0-9._-]+")) continue;
-                Path f = cache.resolve(id.toLowerCase() + ".json");
+                Path f = cache.resolve(id.toLowerCase(java.util.Locale.ROOT) + ".json");
                 FileTime updated = FileTime.from(Instant.parse(Json.str(e.get("updated"))));
                 if (Files.exists(f) && Files.getLastModifiedTime(f).compareTo(updated) >= 0) continue;
                 pool.submit(() -> {
