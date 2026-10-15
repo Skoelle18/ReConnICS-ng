@@ -60,7 +60,7 @@ final class IngestServer {
         byte[] body = ex.getRequestBody().readNBytes(MAX_BODY + 1);
         if (body.length > MAX_BODY) { error(ex, 413, "body over " + MAX_BODY + " bytes"); return; }
         Object doc;
-        try { doc = Json.parse(new String(body, StandardCharsets.UTF_8)); }
+        try { doc = Json.parse(AdvisoryIndex.utf8(body)); }
         catch (RuntimeException e) { error(ex, 400, e.getMessage()); return; }
         List<Object> list = doc instanceof List ? Json.arr(doc) : Json.arr(Json.obj(doc).get("assets"));
         List<Object> rejected = new ArrayList<>();

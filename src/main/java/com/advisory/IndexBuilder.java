@@ -22,15 +22,22 @@ final class IndexBuilder {
     static final String CSAF_FEED = "https://raw.githubusercontent.com/cisagov/CSAF/develop/csaf_files/OT/white/cisa-csaf-ot-feed-tlp-white.json";
     static final String KEV_FEED = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json";
 
+    /** Cap for one downloaded/cached document (feed, KEV catalog, CSAF advisory); the largest real one is a few MB. */
+    static final int MAX_DOC = 32 << 20;
+
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(20)).followRedirects(HttpClient.Redirect.NORMAL).build();
 
     static String read(String src) throws IOException, InterruptedException {
-        if (!src.startsWith("https://")) return Files.readString(Path.of(src));
+        if (!src.startsWith("https://")) return AdvisoryIndex.utf8(AdvisoryIndex.readCapped(Path.of(src), MAX_DOC));
         var res = HTTP.send(HttpRequest.newBuilder(URI.create(src)).timeout(Duration.ofSeconds(60)).build(),
-                HttpResponse.BodyHandlers.ofString());
-        if (res.statusCode() != 200) throw new IOException("HTTP " + res.statusCode() + " " + src);
-        return res.body();
+                HttpResponse.BodyHandlers.ofInputStream());
+        try (var in = res.body()) {
+            if (res.statusCode() != 200) throw new IOException("HTTP " + res.statusCode() + " " + src);
+            byte[] b = in.readNBytes(MAX_DOC + 1);
+            if (b.length > MAX_DOC) throw new IOException("response too large: " + src);
+            return AdvisoryIndex.utf8(b);
+        }
     }
 
     static void sync(String feedSrc, Path cache, int limit) throws Exception {
@@ -71,7 +78,7 @@ final class IndexBuilder {
         try (Stream<Path> files = Files.list(cache)) {
             for (Path f : files.filter(p -> p.toString().endsWith(".json")).sorted().toList()) {
                 try {
-                    rows.addAll(AdvisoryIndex.rowsFrom(Json.obj(Json.parse(Files.readString(f))), kevCves));
+                    rows.addAll(AdvisoryIndex.rowsFrom(Json.obj(Json.parse(AdvisoryIndex.utf8(AdvisoryIndex.readCapped(f, MAX_DOC)))), kevCves));
                     docs++;
                 } catch (RuntimeException ex) {
                     System.err.println("skip " + f.getFileName() + ": " + ex.getMessage());

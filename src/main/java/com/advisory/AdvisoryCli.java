@@ -58,7 +58,7 @@ public final class AdvisoryCli {
             case "match" -> {
                 if (pos.size() != 1) die("match needs exactly one ASSETS.json");
                 var idx = loadIndex(o);
-                Object doc = Json.parse(Files.readString(Path.of(pos.get(0))));
+                Object doc = Json.parse(AdvisoryIndex.utf8(AdvisoryIndex.readCapped(Path.of(pos.get(0)), AdvisoryIndex.MAX_ASSETS_BYTES)));
                 List<Asset> assets = new ArrayList<>();
                 for (Object a : doc instanceof List ? Json.arr(doc) : Json.arr(Json.obj(doc).get("assets"))) assets.add(Asset.from(a));
                 var r = Report.run(new AdvisoryMatcher(idx), assets);

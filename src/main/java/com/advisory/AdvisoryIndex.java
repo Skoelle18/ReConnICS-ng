@@ -1,6 +1,9 @@
 package com.advisory;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,6 +18,8 @@ import java.util.*;
 
 final class AdvisoryIndex {
     static final int SCHEMA = 1;
+    /** Size caps for untrusted files: the index (live index is ~7 MB), asset/ingest documents, keys and signatures. */
+    static final long MAX_INDEX_BYTES = 64L << 20, MAX_ASSETS_BYTES = 16L << 20, MAX_SMALL_BYTES = 4096;
 
     record Row(String advisory, String title, String vendor, String product, String version, String range,
                List<String> cves, List<String> kev, double cvss) {}
@@ -170,20 +175,40 @@ final class AdvisoryIndex {
     private static AdvisoryIndex read(Path index, Path publicKey, boolean insecureNoVerify) throws Exception {
         if (publicKey == null && !insecureNoVerify)
             throw new SecurityException("advisory index not verified: pass --pubkey, or --insecure-no-verify to accept an unsigned index");
-        byte[] bytes = Files.readAllBytes(index);
+        byte[] bytes = readCapped(index, MAX_INDEX_BYTES);
         if (publicKey != null) {
-            PublicKey k = KeyFactory.getInstance("Ed25519").generatePublic(new X509EncodedKeySpec(Files.readAllBytes(publicKey)));
+            PublicKey k = KeyFactory.getInstance("Ed25519").generatePublic(new X509EncodedKeySpec(readCapped(publicKey, MAX_SMALL_BYTES)));
             Signature s = Signature.getInstance("Ed25519");
             s.initVerify(k);
             s.update(bytes);
             byte[] sig;
-            try { sig = Base64.getDecoder().decode(Files.readString(sigPath(index)).strip()); }
+            try { sig = Base64.getDecoder().decode(new String(readCapped(sigPath(index), MAX_SMALL_BYTES), StandardCharsets.US_ASCII).strip()); }
             catch (IOException e) { throw new SecurityException("missing signature " + sigPath(index)); }
             if (!s.verify(sig)) throw new SecurityException("index signature INVALID: " + index);
         } else {
             System.err.println("WARNING: --insecure-no-verify: index signature NOT verified; an altered index can hide vulnerable devices");
         }
-        return parse(new String(bytes, StandardCharsets.UTF_8));
+        return parse(utf8(bytes));     // the exact bytes that were verified
+    }
+
+    /** Reads at most max bytes; bounded even for FIFOs, devices or files that grow while being read. */
+    static byte[] readCapped(Path p, long max) throws IOException {
+        try (var in = Files.newInputStream(p)) {
+            byte[] b = in.readNBytes((int) Math.min(Integer.MAX_VALUE - 8, max + 1));
+            if (b.length > max) throw new IllegalArgumentException("file too large");
+            return b;
+        }
+    }
+
+    /** Strict UTF-8: malformed bytes are rejected instead of silently becoming U+FFFD. A leading BOM is dropped. */
+    static String utf8(byte[] b) {
+        try {
+            String s = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(b)).toString();
+            return s.startsWith("\uFEFF") ? s.substring(1) : s;
+        } catch (CharacterCodingException e) {
+            throw new IllegalArgumentException("file is not valid UTF-8");
+        }
     }
 
     static Path sigPath(Path index) { return index.resolveSibling(index.getFileName() + ".sig"); }
