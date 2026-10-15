@@ -101,6 +101,7 @@ final class InventoryReport {
             if (r.nextStep != null) c.put("nextStep", r.nextStep);
             c.put("missing", r.missing);
             a.put("completeness", c);
+            if (!r.alerts.isEmpty()) a.put("alerts", r.alerts);
             if (r.match != null) {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("level", r.match.level());
@@ -221,6 +222,7 @@ final class InventoryReport {
                 b.append("</ul></details>");
             }
             b.append("</td><td>");
+            for (String al : r.alerts) b.append("<b class=\"kev\">Alert: ").append(esc(al)).append("</b><br>");
             if (r.nextStep != null) b.append("<b>Next: ").append(esc(r.nextStep)).append("</b><br>");
             for (var m : r.missing)
                 b.append(esc(m.get("attr"))).append(" <span class=\"dim\">(").append(esc(m.get("fillBy"))).append("): ").append(esc(m.get("hint"))).append("</span><br>");

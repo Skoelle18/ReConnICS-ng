@@ -77,6 +77,7 @@ final class Inventory {
         final String id, ip, subaddr;
         final Map<String, Field> f = new TreeMap<>();
         final List<Map<String, Object>> missing = new ArrayList<>();
+        final List<String> alerts = new ArrayList<>();
         String macHint, nextStep;
         int filled;
         AdvisoryMatcher.Level ceiling;
@@ -175,6 +176,7 @@ final class Inventory {
 
     private static final class Obs {
         final int index;
+        long lastFrame = -1;                       // attributes.lastFrame from the parser (data-contract.md), -1 = absent
         String ip, mac, subaddr;
         final Map<String, Field> f = new LinkedHashMap<>();
         final Set<String> dirs = new TreeSet<>();
@@ -218,6 +220,8 @@ final class Inventory {
         Obs o = new Obs(idx);
         var entry = Json.obj(e);
         String parserEv = parserEvidence(Json.obj(entry.get("attributes")));
+        if (Json.obj(entry.get("attributes")).get("lastFrame") instanceof Double lf && Double.isFinite(lf) && lf >= 0 && lf < 1e15)
+            o.lastFrame = lf.longValue();
         for (var en : entry.entrySet()) {
             if (!INPUT_KEYS.contains(en.getKey()) || en.getValue() == null) continue;   // null = absent (data-contract.md)
             Object val = en.getValue();
@@ -384,7 +388,6 @@ final class Inventory {
                     .computeIfAbsent(sub, k -> new ArrayList<>()).add(o);
         }
 
-        Comparator<Obs> inputOrder = Comparator.comparingInt(o -> o.index);
         for (var e : byIp.entrySet()) {
             String ip = e.getKey();
             var groups = e.getValue();
@@ -401,7 +404,6 @@ final class Inventory {
             }
             Rec p = null;
             if (!parentObs.isEmpty()) {
-                parentObs.sort(inputOrder);
                 p = record(ip, null, parentObs, gateway, oui);
                 records.add(p);
             }
@@ -429,16 +431,71 @@ final class Inventory {
     }
 
     private Rec record(String ip, String sub, List<Obs> obs, Set<String> gateway, Map<String, String> oui) {
+        obs = chronological(obs);
         String id = ip == null ? obs.get(0).mac : sub == null ? ip : ip + "/" + sub;
         Rec r = new Rec(id, ip, sub);
         r.f.putAll(resolve(obs));
+        boolean replaced = false;
+        if (sub == null && ip != null) {
+            List<Obs> current = currentDevice(r, obs, gateway);
+            if (current != obs) {                             // replaced device: identity only from the current NIC's observations
+                replaced = true;
+                Map<String, Field> now = resolve(current);
+                for (String k : IDENTITY_KEYS) { r.f.remove(k); if (now.containsKey(k)) r.f.put(k, now.get(k)); }
+            }
+        }
         if (sub != null) r.macHint = "Behind a gateway or backplane; a MAC does not apply.";
-        else assignMac(r, obs, gateway, oui);
+        else assignMac(r, obs, gateway, oui, replaced);
         role(r, obs);
         return r;
     }
 
-    /** Highest confidence wins; ties go to the first observation, except firmware (last one, i.e. newest in capture order). */
+    /**
+     * Capture order: by the parser's attributes.lastFrame when every observation carries it, else input order (the
+     * parser lists assets in no guaranteed time order, so input order is only a fallback).
+     */
+    private static List<Obs> chronological(List<Obs> obs) {
+        List<Obs> out = new ArrayList<>(obs);
+        boolean frames = out.stream().allMatch(o -> o.lastFrame >= 0);
+        out.sort(frames ? Comparator.<Obs>comparingLong(o -> o.lastFrame).thenComparingInt(o -> o.index) : Comparator.comparingInt(o -> o.index));
+        return out;
+    }
+
+    /** Fields that describe one physical device; they must come from one coherent set of observations. */
+    static final List<String> IDENTITY_KEYS = List.of("vendor", "model", "firmware", "serial", "deviceType", "os", "hostname", "role");
+
+    /**
+     * One IP, several (non-gateway) MACs whose identities disagree on vendor, model or serial: the device was replaced
+     * (or two devices fight over the IP). Returns the observations of the latest MAC in capture order plus MAC-less
+     * ones, and adds an alert; otherwise returns obs unchanged (redundant NICs of one device stay fused).
+     */
+    private static List<Obs> currentDevice(Rec r, List<Obs> obs, Set<String> gateway) {
+        Map<String, List<Obs>> byMac = new LinkedHashMap<>();
+        String latest = null;
+        for (Obs o : obs)
+            if (o.mac != null && !gateway.contains(o.mac)) { byMac.computeIfAbsent(o.mac, k -> new ArrayList<>()).add(o); latest = o.mac; }
+        if (byMac.size() < 2) return obs;
+        Map<String, Field> now = resolve(byMac.get(latest));
+        List<String> earlier = new ArrayList<>();
+        for (var e : byMac.entrySet()) {
+            if (e.getKey().equals(latest)) continue;
+            Map<String, Field> old = resolve(e.getValue());
+            if (conflicts(old, now, "vendor") || conflicts(old, now, "model") || conflicts(old, now, "serial"))
+                earlier.add(e.getKey() + " (" + Objects.toString(old.get("vendor") == null ? null : old.get("vendor").str(), "?") + " "
+                        + Objects.toString(old.get("model") == null ? null : old.get("model").str(), "?") + ")");
+        }
+        if (earlier.isEmpty()) return obs;
+        r.alerts.add(cap("IP conflict or device replaced during the capture: earlier MAC " + String.join(", ", earlier)
+                + "; identity shown is from the latest MAC " + latest + ". Confirm on site.", MAX_EVIDENCE));
+        List<Obs> out = new ArrayList<>();
+        for (Obs o : obs) if (o.mac == null || gateway.contains(o.mac) || o.mac.equals(latest)) out.add(o);
+        return out;
+    }
+
+    /** Fields whose equal-confidence tie goes to the latest observation (the device's current state); others keep the first. */
+    static final Set<String> LATEST_WINS = Set.of("vendor", "model", "firmware", "serial", "hostname", "deviceType");
+
+    /** Highest confidence wins; a tie goes to the latest observation for identity fields, else to the first. */
     static Map<String, Field> resolve(List<Obs> obs) {
         Map<String, List<Field>> c = new TreeMap<>();
         for (Obs o : obs)
@@ -467,7 +524,7 @@ final class Inventory {
         Field w = fs.get(0);
         for (Field x : fs) {
             int d = x.conf().compareTo(w.conf());
-            if (d > 0 || (d == 0 && k.equals("firmware"))) w = x;
+            if (d > 0 || (d == 0 && LATEST_WINS.contains(k))) w = x;   // identity tie: latest in capture order = current state
         }
         StringBuilder ev = new StringBuilder(w.evidence());
         Set<String> losers = new LinkedHashSet<>();
@@ -482,7 +539,8 @@ final class Inventory {
         return new Field(w.value(), c, cap(ev.toString(), MAX_EVIDENCE), true, false);
     }
 
-    private static void assignMac(Rec r, List<Obs> obs, Set<String> gateway, Map<String, String> oui) {
+    /** Most frequent MAC (redundant NICs, noise); after a replacement / IP conflict the latest one is the current NIC. */
+    private static void assignMac(Rec r, List<Obs> obs, Set<String> gateway, Map<String, String> oui, boolean replaced) {
         Map<String, Integer> count = new TreeMap<>();
         Map<String, Field> best = new HashMap<>();
         boolean sawGateway = false;
@@ -498,7 +556,8 @@ final class Inventory {
             return;
         }
         String mac = null;
-        for (var e : count.entrySet()) if (mac == null || e.getValue() > count.get(mac)) mac = e.getKey();
+        if (replaced) { for (Obs o : obs) if (o.mac != null && count.containsKey(o.mac)) mac = o.mac; }
+        else for (var e : count.entrySet()) if (mac == null || e.getValue() > count.get(mac)) mac = e.getKey();
         Field bf = best.get(mac);
         if (count.size() > 1) {
             List<String> others = new ArrayList<>(count.keySet());
