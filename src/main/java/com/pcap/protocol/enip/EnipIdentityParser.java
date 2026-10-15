@@ -43,18 +43,33 @@ public final class EnipIdentityParser {
     private final LinkedHashMap<String, ArrayDeque<Pending>> pending = new LinkedHashMap<>(16, 0.75f, true);
 
     /**
-     * Curated ODVA CIP Vendor ID subset (source: ODVA/CIP common public listings).
-     * Raw vendor ID is always preserved in evidence/attributes.
+     * Curated ODVA CIP Vendor ID subset. Every entry was checked against Wireshark's cip_vendor_vals
+     * (epan/dissectors/packet-cip.c, master). Names are normalised to the company (e.g. "Siemens AG" ->
+     * "Siemens"). Unmapped IDs are emitted as "CIP Vendor ID N" at MEDIUM confidence; the raw ID is always in
+     * the evidence.
      */
     static final Map<Integer, String> VENDOR_NAMES = Map.ofEntries(
-            Map.entry(1, "Rockwell Automation"),
-            Map.entry(5, "Honeywell"),
-            Map.entry(4, "Omron"),
-            Map.entry(11, "Schneider Electric"),
-            Map.entry(48, "WAGO"),
-            Map.entry(263, "Siemens"),
-            Map.entry(806, "Moxa"),
-            Map.entry(884, "Lantronix")
+            Map.entry(1, "Rockwell Automation"),      // Rockwell Automation/Allen-Bradley
+            Map.entry(3, "Honeywell"),                // Honeywell International Inc.
+            Map.entry(5, "Rockwell Automation"),      // Rockwell Automation/Reliance Elec.
+            Map.entry(26, "Festo"),
+            Map.entry(40, "WAGO"),                    // WAGO Corporation
+            Map.entry(46, "ABB"),                     // ABB, Inc.
+            Map.entry(47, "Omron"),                   // Omron Corporation
+            Map.entry(48, "TURCK"),
+            Map.entry(57, "Pepperl+Fuchs"),
+            Map.entry(82, "Mitsubishi Electric"),     // Mitsubishi Electric Automation, Inc.
+            Map.entry(90, "HMS Networks"),
+            Map.entry(95, "Schneider Electric"),      // Square D Company (Schneider brand)
+            Map.entry(108, "Beckhoff Automation"),
+            Map.entry(161, "Mitsubishi Electric"),    // Mitsubishi Electric Corporation
+            Map.entry(243, "Schneider Electric"),
+            Map.entry(283, "Hilscher"),               // Hilscher GmbH
+            Map.entry(309, "ProSoft Technology"),
+            Map.entry(562, "Phoenix Contact"),
+            Map.entry(678, "Cognex"),                 // Cognex Corporation
+            Map.entry(991, "Moxa"),                   // Moxa, Inc.
+            Map.entry(1251, "Siemens")                // Siemens AG
     );
 
     public Optional<ProtocolMessage> tryParse(byte[] data, int offset, int length, long frameNumber) {

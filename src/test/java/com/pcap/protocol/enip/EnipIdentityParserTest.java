@@ -98,4 +98,19 @@ class EnipIdentityParserTest {
         bb.put(data);
         return bb.array();
     }
+
+    // P11 regression: vendor IDs verified against Wireshark cip_vendor_vals
+    @Test
+    void vendorTableMatchesWireshark() {
+        assertEquals("Schneider Electric", EnipIdentityParser.VENDOR_NAMES.get(243));
+        assertEquals("Siemens", EnipIdentityParser.VENDOR_NAMES.get(1251));
+        assertEquals("Omron", EnipIdentityParser.VENDOR_NAMES.get(47));
+        assertEquals("WAGO", EnipIdentityParser.VENDOR_NAMES.get(40));
+        assertEquals("Moxa", EnipIdentityParser.VENDOR_NAMES.get(991));
+        // IDs that were mapped wrongly before (Wireshark: 4 Parker Hannifin, 11 ASCO, 263 Sense, 806 TI, 884 Harms+Wende)
+        for (int wrong : new int[]{4, 11, 263, 806, 884}) {
+            assertNull(EnipIdentityParser.VENDOR_NAMES.get(wrong), "vendor " + wrong);
+        }
+    }
+
 }
