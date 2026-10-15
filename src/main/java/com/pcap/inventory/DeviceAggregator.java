@@ -3,6 +3,7 @@ package com.pcap.inventory;
 import com.pcap.model.DetectionBasis;
 import com.pcap.model.DeviceObservation;
 import com.pcap.model.IdentityField;
+import com.pcap.protocol.ProtocolDetector;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -35,6 +36,9 @@ public final class DeviceAggregator {
         // Sub-devices record the carrier MAC only so a lone Modbus unit can be folded back into its IP;
         // DeviceMatcher.finalizeMacs() never emits a MAC on a sub-device.
         obs.mac().ifPresent(m -> device.observeMac(m, obs.frameNumber()));
+        if (ProtocolDetector.ARP_ROLE.equals(obs.role())) {
+            obs.mac().ifPresent(device::markOwnMac);
+        }
         device.observeProtocol(obs.protocol(), obs.detectionBasis(), obs.frameNumber());
         for (IdentityField f : obs.identityFields()) {
             device.addField(f);

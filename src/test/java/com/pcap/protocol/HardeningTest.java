@@ -49,4 +49,39 @@ class HardeningTest {
         assertFalse(json.contains("\u001b") || json.contains("[31m"), "no ANSI escape");
         assertFalse(json.matches("(?s).*\\\\u00(0[0-8]|1[0-9a-fA-F]).*"), "no escaped control characters");
     }
+
+    static byte[] arp(String senderMac, String senderIp, String targetIp, int op) {
+        ByteBuffer bb = ByteBuffer.allocate(14 + 28);
+        bb.put(mac("ff:ff:ff:ff:ff:ff")).put(mac(senderMac)).putShort((short) 0x0806);
+        bb.putShort((short) 1).putShort((short) 0x0800).put((byte) 6).put((byte) 4).putShort((short) op);
+        bb.put(mac(senderMac)).put(ipv4(senderIp)).put(new byte[6]).put(ipv4(targetIp));
+        return bb.array();
+    }
+
+    @Test
+    void arpSendersBecomePresenceObservations() throws Exception {
+        var doc = new AnalysisService().analyze(writeTempPcap("r10.pcap", classicPcap(true, false, 1,
+                arp("00:80:63:00:00:90", "10.0.1.90", "10.0.1.5", 1),
+                arp("00:80:f4:00:00:05", "10.0.1.5", "10.0.1.90", 2),
+                arp("00:80:f4:00:00:06", "0.0.0.0", "10.0.1.6", 1),          // probe: skipped
+                arp("00:00:5e:00:01:01", "10.0.1.254", "10.0.1.254", 2))),    // VRRP gratuitous: skipped
+                false).document();
+        assertEquals("00:80:63:00:00:90", asset(doc, "10.0.1.90").mac);
+        assertEquals("00:80:f4:00:00:05", asset(doc, "10.0.1.5").mac);
+        assertEquals(2, doc.assets.size(), doc.assets.stream().map(a -> a.id).toList().toString());
+    }
+
+    @Test
+    void routerArpKeepsItsOwnMacButRemoteIpsDoNot() throws Exception {
+        byte[] rtr = mac("00:1a:a1:29:f8:85");
+        byte[] ews = mac("00:0c:29:00:00:64");
+        byte[] fc3 = {0, 1, 0, 0, 0, 7, 1, 3, 4, 0, 1, 0, 2};
+        var doc = new AnalysisService().analyze(writeTempPcap("rt.pcap", classicPcap(true, false, 1,
+                arp("00:1a:a1:29:f8:85", "10.0.1.1", "10.0.1.100", 2),
+                ethernetIpv4Tcp(rtr, ews, ipv4("10.0.20.5"), ipv4("10.0.1.100"), 502, 50000, fc3),
+                ethernetIpv4Tcp(rtr, ews, ipv4("10.0.20.6"), ipv4("10.0.1.100"), 502, 50001, fc3),
+                ethernetIpv4Tcp(rtr, ews, ipv4("10.0.20.6"), ipv4("10.0.1.100"), 502, 50001, fc3))), false).document();
+        assertEquals("00:1a:a1:29:f8:85", asset(doc, "10.0.1.1").mac);
+        assertNull(asset(doc, "10.0.20.5").mac);
+    }
 }

@@ -25,6 +25,7 @@ public final class ParsedPacket {
     private final String detail;
     private final long tcpSeq;
     private final int tcpFlags;
+    private final boolean arp;
 
     private ParsedPacket(Builder b) {
         this.frameNumber = b.frameNumber;
@@ -46,6 +47,12 @@ public final class ParsedPacket {
         this.detail = b.detail;
         this.tcpSeq = b.tcpSeq;
         this.tcpFlags = b.tcpFlags;
+        this.arp = b.arp;
+    }
+
+    /** ARP request/reply: srcMac/srcIp are the ARP sender hardware/protocol addresses. */
+    public boolean isArp() {
+        return arp;
     }
 
     public static final int TCP_FIN = 0x01;
@@ -186,6 +193,7 @@ public final class ParsedPacket {
         private String detail = "";
         private long tcpSeq = -1;
         private int tcpFlags;
+        private boolean arp;
 
         private Builder(long frameNumber, long timestampMicros) {
             this.frameNumber = frameNumber;
@@ -239,6 +247,11 @@ public final class ParsedPacket {
 
         public Builder dstPort(int v) {
             dstPort = v;
+            return this;
+        }
+
+        public Builder arp(boolean v) {
+            arp = v;
             return this;
         }
 

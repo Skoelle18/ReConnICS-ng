@@ -6,6 +6,7 @@ import com.pcap.util.MacAddress;
 final class EthernetParser {
     static final int ETHERTYPE_IPV4 = 0x0800;
     static final int ETHERTYPE_IPV6 = 0x86DD;
+    static final int ETHERTYPE_ARP = 0x0806;
     static final int ETHERTYPE_VLAN = 0x8100;
     static final int ETHERTYPE_QINQ = 0x88A8;
 

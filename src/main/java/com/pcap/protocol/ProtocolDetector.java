@@ -4,9 +4,11 @@ import com.pcap.model.DetectionBasis;
 import com.pcap.model.DeviceObservation;
 import com.pcap.capture.ParsedPacket;
 import com.pcap.capture.ParseStatus;
+import com.pcap.inventory.DeviceMatcher;
 import com.pcap.protocol.enip.EnipIdentityParser;
 import com.pcap.protocol.modbus.ModbusIdentityParser;
 import com.pcap.protocol.s7.S7IdentityParser;
+import com.pcap.util.MacAddress;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,6 +24,10 @@ public final class ProtocolDetector {
 
     public List<DeviceObservation> detect(ParsedPacket packet) {
         List<DeviceObservation> out = new ArrayList<>();
+        if (packet.status() == ParseStatus.OK && packet.isArp()) {
+            arpPresence(packet, out);
+            return dropNonUnicast(out);
+        }
         if (packet.status() != ParseStatus.OK || packet.payloadLength() <= 0) {
             return out;
         }
@@ -136,6 +142,27 @@ public final class ProtocolDetector {
                     type.wireName() + " client (peer of port " + port + ")"));
         }
     }
+
+    /**
+     * ARP sender = a live host with that IP/MAC pair (presence only, no ICS protocol). Skipped: ARP probes
+     * (sender 0.0.0.0), VRRP/HSRP virtual MACs (gateway address, not a host), and broadcast/multicast senders.
+     */
+    private static void arpPresence(ParsedPacket p, List<DeviceObservation> out) {
+        if (p.srcIp().isEmpty() || p.srcMac().isEmpty()) {
+            return;
+        }
+        MacAddress mac = p.srcMac().get();
+        if (!p.srcIp().get().isUnicastHost() || mac.isBroadcastOrMulticast()
+                || DeviceMatcher.isVirtualRouterMac(mac.value())
+                || "00:00:00:00:00:00".equals(mac.value())) {
+            return;
+        }
+        out.add(new DeviceObservation(p.frameNumber(), p.srcIp().get(), mac, ProtocolType.UNKNOWN,
+                DetectionBasis.HEADER_VALIDATED, ARP_ROLE, List.of(), "ARP sender"));
+    }
+
+    /** Role marker on ARP observations: the IP announced this MAC itself. */
+    public static final String ARP_ROLE = "arp-sender";
 
     /** CPF: item count >= 2, first item Sequenced Address (0x8002, len 8). */
     static boolean looksLikeCpfIo(byte[] data, int off, int len) {
