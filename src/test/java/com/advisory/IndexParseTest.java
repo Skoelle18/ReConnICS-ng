@@ -51,4 +51,11 @@ class IndexParseTest {
                 List.of(new Asset("t", null, null, "Acme", null, null, Map.of()))), idx.meta));
         assertFalse(report.contains("Infinity") || report.contains("NaN"), report);
     }
+
+    @Test
+    void cvesAcceptOnlyStrings() {
+        var r = only("{\"advisory\":\"A\",\"cves\":[\"CVE-1\",1.0,null,true,{\"x\":1},[\"CVE-2\"],\"CVE-3\"],\"kev\":[null,\"CVE-1\",2]}");
+        assertEquals(List.of("CVE-1", "CVE-3"), r.cves());
+        assertEquals(List.of("CVE-1"), r.kev());
+    }
 }

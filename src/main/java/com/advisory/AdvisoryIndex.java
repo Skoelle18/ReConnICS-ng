@@ -135,7 +135,8 @@ final class AdvisoryIndex {
     /** CVSS base scores live in 0-10: clamp out-of-range values (1e999 parses to Infinity), NaN becomes 0. */
     static double cvss(double d) { return Double.isNaN(d) ? 0.0 : Math.max(0.0, Math.min(10.0, d)); }
 
-    private static List<String> strings(Object o) { return Json.arr(o).stream().map(String::valueOf).toList(); }
+    /** Only real strings: a number or null inside "cves"/"kev" used to become "1.0" / "null". */
+    private static List<String> strings(Object o) { return Json.arr(o).stream().filter(String.class::isInstance).map(String.class::cast).toList(); }
 
     static Map<String, Object> newMeta(String source, Object kevVersion, int advisories) {
         Map<String, Object> m = new LinkedHashMap<>();
