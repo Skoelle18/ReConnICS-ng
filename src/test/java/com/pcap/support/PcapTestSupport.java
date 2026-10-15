@@ -82,6 +82,90 @@ public final class PcapTestSupport {
         return eth;
     }
 
+    public static byte[] ethernetIpv4Udp(
+            byte[] srcMac, byte[] dstMac,
+            byte[] srcIp, byte[] dstIp,
+            int srcPort, int dstPort,
+            byte[] payload) {
+        byte[] eth = new byte[14 + 20 + 8 + payload.length];
+        System.arraycopy(dstMac, 0, eth, 0, 6);
+        System.arraycopy(srcMac, 0, eth, 6, 6);
+        eth[12] = 0x08;
+        int ip = 14;
+        eth[ip] = 0x45;
+        int total = 20 + 8 + payload.length;
+        eth[ip + 2] = (byte) (total >> 8);
+        eth[ip + 3] = (byte) total;
+        eth[ip + 8] = 64;
+        eth[ip + 9] = 17; // UDP
+        System.arraycopy(srcIp, 0, eth, ip + 12, 4);
+        System.arraycopy(dstIp, 0, eth, ip + 16, 4);
+        int udp = ip + 20;
+        eth[udp] = (byte) (srcPort >> 8);
+        eth[udp + 1] = (byte) srcPort;
+        eth[udp + 2] = (byte) (dstPort >> 8);
+        eth[udp + 3] = (byte) dstPort;
+        eth[udp + 4] = (byte) ((8 + payload.length) >> 8);
+        eth[udp + 5] = (byte) (8 + payload.length);
+        System.arraycopy(payload, 0, eth, udp + 8, payload.length);
+        return eth;
+    }
+
+    /** TCP frame with explicit sequence number (for reassembly tests). */
+    public static byte[] ethernetIpv4TcpSeq(
+            byte[] srcMac, byte[] dstMac,
+            byte[] srcIp, byte[] dstIp,
+            int srcPort, int dstPort, long seq,
+            byte[] payload) {
+        byte[] f = ethernetIpv4Tcp(srcMac, dstMac, srcIp, dstIp, srcPort, dstPort, payload);
+        int tcp = 14 + 20;
+        f[tcp + 4] = (byte) (seq >> 24);
+        f[tcp + 5] = (byte) (seq >> 16);
+        f[tcp + 6] = (byte) (seq >> 8);
+        f[tcp + 7] = (byte) seq;
+        return f;
+    }
+
+    /** EtherNet/IP encapsulation header (24 bytes, little endian) + data. */
+    public static byte[] enip(int command, long session, byte[] context, byte[] data) {
+        ByteBuffer bb = ByteBuffer.allocate(24 + data.length).order(ByteOrder.LITTLE_ENDIAN);
+        bb.putShort((short) command);
+        bb.putShort((short) data.length);
+        bb.putInt((int) session);
+        bb.putInt(0);
+        byte[] ctx = new byte[8];
+        if (context != null) {
+            System.arraycopy(context, 0, ctx, 0, Math.min(8, context.length));
+        }
+        bb.put(ctx);
+        bb.putInt(0);
+        bb.put(data);
+        return bb.array();
+    }
+
+    /** CIP Identity attributes 1..7 (vendor, type, product code, rev, status, serial, name). */
+    public static byte[] cipIdentityAttrs(int vendor, int deviceType, int productCode, int major, int minor,
+                                          long serial, String name) {
+        byte[] nb = name.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+        ByteBuffer bb = ByteBuffer.allocate(15 + nb.length).order(ByteOrder.LITTLE_ENDIAN);
+        bb.putShort((short) vendor).putShort((short) deviceType).putShort((short) productCode);
+        bb.put((byte) major).put((byte) minor).putShort((short) 0x0060).putInt((int) serial);
+        bb.put((byte) nb.length).put(nb);
+        return bb.array();
+    }
+
+    /** ListIdentity reply body: item count 1 + CIP identity item (0x000C). */
+    public static byte[] listIdentityReply(int vendor, int deviceType, int productCode, int major, int minor,
+                                           long serial, String name) {
+        byte[] attrs = cipIdentityAttrs(vendor, deviceType, productCode, major, minor, serial, name);
+        byte[] item = new byte[2 + 16 + attrs.length + 1];
+        item[0] = 1; // encap version
+        System.arraycopy(attrs, 0, item, 18, attrs.length);
+        ByteBuffer bb = ByteBuffer.allocate(2 + 4 + item.length).order(ByteOrder.LITTLE_ENDIAN);
+        bb.putShort((short) 1).putShort((short) 0x000C).putShort((short) item.length).put(item);
+        return enip(0x0063, 0, null, bb.array());
+    }
+
     public static byte[] ethernetVlanIpv4Tcp(
             byte[] srcMac, byte[] dstMac, int vlan,
             byte[] srcIp, byte[] dstIp,

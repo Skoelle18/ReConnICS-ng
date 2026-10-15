@@ -22,7 +22,14 @@ public final class ProtocolDetector {
 
     public List<DeviceObservation> detect(ParsedPacket packet) {
         List<DeviceObservation> out = new ArrayList<>();
-        if (packet.status() != ParseStatus.OK || !packet.hasTcp() || packet.payloadLength() <= 0) {
+        if (packet.status() != ParseStatus.OK || packet.payloadLength() <= 0) {
+            return out;
+        }
+        if (packet.hasUdp()) {
+            detectUdp(packet, out);
+            return dropNonUnicast(out);
+        }
+        if (!packet.hasTcp()) {
             return out;
         }
         byte[] data = packet.payload();
@@ -70,7 +77,71 @@ public final class ProtocolDetector {
             s7.tryParse(data, off, len, frame, flowKey(packet)).ifPresent(m -> out.add(toObs(packet, m)));
         }
 
-        return out;
+        return dropNonUnicast(out);
+    }
+
+    /**
+     * UDP: EtherNet/IP encapsulation on 44818 (ListIdentity is normally UDP, often broadcast) and
+     * class-1 implicit I/O on 2222 (presence only).
+     */
+    private void detectUdp(ParsedPacket packet, List<DeviceObservation> out) {
+        byte[] data = packet.payload();
+        int off = packet.payloadOffset();
+        int len = packet.payloadLength();
+        long frame = packet.frameNumber();
+        if (matchesPort(packet, 44818)) {
+            Optional<ProtocolMessage> msg = enip.tryParse(data, off, len, frame);
+            if (msg.isPresent()) {
+                out.add(toObs(packet, msg.get()));
+                if (!msg.get().serverOnSrc()) {
+                    // request (often to broadcast): the sender is a client
+                    out.add(endpoint(packet, true, ProtocolType.ENIP, DetectionBasis.HEADER_VALIDATED,
+                            "client", "EtherNet/IP UDP request sender"));
+                }
+            } else {
+                out.add(portOnly(packet, ProtocolType.ENIP, packet.dstPort() == 44818));
+            }
+            return;
+        }
+        if (packet.srcPort() == 2222 || packet.dstPort() == 2222) {
+            boolean cpf = looksLikeCpfIo(data, off, len);
+            DetectionBasis basis = cpf ? DetectionBasis.HEADER_VALIDATED : DetectionBasis.PORT_HEURISTIC;
+            String note = cpf ? "CIP class-1 I/O (CPF sequenced address + connected data)"
+                    : "port heuristic only; not proof of enip-io";
+            out.add(endpoint(packet, true, ProtocolType.ENIP_IO, basis, "io-endpoint", note));
+            out.add(endpoint(packet, false, ProtocolType.ENIP_IO, basis, "io-endpoint", note));
+        }
+    }
+
+    /** CPF: item count >= 2, first item Sequenced Address (0x8002, len 8). */
+    static boolean looksLikeCpfIo(byte[] data, int off, int len) {
+        if (len < 2 + 4 + 8 + 4) {
+            return false;
+        }
+        int count = (data[off] & 0xFF) | ((data[off + 1] & 0xFF) << 8);
+        int type = (data[off + 2] & 0xFF) | ((data[off + 3] & 0xFF) << 8);
+        int ilen = (data[off + 4] & 0xFF) | ((data[off + 5] & 0xFF) << 8);
+        return count >= 2 && count <= 8 && type == 0x8002 && ilen == 8;
+    }
+
+    private static DeviceObservation endpoint(ParsedPacket packet, boolean src, ProtocolType type,
+                                              DetectionBasis basis, String role, String note) {
+        return new DeviceObservation(
+                packet.frameNumber(),
+                src ? packet.srcIp().orElse(null) : packet.dstIp().orElse(null),
+                src ? packet.srcMac().orElse(null) : packet.dstMac().orElse(null),
+                type, basis, role, List.of(), note);
+    }
+
+    /**
+     * Broadcast / multicast / unspecified addresses are destinations, never assets. A frame sent to a
+     * broadcast/multicast MAC also carries a non-device IP: a subnet-directed broadcast (192.168.1.255) looks
+     * like a unicast host by address alone, so an observation carrying such a MAC is dropped too.
+     */
+    private static List<DeviceObservation> dropNonUnicast(List<DeviceObservation> in) {
+        in.removeIf(o -> o.ip().map(ip -> !ip.isUnicastHost()).orElse(false)
+                || o.mac().map(m -> m.isBroadcastOrMulticast()).orElse(false));
+        return in;
     }
 
     static String flowKey(ParsedPacket p) {

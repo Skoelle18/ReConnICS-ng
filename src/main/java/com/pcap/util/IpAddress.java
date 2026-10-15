@@ -45,6 +45,16 @@ public final class IpAddress implements Comparable<IpAddress> {
         return ipv4(b, 0);
     }
 
+    /** True for a usable host address: not 0.0.0.0, not 255.255.255.255, not multicast (224/4), not IPv6. */
+    public boolean isUnicastHost() {
+        if (ipv6) {
+            return false;
+        }
+        int dot = value.indexOf('.');
+        int first = Integer.parseInt(value.substring(0, dot));
+        return !value.equals("0.0.0.0") && !value.equals("255.255.255.255") && first < 224 && first != 0;
+    }
+
     public String value() {
         return value;
     }
