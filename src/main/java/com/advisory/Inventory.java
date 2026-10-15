@@ -2,16 +2,9 @@ package com.advisory;
 
 import java.io.IOException;
 import java.io.PrintStream;
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
-import java.security.KeyFactory;
-import java.security.Signature;
-import java.security.spec.X509EncodedKeySpec;
 import java.text.Normalizer;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -25,8 +18,8 @@ import static com.advisory.AdvisoryMatcher.Level.*;
  * Contract: docs/inventory.md, docs/asset.schema.json. Plan: docs/plans/2026-10-12-inventory-scoring-reports.md.
  */
 final class Inventory {
-    static final int MAX_IN = 16 << 20, MAX_INDEX = 64 << 20, MAX_SMALL = 4096, MAX_ENTRIES = 100_000, MAX_ROWS = 200_000;
-    static final int MAX_STR = 256, MAX_LIST = 256, MAX_EVIDENCE = 512, MAX_DEPTH = 64, MAX_ADVISORIES = 64, MAX_LOSERS = 16;
+    static final int MAX_IN = 16 << 20, MAX_ENTRIES = 100_000, MAX_ROWS = 200_000;
+    static final int MAX_STR = 256, MAX_LIST = 256, MAX_EVIDENCE = 512, MAX_ADVISORIES = 64, MAX_LOSERS = 16;
     static final String NO_EVIDENCE = "no evidence supplied by parser";
 
     enum Conf { LOW, MEDIUM, HIGH }
@@ -137,39 +130,10 @@ final class Inventory {
         return s.substring(0, end);
     }
 
-    /** Teammate Json has no depth limit and throws assorted runtime exceptions; never let either escape. */
-    static void depthCheck(String t) {
-        int d = 0;
-        boolean str = false;
-        for (int i = 0; i < t.length(); i++) {
-            char c = t.charAt(i);
-            if (str) { if (c == '\\') i++; else if (c == '"') str = false; }
-            else if (c == '"') str = true;
-            else if (c == '[' || c == '{') { if (++d > MAX_DEPTH) throw new IllegalArgumentException("JSON nested too deeply"); }
-            else if (c == ']' || c == '}') d--;
-        }
-    }
-
+    /** Json.parse caps nesting and throws only IllegalArgumentException; keep its position-only message out of the CLI. */
     static Object parseSafe(String t) {
-        depthCheck(t);
         try { return Json.parse(t); }
-        catch (RuntimeException | StackOverflowError e) { throw new IllegalArgumentException("invalid JSON document"); }
-    }
-
-    static byte[] readBytes(Path p, long max) throws IOException {
-        try (var in = Files.newInputStream(p)) {                // bounded even for FIFOs / growing files
-            byte[] b = in.readNBytes((int) Math.min(Integer.MAX_VALUE - 8, max + 1));
-            if (b.length > max) throw new IllegalArgumentException("input file too large");
-            return b;
-        }
-    }
-
-    static String decode(byte[] b) {
-        try {
-            String s = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(b)).toString();
-            return s.startsWith("\uFEFF") ? s.substring(1) : s;
-        } catch (CharacterCodingException e) { throw new IllegalArgumentException("input file is not valid UTF-8"); }
+        catch (IllegalArgumentException e) { throw new IllegalArgumentException("invalid JSON document"); }
     }
 
     // ------------------------------------------------------------------ load
@@ -761,8 +725,8 @@ final class Inventory {
                     if (Files.exists(p) && Files.exists(t) && Files.isSameFile(p, t))
                         throw new IllegalArgumentException("an output file would overwrite an input file");
             }
-            Map<String, String> oui = o.containsKey("oui") ? loadOui(decode(readBytes(Path.of(o.get("oui")), MAX_IN))) : null;
-            Inventory inv = build(decode(readBytes(Path.of(o.get("in")), MAX_IN)), oui);
+            Map<String, String> oui = o.containsKey("oui") ? loadOui(AdvisoryIndex.utf8(AdvisoryIndex.readCapped(Path.of(o.get("oui")), MAX_IN))) : null;
+            Inventory inv = build(AdvisoryIndex.utf8(AdvisoryIndex.readCapped(Path.of(o.get("in")), MAX_IN)), oui);
             if (o.containsKey("index")) inv.loadIndex(Path.of(o.get("index")), o.containsKey("pubkey") ? Path.of(o.get("pubkey")) : null, err);
             InventoryReport.write(inv, out);
             err.printf("%d assets, %d rejected input items -> %s%n", inv.records.size(), inv.rejected.size(), out);
@@ -779,27 +743,16 @@ final class Inventory {
         return 2;
     }
 
-    /** Fails closed: a bad signature or a malformed index stops the run instead of silently skipping matching. */
+    /**
+     * Fails closed: a bad signature or a malformed index stops the run instead of silently skipping matching. The
+     * signature check is AdvisoryIndex.load's: it verifies and parses the same bytes.
+     */
     private void loadIndex(Path index, Path pubkey, PrintStream err) throws IOException {
-        byte[] b = readBytes(index, MAX_INDEX);
-        boolean ok = false;
-        if (pubkey != null) {
-            try {
-                var key = KeyFactory.getInstance("Ed25519").generatePublic(new X509EncodedKeySpec(readBytes(pubkey, MAX_SMALL)));
-                Signature s = Signature.getInstance("Ed25519");
-                s.initVerify(key);
-                s.update(b);
-                byte[] sig = Base64.getDecoder().decode(new String(readBytes(AdvisoryIndex.sigPath(index), MAX_SMALL), StandardCharsets.US_ASCII).strip());
-                ok = s.verify(sig);
-            } catch (GeneralSecurityException | IOException | IllegalArgumentException e) { ok = false; }
-            if (!ok) throw new SecurityException("advisory index signature missing or INVALID");
-        } else err.println("WARNING: --insecure-no-verify: advisory index signature NOT verified");
         AdvisoryIndex idx;
-        try {
-            String t = decode(b);
-            depthCheck(t);
-            idx = AdvisoryIndex.parse(t);
-        } catch (RuntimeException | StackOverflowError e) { throw new IllegalArgumentException("advisory index is invalid"); }
-        match(idx, ok);
+        try { idx = AdvisoryIndex.load(index, pubkey, pubkey == null); }
+        catch (SecurityException | GeneralSecurityException e) { throw new SecurityException("advisory index signature missing or INVALID"); }
+        catch (IOException e) { throw e; }
+        catch (Exception e) { throw new IllegalArgumentException("advisory index is invalid"); }
+        match(idx, pubkey != null);
     }
 }
