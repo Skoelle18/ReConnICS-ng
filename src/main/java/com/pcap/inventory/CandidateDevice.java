@@ -27,6 +27,8 @@ public final class CandidateDevice {
     private final Set<DetectionBasis> detectionBases = new LinkedHashSet<>();
     private final List<IdentityField> fields = new ArrayList<>();
     private final List<String> mergeNotes = new ArrayList<>();
+    /** Distinct merge notes kept per device (each is fixed text plus addresses, so bounded). */
+    static final int MAX_MERGE_NOTES = 32;
     private long firstFrame = Long.MAX_VALUE;
     private long lastFrame;
     private String subaddr;
@@ -126,7 +128,7 @@ public final class CandidateDevice {
     }
 
     public void addMergeNote(String note) {
-        if (note != null && !note.isBlank()) {
+        if (note != null && !note.isBlank() && !mergeNotes.contains(note) && mergeNotes.size() < MAX_MERGE_NOTES) {
             mergeNotes.add(note);
         }
     }

@@ -7,6 +7,7 @@ import com.pcap.util.ByteReader;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
+import java.util.List;
 
 import static com.pcap.support.PcapTestSupport.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -83,5 +84,8 @@ class HardeningTest {
                 ethernetIpv4Tcp(rtr, ews, ipv4("10.0.20.6"), ipv4("10.0.1.100"), 502, 50001, fc3))), false).document();
         assertEquals("00:1a:a1:29:f8:85", asset(doc, "10.0.1.1").mac);
         assertNull(asset(doc, "10.0.20.5").mac);
+        @SuppressWarnings("unchecked")
+        var notes = (List<String>) asset(doc, "10.0.20.6").attributes.get("mergeNotes");
+        assertEquals(1, notes.size(), "repeated frames must not repeat the note: " + notes);
     }
 }
