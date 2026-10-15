@@ -10,12 +10,14 @@ import com.pcap.capture.ParsedPacket;
 import com.pcap.capture.ParseStatus;
 import com.pcap.capture.PcapException;
 import com.pcap.capture.PcapReader;
+import com.pcap.capture.TcpReassembler;
 import com.pcap.protocol.ProtocolDetector;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +53,7 @@ public final class AnalysisService {
     public AnalysisResult analyze(Path capturePath, boolean verbose) throws IOException, PcapException {
         cancelled.set(false);
         DeviceAggregator aggregator = new DeviceAggregator();
+        TcpReassembler reassembler = new TcpReassembler();
         Map<String, Long> candidates = new HashMap<>();
         Map<String, Long> decoded = new HashMap<>();
         long malformed = 0;
@@ -83,7 +86,19 @@ public final class AnalysisService {
                 }
                 switch (parsed.status()) {
                     case OK -> {
-                        List<DeviceObservation> obs = detector.detect(parsed);
+                        List<DeviceObservation> obs = new ArrayList<>();
+                        try {
+                            for (ParsedPacket unit : reassembler.accept(parsed)) {
+                                obs.addAll(detector.detect(unit));
+                            }
+                        } catch (RuntimeException e) {
+                            // a decoder bug on one hostile packet must not abort the whole analysis
+                            malformed++;
+                            if (verbose) {
+                                LOG.log(Level.FINE, "decode error frame " + parsed.frameNumber(), e);
+                            }
+                            continue;
+                        }
                         for (DeviceObservation o : obs) {
                             candidates.merge(o.protocol().wireName(), 1L, Long::sum);
                             if (o.detectionBasis() == DetectionBasis.MESSAGE_DECODED) {
@@ -140,6 +155,7 @@ public final class AnalysisService {
                     "pending");
 
             IngestModels.Document doc = jsonWriter.build(draft);
+            doc.source.put("tcpReassembly", reassembler.stats().toMap());
             AnalysisReport report = new AnalysisReport(
                     draft.capturePath(),
                     draft.captureFormat(),

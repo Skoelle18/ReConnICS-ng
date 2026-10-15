@@ -48,7 +48,7 @@ public final class PacketParser {
             if (tcp.status() != ParseStatus.OK) {
                 return b.status(tcp.status(), tcp.detail()).build();
             }
-            return b.srcPort(tcp.srcPort()).dstPort(tcp.dstPort())
+            return b.srcPort(tcp.srcPort()).dstPort(tcp.dstPort()).tcp(tcp.seq(), tcp.flags())
                     .payload(record.data(), tcp.payloadOffset(), tcp.payloadLength())
                     .status(ParseStatus.OK, "").build();
         }
