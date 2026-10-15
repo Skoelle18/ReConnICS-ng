@@ -164,20 +164,76 @@ public final class ByteReader {
         return new ByteReader(data, base + offset, remaining());
     }
 
+    /** Longest decoded identity string kept (characters). */
+    public static final int MAX_TEXT = 256;
+
+    /**
+     * Makes device-supplied text safe to store and display: removes ANSI/VT escape sequences (CSI, OSC, other
+     * ESC sequences), C0/C1 control characters, DEL, Unicode bidi overrides and zero-width characters.
+     * Tab/CR/LF become a space; runs of whitespace collapse; the result is trimmed and capped at
+     * {@link #MAX_TEXT} characters. Linear time. Markup characters ('&lt;', '&gt;', '&amp;') are kept: they
+     * are legal in device names, and HTML escaping is the job of the report writers.
+     */
     public static String sanitize(String s) {
         if (s == null) {
             return null;
         }
-        StringBuilder sb = new StringBuilder(s.length());
-        for (int i = 0; i < s.length(); i++) {
+        StringBuilder sb = new StringBuilder(Math.min(s.length(), MAX_TEXT + 16));
+        int n = s.length();
+        for (int i = 0; i < n && sb.length() <= MAX_TEXT; i++) {
             char c = s.charAt(i);
-            if (c >= 32 && c != 127) {
-                sb.append(c);
-            } else if (c == '\t' || c == '\n' || c == '\r') {
-                sb.append(' ');
+            if (c == 0x1B || c == 0x9B) {
+                i = skipEscape(s, i);
+                continue;
             }
+            if (c == '\t' || c == '\n' || c == '\r') {
+                c = ' ';
+            } else if (c < 32 || (c >= 0x7F && c <= 0x9F) || isInvisibleFormat(c)) {
+                continue;
+            }
+            if (c == ' ' && (sb.length() == 0 || sb.charAt(sb.length() - 1) == ' ')) {
+                continue;
+            }
+            sb.append(c);
         }
-        return sb.toString().trim();
+        String out = sb.toString().trim();
+        return out.length() > MAX_TEXT ? out.substring(0, MAX_TEXT).trim() : out;
+    }
+
+    /** Returns the index of the last character of the escape sequence starting at {@code i}. */
+    private static int skipEscape(String s, int i) {
+        int n = s.length();
+        int j = i + 1;
+        boolean csi = s.charAt(i) == 0x9B;
+        if (!csi && j < n && s.charAt(j) == '[') {
+            csi = true;
+            j++;
+        }
+        if (csi) {
+            while (j < n && s.charAt(j) >= 0x20 && s.charAt(j) <= 0x3F) {
+                j++; // parameter / intermediate bytes
+            }
+            return Math.min(j, n - 1); // final byte 0x40-0x7E
+        }
+        if (j < n && (s.charAt(j) == ']' || s.charAt(j) == 'P' || s.charAt(j) == '_' || s.charAt(j) == '^')) {
+            // OSC / DCS / APC / PM: up to BEL or ST (ESC \)
+            for (int k = j + 1; k < n; k++) {
+                char c = s.charAt(k);
+                if (c == 0x07) {
+                    return k;
+                }
+                if (c == 0x1B && k + 1 < n && s.charAt(k + 1) == '\\') {
+                    return k + 1;
+                }
+            }
+            return n - 1;
+        }
+        return Math.min(j, n - 1); // two-character ESC sequence
+    }
+
+    private static boolean isInvisibleFormat(char c) {
+        return (c >= 0x200B && c <= 0x200F) || (c >= 0x202A && c <= 0x202E) || (c >= 0x2066 && c <= 0x2069)
+                || c == 0xFEFF || c == 0xFFFD;
     }
 
     public static String hex(byte[] bytes, int max) {
