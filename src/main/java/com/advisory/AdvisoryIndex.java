@@ -56,8 +56,9 @@ final class AdvisoryIndex {
             for (Object sc : Json.arr(vuln.get("scores"))) {
                 var score = Json.obj(sc);
                 Object base = Json.obj(score.getOrDefault("cvss_v3", score.get("cvss_v2"))).get("baseScore");
-                if (!(base instanceof Double d)) continue;
-                for (Object pid : Json.arr(score.get("products"))) cvss.merge((String) pid, d, Math::max);
+                if (!(base instanceof Double d) || Double.isNaN(d)) continue;
+                double c = cvss(d);
+                for (Object pid : Json.arr(score.get("products"))) if (pid instanceof String p) cvss.merge(p, c, Math::max);
             }
         }
 
@@ -126,10 +127,13 @@ final class AdvisoryIndex {
             rows.add(new Row(Json.str(r.get("advisory")), Json.str(r.get("title")), Json.str(r.get("vendor")),
                     Json.str(r.get("product")), Json.str(r.get("version")), Json.str(r.get("range")),
                     strings(r.get("cves")), strings(r.get("kev")),
-                    r.get("cvss") instanceof Double c ? c : 0.0));
+                    r.get("cvss") instanceof Double c ? cvss(c) : 0.0));
         }
         return new AdvisoryIndex(m, rows);
     }
+
+    /** CVSS base scores live in 0-10: clamp out-of-range values (1e999 parses to Infinity), NaN becomes 0. */
+    static double cvss(double d) { return Double.isNaN(d) ? 0.0 : Math.max(0.0, Math.min(10.0, d)); }
 
     private static List<String> strings(Object o) { return Json.arr(o).stream().map(String::valueOf).toList(); }
 

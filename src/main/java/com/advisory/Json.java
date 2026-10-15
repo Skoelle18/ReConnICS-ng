@@ -137,6 +137,7 @@ final class Json {
     private static void write(Object o, StringBuilder b) {
         if (o == null) b.append("null");
         else if (o instanceof String x) quote(x, b);
+        else if (o instanceof Number n && !Double.isFinite(n.doubleValue())) b.append("null");  // JSON has no NaN/Infinity
         else if (o instanceof Double d && d == Math.rint(d) && !d.isInfinite()) b.append(d.longValue());
         else if (o instanceof Number || o instanceof Boolean) b.append(o);
         else if (o instanceof Enum<?> e) quote(e.name(), b);
