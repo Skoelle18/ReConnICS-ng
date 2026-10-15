@@ -178,8 +178,17 @@ public final class ModbusIdentityParser {
         if (exception) {
             return false;
         }
-        // Heuristic: responses often longer; for identity we already special-case.
-        return true;
+        // Used only when neither side is on port 502 (ProtocolDetector fixes direction by port otherwise).
+        int rest = pduAfterFc.remaining();
+        return switch (fc) {
+            // read coils/inputs/registers: request = addr+qty (4); response = byteCount + byteCount bytes
+            case 1, 2, 3, 4 -> !(rest >= 1 && pduAfterFc.u8(pduAfterFc.position()) == rest - 1 && rest != 4);
+            // write single coil/register: request and echo are identical; treat as request
+            case 5, 6 -> true;
+            // write multiple: request = addr+qty+byteCount+data (>5); response = addr+qty (4)
+            case 15, 16 -> rest != 4;
+            default -> true;
+        };
     }
 
     public boolean looksLikeMbap(byte[] data, int offset, int length) {

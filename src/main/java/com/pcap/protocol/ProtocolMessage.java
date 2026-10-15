@@ -76,6 +76,12 @@ public final class ProtocolMessage {
         return subaddr;
     }
 
+    /** Same message with the server side fixed by transport evidence (well-known port). */
+    public ProtocolMessage withServerOnSrc(boolean onSrc) {
+        return onSrc == serverOnSrc ? this
+                : new ProtocolMessage(protocol, basis, identityExchange, fields, detail, onSrc, subaddr);
+    }
+
     public DeviceObservation toObservation(
             long frame,
             com.pcap.util.IpAddress srcIp,
@@ -84,7 +90,8 @@ public final class ProtocolMessage {
             com.pcap.util.MacAddress dstMac) {
         com.pcap.util.IpAddress deviceIp = serverOnSrc ? srcIp : dstIp;
         com.pcap.util.MacAddress deviceMac = serverOnSrc ? srcMac : dstMac;
-        String role = serverOnSrc ? "server" : "client-or-target";
+        // The observed device is the responder side in both directions (request target / reply sender).
+        String role = "server";
         if (subaddr != null) {
             // A sub-device is reached through the responding IP; it has no MAC of its own.
             return new DeviceObservation(frame, deviceIp, null, protocol, basis, role, fields, detail, subaddr);

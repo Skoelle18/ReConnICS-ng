@@ -29,6 +29,9 @@ public final class DeviceAggregator {
         }
         CandidateDevice device = matcher.match(obs);
         obs.ip().ifPresent(device::observeIp);
+        if (obs.detectionBasis() != DetectionBasis.PORT_HEURISTIC) {
+            device.observeRole(obs.role());
+        }
         if (device.subaddr().isEmpty()) {
             obs.mac().ifPresent(m -> device.observeMac(m, obs.frameNumber()));
         }

@@ -115,6 +115,10 @@ public final class IngestJsonWriter {
         attrs.put("firstFrame", ra.device().firstFrame());
         attrs.put("lastFrame", ra.device().lastFrame());
         attrs.put("detectionBases", ra.device().detectionBases().stream().map(Enum::name).toList());
+        ra.device().roleHint().ifPresent(r -> attrs.put("role", r));
+        if (ra.device().roles().size() > 1) {
+            attrs.put("roles", new ArrayList<>(ra.device().roles()));
+        }
         if (!ra.device().mergeNotes().isEmpty()) {
             attrs.put("mergeNotes", new ArrayList<>(ra.device().mergeNotes()));
         }

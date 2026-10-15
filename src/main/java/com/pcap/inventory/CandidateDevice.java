@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 
 public final class CandidateDevice {
     private final String captureScopedId;
@@ -29,9 +30,26 @@ public final class CandidateDevice {
     private long firstFrame = Long.MAX_VALUE;
     private long lastFrame;
     private String subaddr;
+    private final Set<String> roles = new TreeSet<>();
 
     public CandidateDevice(String captureScopedId) {
         this.captureScopedId = captureScopedId;
+    }
+
+    public void observeRole(String role) {
+        if ("server".equals(role) || "client".equals(role)) {
+            roles.add(role);
+        }
+    }
+
+    /** Direction hint: "server" if the device ever answered, "client" if it only initiated. */
+    public Optional<String> roleHint() {
+        return roles.contains("server") ? Optional.of("server")
+                : roles.contains("client") ? Optional.of("client") : Optional.empty();
+    }
+
+    public Set<String> roles() {
+        return roles;
     }
 
     public Optional<String> subaddr() {

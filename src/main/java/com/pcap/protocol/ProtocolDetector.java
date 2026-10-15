@@ -41,9 +41,11 @@ public final class ProtocolDetector {
         boolean portS7 = matchesPort(packet, 102);
         boolean portEnip = matchesPort(packet, 44818);
 
-        Optional<ProtocolMessage> modbusMsg = modbus.tryParse(data, off, len, frame);
+        Optional<ProtocolMessage> modbusMsg = modbus.tryParse(data, off, len, frame)
+                .map(m -> byServerPort(packet, 502, m));
         if (modbusMsg.isPresent()) {
             out.add(toObs(packet, modbusMsg.get()));
+            addClient(packet, 502, ProtocolType.MODBUS, out);
         } else if (portModbus) {
             out.add(portOnly(packet, ProtocolType.MODBUS, packet.dstPort() == 502));
         }
@@ -51,6 +53,7 @@ public final class ProtocolDetector {
         Optional<ProtocolMessage> enipMsg = enip.tryParse(data, off, len, frame, connectionKey(packet));
         if (enipMsg.isPresent()) {
             out.add(toObs(packet, enipMsg.get()));
+            addClient(packet, 44818, ProtocolType.ENIP, out);
         } else if (portEnip) {
             out.add(portOnly(packet, ProtocolType.ENIP, packet.dstPort() == 44818));
         }
@@ -58,6 +61,7 @@ public final class ProtocolDetector {
         Optional<ProtocolMessage> s7Msg = s7.tryParse(data, off, len, frame, flowKey(packet));
         if (s7Msg.isPresent()) {
             out.add(toObs(packet, s7Msg.get()));
+            addClient(packet, 102, ProtocolType.S7COMM, out);
         } else if (portS7) {
             out.add(portOnly(packet, ProtocolType.S7COMM, packet.dstPort() == 102));
         }
@@ -110,6 +114,26 @@ public final class ProtocolDetector {
                     : "port heuristic only; not proof of enip-io";
             out.add(endpoint(packet, true, ProtocolType.ENIP_IO, basis, "io-endpoint", note));
             out.add(endpoint(packet, false, ProtocolType.ENIP_IO, basis, "io-endpoint", note));
+        }
+    }
+
+    /**
+     * When exactly one side uses the protocol's well-known port, that side is the server; the parser's
+     * own guess (e.g. Modbus request/response from the PDU alone) is only used on non-standard ports.
+     */
+    static ProtocolMessage byServerPort(ParsedPacket p, int port, ProtocolMessage m) {
+        boolean src = p.srcPort() == port;
+        boolean dst = p.dstPort() == port;
+        return src != dst ? m.withServerOnSrc(src) : m;
+    }
+
+    /** The peer of a well-known-port server is a client (EWS/HMI/SCADA): record it with that role hint. */
+    private static void addClient(ParsedPacket p, int port, ProtocolType type, List<DeviceObservation> out) {
+        boolean src = p.srcPort() == port;
+        boolean dst = p.dstPort() == port;
+        if (src != dst) {
+            out.add(endpoint(p, dst, type, DetectionBasis.HEADER_VALIDATED, "client",
+                    type.wireName() + " client (peer of port " + port + ")"));
         }
     }
 
