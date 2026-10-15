@@ -12,7 +12,10 @@ import java.util.Optional;
 
 /**
  * Resolves vendor/model/firmware for a candidate without inventing values.
- * Conflicts are preserved; the primary value is the first HIGH (then MEDIUM) by frame order.
+ * Conflicts are preserved; the primary value is the first HIGH (then MEDIUM) by frame order, except for
+ * firmware: a device that is re-flashed during the capture reports its old version first, so the primary
+ * firmware is the one from the LATEST frame at the best confidence and earlier versions are kept as history
+ * (in {@link ResolvedField#conflicts()}, oldest first, marked "earlier").
  */
 public final class IdentityResolver {
     public record ResolvedField(String value, Confidence confidence, String evidence, List<String> conflicts) {
@@ -36,7 +39,7 @@ public final class IdentityResolver {
 
         Optional<ResolvedField> vendor = resolveKind(sorted, IdentityField.Kind.VENDOR);
         Optional<ResolvedField> model = resolveKind(sorted, IdentityField.Kind.MODEL);
-        Optional<ResolvedField> firmware = resolveKind(sorted, IdentityField.Kind.FIRMWARE);
+        Optional<ResolvedField> firmware = resolveLatest(device.fields(), IdentityField.Kind.FIRMWARE);
         Optional<ResolvedField> hostname = resolveKind(sorted, IdentityField.Kind.HOSTNAME);
         Optional<ResolvedField> serial = resolveKind(sorted, IdentityField.Kind.SERIAL);
         Optional<ResolvedField> deviceType = resolveKind(sorted, IdentityField.Kind.DEVICE_TYPE);
@@ -74,6 +77,39 @@ public final class IdentityResolver {
                 primary.confidence(),
                 primary.evidence().toIngestString(),
                 conflicts));
+    }
+
+    /** Latest frame wins among the best confidence; all other distinct values become history. */
+    private Optional<ResolvedField> resolveLatest(List<IdentityField> all, IdentityField.Kind kind) {
+        IdentityField primary = null;
+        for (IdentityField f : all) {
+            if (f.kind() != kind) {
+                continue;
+            }
+            if (primary == null
+                    || confidenceRank(f.confidence()) < confidenceRank(primary.confidence())
+                    || (f.confidence() == primary.confidence()
+                    && f.evidence().frameNumber() >= primary.evidence().frameNumber())) {
+                primary = f;
+            }
+        }
+        if (primary == null) {
+            return Optional.empty();
+        }
+        List<IdentityField> history = new ArrayList<>();
+        for (IdentityField f : all) {
+            if (f.kind() == kind && !f.value().equals(primary.value())) {
+                history.add(f);
+            }
+        }
+        history.sort(Comparator.comparingLong(f -> f.evidence().frameNumber()));
+        Map<String, String> byValue = new LinkedHashMap<>();
+        for (IdentityField f : history) {
+            boolean earlier = f.evidence().frameNumber() < primary.evidence().frameNumber();
+            byValue.putIfAbsent(f.value(), f.value() + " (" + (earlier ? "earlier, " : "") + f.evidence().toIngestString() + ")");
+        }
+        return Optional.of(new ResolvedField(primary.value(), primary.confidence(),
+                primary.evidence().toIngestString(), new ArrayList<>(byValue.values())));
     }
 
     private static int confidenceRank(Confidence c) {

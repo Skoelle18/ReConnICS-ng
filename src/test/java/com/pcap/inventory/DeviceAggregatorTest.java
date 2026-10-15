@@ -87,6 +87,23 @@ class DeviceAggregatorTest {
         assertFalse(asset.identity().model().orElseThrow().conflicts().isEmpty());
     }
 
+    // P7 regression (repro r6): a PLC re-flashed during the capture must report the NEW firmware
+    @Test
+    void firmwareFromLatestFrameWinsAndHistoryIsKept() {
+        DeviceAggregator agg = new DeviceAggregator();
+        String mac = "aa:bb:cc:dd:ee:04";
+        agg.accept(obs(10, "10.0.0.7", mac, ProtocolType.MODBUS, DetectionBasis.MESSAGE_DECODED,
+                List.of(field(IdentityField.Kind.FIRMWARE, "V1.0.0", ProtocolType.MODBUS, 10))));
+        agg.accept(obs(500, "10.0.0.7", mac, ProtocolType.MODBUS, DetectionBasis.MESSAGE_DECODED,
+                List.of(field(IdentityField.Kind.FIRMWARE, "V2.1.4", ProtocolType.MODBUS, 500))));
+        agg.accept(obs(20, "10.0.0.7", mac, ProtocolType.MODBUS, DetectionBasis.MESSAGE_DECODED,
+                List.of(field(IdentityField.Kind.FIRMWARE, "V1.0.0", ProtocolType.MODBUS, 20))));
+        var fw = agg.resolveAssets().get(0).identity().firmware().orElseThrow();
+        assertEquals("V2.1.4", fw.value());
+        assertEquals(1, fw.conflicts().size());
+        assertTrue(fw.conflicts().get(0).startsWith("V1.0.0 (earlier"));
+    }
+
     @Test
     void deterministicOrdering() {
         DeviceAggregator agg = new DeviceAggregator();
