@@ -1,0 +1,78 @@
+{
+ "scenario": "s7comm_program_blocklist_onlineview",
+ "description": "Real public capture s7comm_program_blocklist_onlineview.pcap (140 frames); truth from independent stdlib decoder D:/reconics/work/public-truth/decode.py",
+ "source": "see eval/captures/public/SOURCES.md",
+ "files": [
+  "s7comm_program_blocklist_onlineview.pcap"
+ ],
+ "device_count": 2,
+ "required_count": 2,
+ "identifiable_count": 1,
+ "devices": [
+  {
+   "id": "192.168.1.10",
+   "ip": "192.168.1.10",
+   "mac": "90:e6:ba:84:5e:41",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "s7comm"
+   ],
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 90,
+    "ttl": {
+     "128": 90
+    }
+   }
+  },
+  {
+   "id": "192.168.1.40",
+   "ip": "192.168.1.40",
+   "mac": "00:1b:1b:23:eb:3b",
+   "vendor": "Siemens",
+   "model": "6ES7 151-8AB01-0AB0",
+   "firmware": null,
+   "serial": null,
+   "role": "plc",
+   "hostname": null,
+   "identifiable": true,
+   "protocols": [
+    "s7comm"
+   ],
+   "vendor_aliases": [
+    "Siemens AG"
+   ],
+   "evidence": {
+    "model": "SZL 0x0111 idx 1 MlfB, frame 20"
+   },
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 50,
+    "ttl": {
+     "30": 50
+    }
+   }
+  }
+ ],
+ "not_devices": [],
+ "expect": {
+  "note": "model = SZL 0x0011 idx1 MlfB / CIP product name; firmware = SZL 0x0011 idx7 (V+3 bytes) / CIP revision major.minor(3 digits); serial = SZL 0x001C idx5 / CIP serial (hex, 8 digits); hostname = SZL 0x001C idx2 module name (alias idx1 AS name)"
+ },
+ "notes": "Only SZL 0x0111 idx 1 read (frame 20): order number only, no firmware / serial / names.",
+ "truth_uncertain": false,
+ "decoder": {
+  "frames": 140,
+  "linktypes": [
+   1
+  ],
+  "tcp_gaps": 0,
+  "ip_fragments": 0,
+  "multi_ip_macs": {}
+ }
+}

@@ -1,0 +1,155 @@
+{
+ "scenario": "iti_EIP-FirmwareChange",
+ "description": "Real public capture iti_EIP-FirmwareChange.pcap (10727 frames); truth from independent stdlib decoder D:/reconics/work/public-truth/decode.py",
+ "source": "see eval/captures/public/SOURCES.md",
+ "files": [
+  "iti_EIP-FirmwareChange.pcap"
+ ],
+ "device_count": 5,
+ "required_count": 2,
+ "identifiable_count": 1,
+ "devices": [
+  {
+   "id": "192.168.10.10",
+   "ip": "192.168.10.10",
+   "mac": "00:15:17:68:39:f5",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 10626,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 10626)"
+  },
+  {
+   "id": "192.168.10.22",
+   "ip": "192.168.10.22",
+   "mac": "00:0c:29:e8:32:7a",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 14,
+    "sent_unicast": 0,
+    "ttl": {
+     "128": 1
+    }
+   },
+   "notes": "ARP only (ops [1], first frame 10616); only broadcast/multicast sender (1 frames)"
+  },
+  {
+   "id": "192.168.10.105",
+   "ip": "192.168.10.105",
+   "mac": "00:1d:09:99:b2:2c",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "enip"
+   ],
+   "seen": {
+    "first_frame": 4,
+    "sent_unicast": 5284,
+    "ttl": {
+     "128": 5285
+    }
+   }
+  },
+  {
+   "id": "192.168.10.120",
+   "ip": "192.168.10.120",
+   "mac": "00:00:bc:3e:eb:e4",
+   "vendor": "Rockwell Automation",
+   "model": "1756-ENBT/A",
+   "firmware": "4.003",
+   "serial": "0051AEC3",
+   "role": "comms_adapter",
+   "hostname": null,
+   "identifiable": true,
+   "protocols": [
+    "enip"
+   ],
+   "vendor_aliases": [
+    "Allen-Bradley",
+    "Rockwell Automation/Allen-Bradley",
+    "Rockwell"
+   ],
+   "firmware_aliases": [
+    "4.3"
+   ],
+   "serial_aliases": [
+    "0x0051AEC3"
+   ],
+   "evidence": {
+    "vendor_id": "vendor_id=1 via CIP direct, frames 10683..10689 (x3)",
+    "device_type": "device_type=12 via CIP direct, frames 10683..10689 (x3)",
+    "product_code": "product_code=58 via CIP direct, frames 10683..10689 (x3)",
+    "revision": "revision=4.003 via CIP direct, frames 10683..10689 (x3)",
+    "serial": "serial=0051AEC3 via CIP direct, frames 10683..10689 (x3)",
+    "product_name": "product_name=1756-ENBT/A via CIP direct, frames 10683..10689 (x3)"
+   },
+   "seen": {
+    "first_frame": 4,
+    "sent_unicast": 5323,
+    "ttl": {
+     "64": 5323
+    }
+   }
+  },
+  {
+   "id": "208.73.217.142",
+   "ip": "208.73.217.142",
+   "mac": "00:21:91:06:f1:66",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 10613,
+    "sent_unicast": 0,
+    "ttl": {
+     "1": 1
+    }
+   },
+   "notes": "only broadcast/multicast sender (1 frames)"
+  }
+ ],
+ "not_devices": [],
+ "expect": {
+  "note": "model = SZL 0x0011 idx1 MlfB / CIP product name; firmware = SZL 0x0011 idx7 (V+3 bytes) / CIP revision major.minor(3 digits); serial = SZL 0x001C idx5 / CIP serial (hex, 8 digits); hostname = SZL 0x001C idx2 module name (alias idx1 AS name)"
+ },
+ "notes": "CIP Identity Get_Attributes_All (class 1 inst 1) answered in frames 10683/10687/10689 (requests 10682/10685/10688); earlier GAA requests 10597 and 10615 got no reply (module rebooting during the firmware update). No revision before the update is visible, so firmware = post-update 4.003. 192.168.10.22 (NetBIOS bcast frame 14 + ARP 10616), 192.168.10.10 (ARP requests 10626-10629) and 208.73.217.142 (IGMP to 239.255.255.100, frame 10613, TTL 1) are broadcast/multicast-only -> optional.",
+ "truth_uncertain": false,
+ "decoder": {
+  "frames": 10727,
+  "linktypes": [
+   1
+  ],
+  "tcp_gaps": 0,
+  "ip_fragments": 0,
+  "multi_ip_macs": {}
+ }
+}

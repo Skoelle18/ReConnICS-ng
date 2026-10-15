@@ -1,0 +1,6 @@
+out/
+lab/out/
+__pycache__/
+captures/**/*.pcap
+captures/**/*.pcapng
+captures/**/*.cap

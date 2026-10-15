@@ -1,0 +1,74 @@
+{
+ "scenario": "iti_S7-1200-Uploading-OB1-TIAV12",
+ "description": "Real public capture iti_S7-1200-Uploading-OB1-TIAV12.pcap (149 frames); truth from independent stdlib decoder D:/reconics/work/public-truth/decode.py",
+ "source": "see eval/captures/public/SOURCES.md",
+ "files": [
+  "iti_S7-1200-Uploading-OB1-TIAV12.pcap"
+ ],
+ "device_count": 2,
+ "required_count": 2,
+ "identifiable_count": 0,
+ "devices": [
+  {
+   "id": "192.168.1.10",
+   "ip": "192.168.1.10",
+   "mac": "90:e6:ba:84:5e:41",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "s7comm",
+    "s7comm-plus"
+   ],
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 92,
+    "ttl": {
+     "128": 92
+    }
+   }
+  },
+  {
+   "id": "192.168.1.191",
+   "ip": "192.168.1.191",
+   "mac": "00:1c:06:08:e7:db",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "s7comm",
+    "s7comm-plus"
+   ],
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 57,
+    "ttl": {
+     "30": 57
+    }
+   }
+  }
+ ],
+ "not_devices": [],
+ "expect": {
+  "note": "model = SZL 0x0011 idx1 MlfB / CIP product name; firmware = SZL 0x0011 idx7 (V+3 bytes) / CIP revision major.minor(3 digits); serial = SZL 0x001C idx5 / CIP serial (hex, 8 digits); hostname = SZL 0x001C idx2 module name (alias idx1 AS name)"
+ },
+ "notes": "TIA V12 upload over S7comm-plus (0x72): no SZL replies -> not identifiable.",
+ "truth_uncertain": false,
+ "decoder": {
+  "frames": 149,
+  "linktypes": [
+   1
+  ],
+  "tcp_gaps": 0,
+  "ip_fragments": 0,
+  "multi_ip_macs": {}
+ }
+}

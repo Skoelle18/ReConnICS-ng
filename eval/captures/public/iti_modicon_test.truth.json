@@ -1,0 +1,72 @@
+{
+ "scenario": "iti_modicon_test",
+ "description": "Real public capture iti_modicon_test.pcap (191 frames); truth from independent stdlib decoder D:/reconics/work/public-truth/decode.py",
+ "source": "see eval/captures/public/SOURCES.md",
+ "files": [
+  "iti_modicon_test.pcap"
+ ],
+ "device_count": 2,
+ "required_count": 2,
+ "identifiable_count": 0,
+ "devices": [
+  {
+   "id": "192.168.63.100",
+   "ip": "192.168.63.100",
+   "mac": "3c:97:0e:91:54:ab",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "modbus"
+   ],
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 94,
+    "ttl": {
+     "128": 94
+    }
+   }
+  },
+  {
+   "id": "192.168.63.253",
+   "ip": "192.168.63.253",
+   "mac": "00:00:54:14:f2:4f",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "modbus"
+   ],
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 97,
+    "ttl": {
+     "64": 97
+    }
+   }
+  }
+ ],
+ "not_devices": [],
+ "expect": {
+  "note": "model = SZL 0x0011 idx1 MlfB / CIP product name; firmware = SZL 0x0011 idx7 (V+3 bytes) / CIP revision major.minor(3 digits); serial = SZL 0x001C idx5 / CIP serial (hex, 8 digits); hostname = SZL 0x001C idx2 module name (alias idx1 AS name)"
+ },
+ "notes": "Modicon traffic is FC 0x5A (UMAS / Unity) only, 90 req / 90 resp; no FC43 -> not identifiable (UMAS identity is out of scope).",
+ "truth_uncertain": false,
+ "decoder": {
+  "frames": 191,
+  "linktypes": [
+   1
+  ],
+  "tcp_gaps": 0,
+  "ip_fragments": 0,
+  "multi_ip_macs": {}
+ }
+}

@@ -1,0 +1,88 @@
+{
+ "scenario": "iti_tia_s300_goOnline",
+ "description": "Real public capture iti_tia_s300_goOnline.pcapng (448 frames); truth from independent stdlib decoder D:/reconics/work/public-truth/decode.py",
+ "source": "see eval/captures/public/SOURCES.md",
+ "files": [
+  "iti_tia_s300_goOnline.pcapng"
+ ],
+ "device_count": 2,
+ "required_count": 2,
+ "identifiable_count": 1,
+ "devices": [
+  {
+   "id": "134.217.61.131",
+   "ip": "134.217.61.131",
+   "mac": "00:0c:29:c1:49:92",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "s7comm"
+   ],
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 224,
+    "ttl": {
+     "128": 224
+    }
+   }
+  },
+  {
+   "id": "134.217.61.211",
+   "ip": "134.217.61.211",
+   "mac": "00:0e:8c:d0:f9:cb",
+   "vendor": "Siemens",
+   "model": "6ES7 315-2EH14-0AB0",
+   "firmware": "V3.2.7",
+   "serial": "S C-B1U393142011",
+   "role": "plc",
+   "hostname": "PLC_1",
+   "identifiable": true,
+   "protocols": [
+    "s7comm"
+   ],
+   "vendor_aliases": [
+    "Siemens AG"
+   ],
+   "hostname_aliases": [
+    "S7300/ET200M station_1"
+   ],
+   "model_aliases": [
+    "CPU 315-2 PN/DP"
+   ],
+   "evidence": {
+    "model": "SZL 0x0011 idx 1 MlfB, frame 14",
+    "firmware": "SZL 0x0011 idx 7 Ausbg/Ausbe raw 00c056030207, frame 14",
+    "serial": "SZL 0x001C idx 5, frame 18",
+    "hostname": "SZL 0x001C idx 2 (module name), frame 18",
+    "plant_id": "'' (SZL 0x001C idx 3, frame 18)"
+   },
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 224,
+    "ttl": {
+     "30": 224
+    }
+   }
+  }
+ ],
+ "not_devices": [],
+ "expect": {
+  "note": "model = SZL 0x0011 idx1 MlfB / CIP product name; firmware = SZL 0x0011 idx7 (V+3 bytes) / CIP revision major.minor(3 digits); serial = SZL 0x001C idx5 / CIP serial (hex, 8 digits); hostname = SZL 0x001C idx2 module name (alias idx1 AS name)"
+ },
+ "notes": "TIA go-online: SZL 0x0011 at frames 14/24/50/... and 0x001C (fragments 16+18, 26+28, ...).",
+ "truth_uncertain": false,
+ "decoder": {
+  "frames": 448,
+  "linktypes": [
+   1
+  ],
+  "tcp_gaps": 0,
+  "ip_fragments": 0,
+  "multi_ip_macs": {}
+ }
+}

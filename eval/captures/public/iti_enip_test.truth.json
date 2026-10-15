@@ -1,0 +1,99 @@
+{
+ "scenario": "iti_enip_test",
+ "description": "Real public capture iti_enip_test.pcap (11 frames); truth from independent stdlib decoder D:/reconics/work/public-truth/decode.py",
+ "source": "see eval/captures/public/SOURCES.md",
+ "files": [
+  "iti_enip_test.pcap"
+ ],
+ "device_count": 2,
+ "required_count": 2,
+ "identifiable_count": 1,
+ "devices": [
+  {
+   "id": "10.1.1.164",
+   "ip": "10.1.1.164",
+   "mac": null,
+   "vendor": "Rockwell Automation",
+   "model": "1756-ENBT/A",
+   "firmware": "4.003",
+   "serial": "00524D8E",
+   "role": "comms_adapter",
+   "hostname": null,
+   "identifiable": true,
+   "protocols": [
+    "enip"
+   ],
+   "vendor_aliases": [
+    "Allen-Bradley",
+    "Rockwell Automation/Allen-Bradley",
+    "Rockwell"
+   ],
+   "firmware_aliases": [
+    "4.3"
+   ],
+   "serial_aliases": [
+    "0x00524D8E"
+   ],
+   "evidence": {
+    "vendor_id": "vendor_id=1 via ListIdentity/tcp, frames 7..7 (x1)",
+    "device_type": "device_type=12 via ListIdentity/tcp, frames 7..7 (x1)",
+    "product_code": "product_code=58 via ListIdentity/tcp, frames 7..7 (x1)",
+    "revision": "revision=4.003 via ListIdentity/tcp, frames 7..7 (x1)",
+    "serial": "serial=00524D8E via ListIdentity/tcp, frames 7..7 (x1)",
+    "product_name": "product_name=1756-ENBT/A via ListIdentity/tcp, frames 7..7 (x1)"
+   },
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 6,
+    "ttl": {
+     "52": 6
+    }
+   },
+   "notes": "routed: frames carry router/gateway MAC 00:19:07:24:3c:ca"
+  },
+  {
+   "id": "10.1.1.167",
+   "ip": "10.1.1.167",
+   "mac": "3c:a9:f4:21:22:f8",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "enip"
+   ],
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 5,
+    "ttl": {
+     "128": 4,
+     "47": 1
+    }
+   }
+  }
+ ],
+ "not_devices": [
+  {
+   "kind": "mac_not_assignable",
+   "mac": "00:19:07:24:3c:ca",
+   "reason": "Cisco OUI; carries 10.1.1.164 with TTL 52 (12 hops from 64). A 1756-ENBT has a Rockwell 00:00:bc MAC"
+  }
+ ],
+ "expect": {
+  "note": "model = SZL 0x0011 idx1 MlfB / CIP product name; firmware = SZL 0x0011 idx7 (V+3 bytes) / CIP revision major.minor(3 digits); serial = SZL 0x001C idx5 / CIP serial (hex, 8 digits); hostname = SZL 0x001C idx2 module name (alias idx1 AS name)"
+ },
+ "notes": "ListIdentity over TCP 44818 (reply frame 7, socket addr 10.1.1.164). Frames from 10.1.1.164 carry Cisco MAC 00:19:07:24:3c:ca and TTL 52, so the device is behind a router and mac=null. UNCERTAIN: both hosts are in 10.1.1.0/24, which suggests the capture was re-addressed/NATed; the identity values themselves are unambiguous.",
+ "truth_uncertain": true,
+ "decoder": {
+  "frames": 11,
+  "linktypes": [
+   1
+  ],
+  "tcp_gaps": 0,
+  "ip_fragments": 0,
+  "multi_ip_macs": {}
+ }
+}

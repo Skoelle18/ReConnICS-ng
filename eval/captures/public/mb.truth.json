@@ -1,0 +1,1404 @@
+{
+ "scenario": "mb",
+ "description": "Real public capture mb.pcap (55800 frames); truth from independent stdlib decoder D:/reconics/work/public-truth/decode.py",
+ "source": "see eval/captures/public/SOURCES.md",
+ "files": [
+  "mb.pcap"
+ ],
+ "device_count": 65,
+ "required_count": 44,
+ "identifiable_count": 0,
+ "devices": [
+  {
+   "id": "141.81.0.9",
+   "ip": "141.81.0.9",
+   "mac": "00:50:56:94:71:5e",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "seen": {
+    "first_frame": 14307,
+    "sent_unicast": 9,
+    "ttl": {
+     "64": 9
+    }
+   }
+  },
+  {
+   "id": "141.81.0.10",
+   "ip": "141.81.0.10",
+   "mac": "78:e7:d1:e0:02:5e",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "enip",
+    "modbus",
+    "s7comm"
+   ],
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 26902,
+    "ttl": {
+     "128": 26902
+    }
+   }
+  },
+  {
+   "id": "141.81.0.11",
+   "ip": "141.81.0.11",
+   "mac": "d4:85:64:6c:28:f0",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 1417,
+    "ttl": {
+     "128": 1417
+    }
+   }
+  },
+  {
+   "id": "141.81.0.14",
+   "ip": "141.81.0.14",
+   "mac": "00:0e:8c:ed:0e:54",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "s7comm"
+   ],
+   "seen": {
+    "first_frame": 355,
+    "sent_unicast": 286,
+    "ttl": {
+     "30": 286
+    }
+   }
+  },
+  {
+   "id": "141.81.0.23",
+   "ip": "141.81.0.23",
+   "mac": "00:00:bc:5f:49:51",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "enip"
+   ],
+   "seen": {
+    "first_frame": 87,
+    "sent_unicast": 1539,
+    "ttl": {
+     "64": 1539
+    }
+   }
+  },
+  {
+   "id": "141.81.0.24",
+   "ip": "141.81.0.24",
+   "mac": "00:03:1d:08:5b:00",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "modbus"
+   ],
+   "seen": {
+    "first_frame": 49,
+    "sent_unicast": 588,
+    "ttl": {
+     "128": 625
+    }
+   }
+  },
+  {
+   "id": "141.81.0.26",
+   "ip": "141.81.0.26",
+   "mac": "00:04:17:02:23:88",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "modbus"
+   ],
+   "seen": {
+    "first_frame": 79,
+    "sent_unicast": 530,
+    "ttl": {
+     "64": 530
+    }
+   }
+  },
+  {
+   "id": "141.81.0.31",
+   "ip": "141.81.0.31",
+   "mac": "00:0e:8c:f7:ad:97",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "s7comm"
+   ],
+   "seen": {
+    "first_frame": 440,
+    "sent_unicast": 514,
+    "ttl": {
+     "30": 514
+    }
+   }
+  },
+  {
+   "id": "141.81.0.41",
+   "ip": "141.81.0.41",
+   "mac": "00:06:77:05:c2:3a",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 12096,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "only a destination (1 frames, first 12096)"
+  },
+  {
+   "id": "141.81.0.42",
+   "ip": "141.81.0.42",
+   "mac": "00:06:77:05:c0:ad",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "seen": {
+    "first_frame": 155,
+    "sent_unicast": 7,
+    "ttl": {
+     "64": 7
+    }
+   }
+  },
+  {
+   "id": "141.81.0.43",
+   "ip": "141.81.0.43",
+   "mac": "00:00:bc:5f:48:fa",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "enip"
+   ],
+   "seen": {
+    "first_frame": 78,
+    "sent_unicast": 1496,
+    "ttl": {
+     "64": 1496
+    }
+   }
+  },
+  {
+   "id": "141.81.0.44",
+   "ip": "141.81.0.44",
+   "mac": "00:03:1d:08:4f:e4",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "modbus"
+   ],
+   "seen": {
+    "first_frame": 52,
+    "sent_unicast": 527,
+    "ttl": {
+     "128": 557
+    }
+   }
+  },
+  {
+   "id": "141.81.0.46",
+   "ip": "141.81.0.46",
+   "mac": "00:04:17:02:31:3b",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "modbus"
+   ],
+   "seen": {
+    "first_frame": 124,
+    "sent_unicast": 441,
+    "ttl": {
+     "64": 441
+    }
+   }
+  },
+  {
+   "id": "141.81.0.47",
+   "ip": "141.81.0.47",
+   "mac": "00:06:77:05:cc:fe",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "seen": {
+    "first_frame": 36517,
+    "sent_unicast": 9,
+    "ttl": {
+     "64": 9
+    }
+   }
+  },
+  {
+   "id": "141.81.0.49",
+   "ip": "141.81.0.49",
+   "mac": "00:07:d2:01:06:58",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "seen": {
+    "first_frame": 40628,
+    "sent_unicast": 12,
+    "ttl": {
+     "63": 10,
+     "64": 2
+    }
+   }
+  },
+  {
+   "id": "141.81.0.50",
+   "ip": "141.81.0.50",
+   "mac": "00:06:77:15:72:9e",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "seen": {
+    "first_frame": 40378,
+    "sent_unicast": 9,
+    "ttl": {
+     "64": 9
+    }
+   }
+  },
+  {
+   "id": "141.81.0.51",
+   "ip": "141.81.0.51",
+   "mac": "00:0e:8c:f7:ac:da",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "s7comm"
+   ],
+   "seen": {
+    "first_frame": 128,
+    "sent_unicast": 524,
+    "ttl": {
+     "30": 524
+    }
+   }
+  },
+  {
+   "id": "141.81.0.63",
+   "ip": "141.81.0.63",
+   "mac": "00:00:bc:c7:ce:56",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "enip"
+   ],
+   "seen": {
+    "first_frame": 9,
+    "sent_unicast": 1499,
+    "ttl": {
+     "64": 1499
+    }
+   }
+  },
+  {
+   "id": "141.81.0.64",
+   "ip": "141.81.0.64",
+   "mac": "00:03:1d:0a:01:cb",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "modbus"
+   ],
+   "seen": {
+    "first_frame": 187,
+    "sent_unicast": 553,
+    "ttl": {
+     "128": 553
+    }
+   }
+  },
+  {
+   "id": "141.81.0.66",
+   "ip": "141.81.0.66",
+   "mac": "00:04:17:02:36:35",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "modbus"
+   ],
+   "seen": {
+    "first_frame": 119,
+    "sent_unicast": 832,
+    "ttl": {
+     "64": 832
+    }
+   }
+  },
+  {
+   "id": "141.81.0.71",
+   "ip": "141.81.0.71",
+   "mac": "00:0e:8c:f9:f5:0c",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "s7comm"
+   ],
+   "seen": {
+    "first_frame": 448,
+    "sent_unicast": 460,
+    "ttl": {
+     "30": 460
+    }
+   }
+  },
+  {
+   "id": "141.81.0.83",
+   "ip": "141.81.0.83",
+   "mac": "00:00:bc:d1:60:da",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "enip"
+   ],
+   "seen": {
+    "first_frame": 3,
+    "sent_unicast": 1440,
+    "ttl": {
+     "64": 1440
+    }
+   }
+  },
+  {
+   "id": "141.81.0.84",
+   "ip": "141.81.0.84",
+   "mac": "00:03:1d:0b:15:c2",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "modbus"
+   ],
+   "seen": {
+    "first_frame": 227,
+    "sent_unicast": 576,
+    "ttl": {
+     "128": 576
+    }
+   }
+  },
+  {
+   "id": "141.81.0.86",
+   "ip": "141.81.0.86",
+   "mac": "00:04:17:02:58:b7",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "modbus"
+   ],
+   "seen": {
+    "first_frame": 4,
+    "sent_unicast": 817,
+    "ttl": {
+     "64": 817
+    }
+   }
+  },
+  {
+   "id": "141.81.0.91",
+   "ip": "141.81.0.91",
+   "mac": "00:1b:1b:1c:cd:47",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "s7comm"
+   ],
+   "seen": {
+    "first_frame": 449,
+    "sent_unicast": 506,
+    "ttl": {
+     "30": 506
+    }
+   }
+  },
+  {
+   "id": "141.81.0.104",
+   "ip": "141.81.0.104",
+   "mac": "00:03:1d:0b:97:97",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "modbus"
+   ],
+   "seen": {
+    "first_frame": 53,
+    "sent_unicast": 540,
+    "ttl": {
+     "128": 540
+    }
+   }
+  },
+  {
+   "id": "141.81.0.111",
+   "ip": "141.81.0.111",
+   "mac": "00:0e:8c:fc:d7:f5",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "s7comm"
+   ],
+   "seen": {
+    "first_frame": 356,
+    "sent_unicast": 1410,
+    "ttl": {
+     "30": 1410
+    }
+   }
+  },
+  {
+   "id": "141.81.0.119",
+   "ip": "141.81.0.119",
+   "mac": "00:1b:1b:33:28:7e",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 32076,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 32076)"
+  },
+  {
+   "id": "141.81.0.120",
+   "ip": "141.81.0.120",
+   "mac": "00:1b:1b:33:2b:3f",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 11386,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 11386)"
+  },
+  {
+   "id": "141.81.0.121",
+   "ip": "141.81.0.121",
+   "mac": "00:1b:1b:33:2e:87",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 22040,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 22040)"
+  },
+  {
+   "id": "141.81.0.122",
+   "ip": "141.81.0.122",
+   "mac": "00:1b:1b:02:e6:78",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 19480,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 19480)"
+  },
+  {
+   "id": "141.81.0.130",
+   "ip": "141.81.0.130",
+   "mac": "00:0e:8c:fc:d7:f9",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "s7comm"
+   ],
+   "seen": {
+    "first_frame": 74,
+    "sent_unicast": 1088,
+    "ttl": {
+     "30": 1088
+    }
+   }
+  },
+  {
+   "id": "141.81.0.135",
+   "ip": "141.81.0.135",
+   "mac": "00:1c:06:08:85:cd",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 23252,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 23252)"
+  },
+  {
+   "id": "141.81.0.143",
+   "ip": "141.81.0.143",
+   "mac": "00:04:17:02:3c:7f",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "modbus"
+   ],
+   "seen": {
+    "first_frame": 280,
+    "sent_unicast": 615,
+    "ttl": {
+     "64": 615
+    }
+   }
+  },
+  {
+   "id": "141.81.0.144",
+   "ip": "141.81.0.144",
+   "mac": "00:03:1d:0a:dc:18",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "modbus"
+   ],
+   "seen": {
+    "first_frame": 54,
+    "sent_unicast": 413,
+    "ttl": {
+     "128": 413
+    }
+   }
+  },
+  {
+   "id": "141.81.0.146",
+   "ip": "141.81.0.146",
+   "mac": "00:1b:1b:35:84:10",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "s7comm"
+   ],
+   "seen": {
+    "first_frame": 234,
+    "sent_unicast": 2448,
+    "ttl": {
+     "30": 2448
+    }
+   }
+  },
+  {
+   "id": "141.81.0.151",
+   "ip": "141.81.0.151",
+   "mac": "00:1b:1b:1b:a4:97",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "s7comm"
+   ],
+   "seen": {
+    "first_frame": 431,
+    "sent_unicast": 964,
+    "ttl": {
+     "30": 964
+    }
+   }
+  },
+  {
+   "id": "141.81.0.163",
+   "ip": "141.81.0.163",
+   "mac": "00:04:17:02:3d:1b",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "modbus"
+   ],
+   "seen": {
+    "first_frame": 357,
+    "sent_unicast": 695,
+    "ttl": {
+     "64": 695
+    }
+   }
+  },
+  {
+   "id": "141.81.0.164",
+   "ip": "141.81.0.164",
+   "mac": "00:03:1d:0a:dc:14",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "modbus"
+   ],
+   "seen": {
+    "first_frame": 55,
+    "sent_unicast": 415,
+    "ttl": {
+     "128": 415
+    }
+   }
+  },
+  {
+   "id": "141.81.0.166",
+   "ip": "141.81.0.166",
+   "mac": "00:1b:1b:35:84:07",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "s7comm"
+   ],
+   "seen": {
+    "first_frame": 116,
+    "sent_unicast": 2325,
+    "ttl": {
+     "30": 2325
+    }
+   }
+  },
+  {
+   "id": "141.81.0.181",
+   "ip": "141.81.0.181",
+   "mac": "00:13:95:07:81:96",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "seen": {
+    "first_frame": 89,
+    "sent_unicast": 176,
+    "ttl": {
+     "128": 176
+    }
+   }
+  },
+  {
+   "id": "141.81.0.182",
+   "ip": "141.81.0.182",
+   "mac": "00:13:95:07:81:a1",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "seen": {
+    "first_frame": 91,
+    "sent_unicast": 214,
+    "ttl": {
+     "128": 210,
+     "32": 4
+    }
+   }
+  },
+  {
+   "id": "141.81.0.183",
+   "ip": "141.81.0.183",
+   "mac": "00:13:95:08:cf:58",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "seen": {
+    "first_frame": 94,
+    "sent_unicast": 174,
+    "ttl": {
+     "128": 174
+    }
+   }
+  },
+  {
+   "id": "141.81.0.184",
+   "ip": "141.81.0.184",
+   "mac": "00:13:95:08:cd:d2",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "seen": {
+    "first_frame": 95,
+    "sent_unicast": 249,
+    "ttl": {
+     "128": 250
+    }
+   }
+  },
+  {
+   "id": "141.81.0.187",
+   "ip": "141.81.0.187",
+   "mac": "e0:69:95:33:62:51",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "seen": {
+    "first_frame": 88,
+    "sent_unicast": 106,
+    "ttl": {
+     "128": 106
+    }
+   }
+  },
+  {
+   "id": "141.81.0.188",
+   "ip": "141.81.0.188",
+   "mac": "2c:41:38:ad:ec:35",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "seen": {
+    "first_frame": 93,
+    "sent_unicast": 103,
+    "ttl": {
+     "128": 106
+    }
+   }
+  },
+  {
+   "id": "141.81.0.190",
+   "ip": "141.81.0.190",
+   "mac": "00:1b:1b:02:e6:1e",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 28272,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 28272)"
+  },
+  {
+   "id": "141.81.0.191",
+   "ip": "141.81.0.191",
+   "mac": "00:1b:1b:02:e6:d2",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 16841,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 16841)"
+  },
+  {
+   "id": "141.81.0.192",
+   "ip": "141.81.0.192",
+   "mac": "00:1b:1b:02:9a:c3",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 27126,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 27126)"
+  },
+  {
+   "id": "141.81.0.193",
+   "ip": "141.81.0.193",
+   "mac": "00:1b:1b:02:e6:0f",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 38869,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 38869)"
+  },
+  {
+   "id": "141.81.0.194",
+   "ip": "141.81.0.194",
+   "mac": "00:1b:1b:47:51:84",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 12860,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 12860)"
+  },
+  {
+   "id": "141.81.0.195",
+   "ip": "141.81.0.195",
+   "mac": "00:1b:1b:47:51:6b",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 13809,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 13809)"
+  },
+  {
+   "id": "141.81.0.236",
+   "ip": "141.81.0.236",
+   "mac": "00:0e:8c:f8:27:48",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "s7comm"
+   ],
+   "seen": {
+    "first_frame": 77,
+    "sent_unicast": 414,
+    "ttl": {
+     "30": 414
+    }
+   }
+  },
+  {
+   "id": "141.81.0.237",
+   "ip": "141.81.0.237",
+   "mac": "00:0e:8c:fc:d9:a0",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "s7comm"
+   ],
+   "seen": {
+    "first_frame": 32,
+    "sent_unicast": 1051,
+    "ttl": {
+     "30": 1051
+    }
+   }
+  },
+  {
+   "id": "141.81.0.254",
+   "ip": "141.81.0.254",
+   "mac": "00:90:7f:41:fe:c0",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": "router",
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 11772,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1, 2], first frame 11772)"
+  },
+  {
+   "id": "142.81.0.10",
+   "ip": "142.81.0.10",
+   "mac": "78:e7:d1:e0:02:60",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "seen": {
+    "first_frame": 2222,
+    "sent_unicast": 3,
+    "ttl": {
+     "128": 3
+    }
+   }
+  },
+  {
+   "id": "142.81.0.20",
+   "ip": "142.81.0.20",
+   "mac": "b4:99:ba:b8:f9:da",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 39481,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 39481)"
+  },
+  {
+   "id": "142.81.0.26",
+   "ip": "142.81.0.26",
+   "mac": "00:e0:4b:2e:04:5b",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 35985,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "only a destination (1 frames, first 35985)"
+  },
+  {
+   "id": "142.81.0.36",
+   "ip": "142.81.0.36",
+   "mac": "00:e0:4b:34:e3:7c",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 28516,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "only a destination (1 frames, first 28516)"
+  },
+  {
+   "id": "142.81.0.76",
+   "ip": "142.81.0.76",
+   "mac": "00:e0:4b:36:a8:1d",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 28703,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "only a destination (1 frames, first 28703)"
+  },
+  {
+   "id": "142.81.0.180",
+   "ip": "142.81.0.180",
+   "mac": "9c:8e:99:c9:20:f9",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 53097,
+    "sent_unicast": 0,
+    "ttl": {
+     "1": 34,
+     "128": 4
+    }
+   },
+   "notes": "ARP only (ops [1], first frame 53969); only broadcast/multicast sender (38 frames)"
+  },
+  {
+   "id": "142.81.0.190",
+   "ip": "142.81.0.190",
+   "mac": "00:1b:1b:02:e5:2e",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 14469,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 14469)"
+  },
+  {
+   "id": "142.81.0.191",
+   "ip": "142.81.0.191",
+   "mac": "00:1b:1b:02:e6:5a",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 12399,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 12399)"
+  },
+  {
+   "id": "142.81.0.192",
+   "ip": "142.81.0.192",
+   "mac": "00:1b:1b:32:da:4a",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 16387,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 16387)"
+  },
+  {
+   "id": "192.168.113.4",
+   "ip": "192.168.113.4",
+   "mac": null,
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "seen": {
+    "first_frame": 30,
+    "sent_unicast": 549,
+    "ttl": {
+     "127": 549
+    }
+   },
+   "notes": "routed: frames carry router/gateway MAC 00:90:7f:41:fe:c0"
+  }
+ ],
+ "not_devices": [
+  {
+   "kind": "mac_not_assignable",
+   "mac": "00:90:7f:41:fe:c0",
+   "reason": "router MAC (fronts 1 IPs); may belong to 141.81.0.254 only"
+  }
+ ],
+ "expect": {
+  "note": "model = SZL 0x0011 idx1 MlfB / CIP product name; firmware = SZL 0x0011 idx7 (V+3 bytes) / CIP revision major.minor(3 digits); serial = SZL 0x001C idx5 / CIP serial (hex, 8 digits); hostname = SZL 0x001C idx2 module name (alias idx1 AS name)",
+  "router_mac": "00:90:7f:41:fe:c0",
+  "router_mac_owner": "141.81.0.254"
+ },
+ "notes": "Flat 141.81.0.0/24 + 142.81.0.0/24 segment. 192.168.113.4 (TTL 127) arrives with MAC 00:90:7f:41:fe:c0, which ARP binds to 141.81.0.254 (WatchGuard OUI) -> routed, mac=null. 142.81.0.10 (78:e7:d1:e0:02:60) is a second NIC of the 141.81.0.10 HMI/SCADA box (78:e7:d1:e0:02:5e) but is a separate IP/MAC pair. No identity replies: Modbus FC 1/2/4/15/16 only, S7 job/ack-data (no SZL), CIP connected class 0x02 Multiple_Service and class 0xAC Get_Attributes_All (not the Identity object). ARP-only / receive-only hosts optional.",
+ "truth_uncertain": false,
+ "decoder": {
+  "frames": 55800,
+  "linktypes": [
+   1
+  ],
+  "tcp_gaps": 0,
+  "ip_fragments": 0,
+  "multi_ip_macs": {}
+ }
+}

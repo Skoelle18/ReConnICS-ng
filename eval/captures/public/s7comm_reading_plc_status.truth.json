@@ -1,0 +1,88 @@
+{
+ "scenario": "s7comm_reading_plc_status",
+ "description": "Real public capture s7comm_reading_plc_status.pcap (240 frames); truth from independent stdlib decoder D:/reconics/work/public-truth/decode.py",
+ "source": "see eval/captures/public/SOURCES.md",
+ "files": [
+  "s7comm_reading_plc_status.pcap"
+ ],
+ "device_count": 2,
+ "required_count": 2,
+ "identifiable_count": 1,
+ "devices": [
+  {
+   "id": "192.168.1.10",
+   "ip": "192.168.1.10",
+   "mac": "90:e6:ba:84:5e:41",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "s7comm"
+   ],
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 148,
+    "ttl": {
+     "128": 148
+    }
+   }
+  },
+  {
+   "id": "192.168.1.40",
+   "ip": "192.168.1.40",
+   "mac": "00:1b:1b:23:eb:3b",
+   "vendor": "Siemens",
+   "model": "6ES7 151-8AB01-0AB0",
+   "firmware": "V3.2.6",
+   "serial": "S C-C6TW74882012",
+   "role": "plc",
+   "hostname": "IM151-8 PN/DP CPU",
+   "identifiable": true,
+   "protocols": [
+    "s7comm"
+   ],
+   "vendor_aliases": [
+    "Siemens AG"
+   ],
+   "hostname_aliases": [
+    "IM151-8-CPU"
+   ],
+   "model_aliases": [
+    "IM151-8 PN/DP CPU"
+   ],
+   "evidence": {
+    "model": "SZL 0x0111 idx 1 MlfB, frame 39",
+    "firmware": "SZL 0x0011 idx 7 Ausbg/Ausbe raw 00c056030206, frame 59",
+    "serial": "SZL 0x001C idx 5, frame 72",
+    "hostname": "SZL 0x001C idx 2 (module name), frame 72",
+    "plant_id": "'' (SZL 0x001C idx 3, frame 72)"
+   },
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 90,
+    "ttl": {
+     "30": 90
+    }
+   }
+  }
+ ],
+ "not_devices": [],
+ "expect": {
+  "note": "model = SZL 0x0011 idx1 MlfB / CIP product name; firmware = SZL 0x0011 idx7 (V+3 bytes) / CIP revision major.minor(3 digits); serial = SZL 0x001C idx5 / CIP serial (hex, 8 digits); hostname = SZL 0x001C idx2 module name (alias idx1 AS name)"
+ },
+ "notes": "Full SZL read-out: 0x0111 idx1 (frame 39), 0x0011 (frame 59: idx1/6 MLFB, idx7 V3.2.6), 0x001C (two userdata fragments, frames 69 + 72; reassembled list completes in frame 72).",
+ "truth_uncertain": false,
+ "decoder": {
+  "frames": 240,
+  "linktypes": [
+   1
+  ],
+  "tcp_gaps": 0,
+  "ip_fragments": 0,
+  "multi_ip_macs": {}
+ }
+}
