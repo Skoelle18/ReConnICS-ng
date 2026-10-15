@@ -23,9 +23,18 @@ public final class CandidateDevice {
     private final List<String> mergeNotes = new ArrayList<>();
     private long firstFrame = Long.MAX_VALUE;
     private long lastFrame;
+    private String subaddr;
 
     public CandidateDevice(String captureScopedId) {
         this.captureScopedId = captureScopedId;
+    }
+
+    public Optional<String> subaddr() {
+        return Optional.ofNullable(subaddr);
+    }
+
+    void setSubaddr(String subaddr) {
+        this.subaddr = subaddr;
     }
 
     public String captureScopedId() {

@@ -29,7 +29,9 @@ public final class DeviceAggregator {
         }
         CandidateDevice device = matcher.match(obs);
         obs.ip().ifPresent(device::observeIp);
-        obs.mac().ifPresent(device::observeMac);
+        if (device.subaddr().isEmpty()) {
+            obs.mac().ifPresent(device::observeMac);
+        }
         device.observeProtocol(obs.protocol(), obs.detectionBasis(), obs.frameNumber());
         for (IdentityField f : obs.identityFields()) {
             device.addField(f);

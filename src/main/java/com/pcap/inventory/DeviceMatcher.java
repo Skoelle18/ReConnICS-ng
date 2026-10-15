@@ -20,6 +20,17 @@ public final class DeviceMatcher {
     private int seq;
 
     public CandidateDevice match(DeviceObservation obs) {
+        if (obs.subaddr().isPresent() && obs.ip().isPresent()) {
+            // Sub-device (gateway unit / backplane slot): keyed by IP + sub-address, never by MAC.
+            String id = obs.ip().get().value() + "/" + obs.subaddr().get();
+            CandidateDevice d = byKey.get("sub:" + id);
+            if (d == null) {
+                d = newDevice(id);
+                d.setSubaddr(obs.subaddr().get());
+                byKey.put("sub:" + id, d);
+            }
+            return d;
+        }
         Optional<MacAddress> mac = obs.mac().filter(m -> !m.isBroadcastOrMulticast());
         Optional<IpAddress> ip = obs.ip();
 

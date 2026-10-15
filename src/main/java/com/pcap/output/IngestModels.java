@@ -25,6 +25,8 @@ public final class IngestModels {
         public String id;
         public String ip;
         public String mac;
+        /** Sub-device behind {@code ip}: {@code u<unit>} (Modbus gateway) or {@code slot<n>} (CIP backplane). */
+        public String subaddr;
         public List<String> protocols;
         public Object vendor;
         public Object model;

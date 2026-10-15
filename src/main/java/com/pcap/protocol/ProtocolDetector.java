@@ -48,7 +48,7 @@ public final class ProtocolDetector {
             out.add(portOnly(packet, ProtocolType.MODBUS, packet.dstPort() == 502));
         }
 
-        Optional<ProtocolMessage> enipMsg = enip.tryParse(data, off, len, frame);
+        Optional<ProtocolMessage> enipMsg = enip.tryParse(data, off, len, frame, connectionKey(packet));
         if (enipMsg.isPresent()) {
             out.add(toObs(packet, enipMsg.get()));
         } else if (portEnip) {
@@ -71,7 +71,7 @@ public final class ProtocolDetector {
             modbus.tryParse(data, off, len, frame).ifPresent(m -> out.add(toObs(packet, m)));
         }
         if (!portEnip && enipMsg.isEmpty() && enip.looksLikeEnip(data, off, len)) {
-            enip.tryParse(data, off, len, frame).ifPresent(m -> out.add(toObs(packet, m)));
+            enip.tryParse(data, off, len, frame, connectionKey(packet)).ifPresent(m -> out.add(toObs(packet, m)));
         }
         if (!portS7 && s7Msg.isEmpty() && s7.looksLikeTpktS7(data, off, len)) {
             s7.tryParse(data, off, len, frame, flowKey(packet)).ifPresent(m -> out.add(toObs(packet, m)));
@@ -142,6 +142,13 @@ public final class ProtocolDetector {
         in.removeIf(o -> o.ip().map(ip -> !ip.isUnicastHost()).orElse(false)
                 || o.mac().map(m -> m.isBroadcastOrMulticast()).orElse(false));
         return in;
+    }
+
+    /** Direction-independent connection id (lower endpoint first). */
+    static String connectionKey(ParsedPacket p) {
+        String a = p.srcIp().map(Object::toString).orElse("?") + ":" + p.srcPort();
+        String b = p.dstIp().map(Object::toString).orElse("?") + ":" + p.dstPort();
+        return a.compareTo(b) <= 0 ? a + "|" + b : b + "|" + a;
     }
 
     static String flowKey(ParsedPacket p) {

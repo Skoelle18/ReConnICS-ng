@@ -95,6 +95,10 @@ public final class IngestJsonWriter {
         String mac = ra.device().primaryMac().orElse(null);
         a.ip = ip;
         a.mac = mac;
+        a.subaddr = ra.device().subaddr().orElse(null);
+        if (a.subaddr != null) {
+            a.mac = null;
+        }
         a.id = ra.device().captureScopedId();
         if (a.id == null || a.id.isBlank()) {
             a.id = ip != null ? ip : mac;
