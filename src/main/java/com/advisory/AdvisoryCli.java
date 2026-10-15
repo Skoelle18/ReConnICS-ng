@@ -84,8 +84,11 @@ public final class AdvisoryCli {
         if (!o.containsKey("index")) die("--index required");
         if (!o.containsKey("pubkey") && !o.containsKey("insecure-no-verify"))
             die("refusing an unverified index: pass --pubkey FILE, or --insecure-no-verify to accept it unsigned");
-        return AdvisoryIndex.load(Path.of(o.get("index")), o.containsKey("pubkey") ? Path.of(o.get("pubkey")) : null,
+        var idx = AdvisoryIndex.load(Path.of(o.get("index")), o.containsKey("pubkey") ? Path.of(o.get("pubkey")) : null,
                 o.containsKey("insecure-no-verify"));
+        String stale = AdvisoryIndex.staleness(idx.meta, java.time.Instant.now());
+        if (stale != null) System.err.println("WARNING: " + stale);
+        return idx;
     }
 
     private static void die(String msg) { System.err.println(msg); System.exit(2); }

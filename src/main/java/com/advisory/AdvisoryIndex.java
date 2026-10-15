@@ -138,6 +138,21 @@ final class AdvisoryIndex {
     /** Only real strings: a number or null inside "cves"/"kev" used to become "1.0" / "null". */
     private static List<String> strings(Object o) { return Json.arr(o).stream().filter(String.class::isInstance).map(String.class::cast).toList(); }
 
+    static final int STALE_DAYS = 30;
+
+    /**
+     * Fixed-text warning when meta.generated is older than STALE_DAYS (or unreadable / in the future), else null.
+     * New advisories published after the build are invisible to the matcher, so an old index under-reports.
+     */
+    static String staleness(Map<String, Object> meta, Instant now) {
+        if (!(meta.get("generated") instanceof String g)) return "advisory index has no build date; it may be out of date";
+        Instant t;
+        try { t = Instant.parse(g); } catch (java.time.format.DateTimeParseException e) { return "advisory index build date is unreadable; it may be out of date"; }
+        long days = java.time.Duration.between(t, now).toDays();
+        if (t.isAfter(now.plus(java.time.Duration.ofDays(1)))) return "advisory index build date is in the future; check the system clock";
+        return days > STALE_DAYS ? "advisory index is " + days + " days old (over " + STALE_DAYS + "); advisories published since then are not matched. Rebuild it." : null;
+    }
+
     static Map<String, Object> newMeta(String source, Object kevVersion, int advisories) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("schema", (double) SCHEMA);

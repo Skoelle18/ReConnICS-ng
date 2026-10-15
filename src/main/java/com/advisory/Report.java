@@ -40,6 +40,8 @@ final class Report {
         Map<String, Object> top = new LinkedHashMap<>();
         top.put("signature", verified ? "verified" : UNVERIFIED);
         top.put("index", indexMeta);
+        String stale = AdvisoryIndex.staleness(indexMeta, java.time.Instant.now());
+        if (stale != null) top.put("warning", stale);
         top.put("assets", assets);
         return top;
     }
@@ -81,6 +83,8 @@ final class Report {
                 .EXACT{background:#511}.PROBABLE{background:#530}.POSSIBLE{background:#440}.kev{color:#f66}}</style>
                 <h1>ReConICS Advisory Report</h1>
                 """);
+        String stale = AdvisoryIndex.staleness(indexMeta, java.time.Instant.now());
+        if (stale != null) b.append("<p class=kev>WARNING: ").append(esc(stale)).append("</p>\n");
         b.append("<p>Index generated ").append(esc(indexMeta.get("generated"))).append(", KEV catalog ")
                 .append(esc(indexMeta.get("kevCatalogVersion"))).append(", ").append(r.size()).append(" assets.</p>\n");
         if (!verified) b.append("<p class=kev>WARNING: ").append(esc(UNVERIFIED)).append("</p>\n");
