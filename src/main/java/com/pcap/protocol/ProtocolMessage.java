@@ -93,8 +93,9 @@ public final class ProtocolMessage {
         // The observed device is the responder side in both directions (request target / reply sender).
         String role = "server";
         if (subaddr != null) {
-            // A sub-device is reached through the responding IP; it has no MAC of its own.
-            return new DeviceObservation(frame, deviceIp, null, protocol, basis, role, fields, detail, subaddr);
+            // A sub-device is reached through the responding IP. The carrier MAC is passed along so the
+            // matcher can fold a lone unit back into its IP; it is never emitted on a sub-device asset.
+            return new DeviceObservation(frame, deviceIp, deviceMac, protocol, basis, role, fields, detail, subaddr);
         }
         return new DeviceObservation(frame, deviceIp, deviceMac, protocol, basis, role, fields, detail);
     }

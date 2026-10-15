@@ -171,6 +171,21 @@ public final class CandidateDevice {
         return lastFrame;
     }
 
+    /** Merges another candidate's evidence into this one (IPs, protocols, frames, fields, roles); MACs are not copied. */
+    void absorb(CandidateDevice o) {
+        ips.addAll(o.ips);
+        protocols.addAll(o.protocols);
+        detectionBases.addAll(o.detectionBases);
+        firstFrame = Math.min(firstFrame, o.firstFrame);
+        lastFrame = Math.max(lastFrame, o.lastFrame);
+        fields.addAll(o.fields);
+        roles.addAll(o.roles);
+        o.macLastFrame.forEach((m, f) -> {
+            macs.add(m);
+            macLastFrame.merge(m, f, Math::max);
+        });
+    }
+
     public boolean hasDecodedIdentity() {
         return fields.stream().anyMatch(f -> f.confidence() == Confidence.HIGH
                 || f.kind() == IdentityField.Kind.VENDOR

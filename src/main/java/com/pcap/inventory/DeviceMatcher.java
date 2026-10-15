@@ -74,6 +74,7 @@ public final class DeviceMatcher {
             return;
         }
         finalized = true;
+        collapseLoneModbusUnits();
         Map<String, Set<String>> macToIps = new LinkedHashMap<>();
         for (CandidateDevice d : candidates()) {
             if (d.primaryIp().isEmpty() || d.subaddr().isPresent()) {
@@ -111,6 +112,35 @@ public final class DeviceMatcher {
                 d.addMergeNote("IP seen with several MACs " + hostMacs + "; most recent " + hostMacs.get(0)
                         + " kept (possible IP reuse or spoofing)");
             }
+        }
+    }
+
+    /**
+     * A Modbus/TCP device addressed with unit 1..247 is only a gateway sub-device when the IP also has its own
+     * identity or answers for several units. A lone unit (common: PLCs addressed as unit 1) is folded back into
+     * the IP's own asset with a note.
+     */
+    private void collapseLoneModbusUnits() {
+        Map<String, List<String>> unitsByIp = new LinkedHashMap<>();
+        for (Map.Entry<String, CandidateDevice> e : byKey.entrySet()) {
+            CandidateDevice d = e.getValue();
+            if (d.subaddr().filter(s -> s.startsWith("u")).isPresent() && d.primaryIp().isPresent()) {
+                unitsByIp.computeIfAbsent(d.primaryIp().get(), k -> new ArrayList<>()).add(e.getKey());
+            }
+        }
+        for (Map.Entry<String, List<String>> e : unitsByIp.entrySet()) {
+            CandidateDevice host = byKey.get("ip:" + e.getKey());
+            if (e.getValue().size() != 1 || (host != null && host.hasDecodedIdentity())) {
+                continue;
+            }
+            CandidateDevice unit = byKey.remove(e.getValue().get(0));
+            if (host == null) {
+                host = new CandidateDevice(e.getKey());
+                byKey.put("ip:" + e.getKey(), host);
+            }
+            host.absorb(unit);
+            host.addMergeNote("Modbus unit " + unit.subaddr().get().substring(1)
+                    + " is the only unit answering FC43; identity attributed to the device itself");
         }
     }
 

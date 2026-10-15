@@ -28,6 +28,20 @@ Authoritative ingest schema: [`ingest-api.md`](ingest-api.md).
 
 Missing fields are JSON `null` (omitted only when Jackson `NON_NULL` applies to nested optionals; top-level identity keys are present as null when unset in the writer’s DTO — consumers should treat null/absent equivalently).
 
+`hostname`, `serial` and `deviceType` use the same object form when decoded (S7 SZL 0x001C / CIP Identity).
+`deviceType` is `cip:0xNN` (CIP Identity device type) or `s7:<module type name>` (SZL 0x001C index 7); the
+inventory stage derives `role` from it.
+
+## Sub-devices
+
+`subaddr` is a top-level string on assets that sit behind the responding IP and have no MAC of their own:
+
+- `u<unit>`: Modbus/TCP gateway unit 1..247 that answered FC43 (units 0 and 255 are the device itself; a lone
+  unit with no gateway identity is folded into the IP's own asset with a `mergeNotes` entry)
+- `slot<n>`: CIP module reached by Unconnected_Send through a backplane port (link address = slot)
+
+Such assets have `id` `<ip>/<subaddr>`, `ip` = the gateway/adapter IP and `mac` = null.
+
 ## Confidence policy
 
 | Level | When used |
@@ -51,3 +65,5 @@ Evidence strings include protocol, message type, field/object id, frame number, 
 - `mergeNotes`
 - `identityConflicts`
 - `serialNumbers` (EtherNet/IP)
+- `role` (`server` if the device ever answered on an ICS port, else `client`) and `roles` when both
+- `source.tcpReassembly` (document level): reassembly counters, including flows dropped by the caps

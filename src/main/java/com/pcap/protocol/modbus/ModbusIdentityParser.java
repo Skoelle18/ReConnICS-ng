@@ -165,13 +165,16 @@ public final class ModbusIdentityParser {
             fields.add(new IdentityField(kind, value, ProtocolType.MODBUS, ev, Confidence.HIGH));
         }
 
+        // Unit 0 and 255 address the TCP device itself; 1..247 behind a gateway is a serial-side sub-device.
+        String subaddr = !fields.isEmpty() && unit >= 1 && unit <= 247 ? "u" + unit : null;
         return Optional.of(new ProtocolMessage(
                 ProtocolType.MODBUS,
                 fields.isEmpty() ? DetectionBasis.HEADER_VALIDATED : DetectionBasis.MESSAGE_DECODED,
                 true,
                 fields,
-                "Modbus FC43/14 response objects=" + objectCount + " code=" + readDeviceIdCode,
-                true));
+                "Modbus FC43/14 response objects=" + objectCount + " code=" + readDeviceIdCode + " unit=" + unit,
+                true,
+                subaddr));
     }
 
     private static boolean isLikelyRequest(int fc, boolean exception, ByteReader pduAfterFc) {
