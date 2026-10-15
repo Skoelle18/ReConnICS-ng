@@ -82,7 +82,7 @@ echoed back. **Prefer the object form.** The proposal requires every filled fiel
 | Level | Condition |
 |---|---|
 | `EXACT` | Vendor, model, and firmware all match. The firmware falls inside the advisory's affected version or `vers:` range. |
-| `PROBABLE` | Vendor and model match, but the firmware is unknown or the advisory lists no parseable version. |
+| `PROBABLE` | Vendor and model match, but the firmware is unknown or the advisory lists no parseable version; or the advisory names only the product line the model belongs to (`ControlLogix` for a 1756-L61). |
 | `POSSIBLE` | Only the vendor is known. The asset has no model, and every advisory for that vendor is returned. |
 | `NONE` | No vendor, a known model that appears in no advisory, or a firmware version outside every affected range. |
 
