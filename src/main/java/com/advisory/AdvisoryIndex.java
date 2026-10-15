@@ -120,7 +120,7 @@ final class AdvisoryIndex {
     static AdvisoryIndex parse(String text) {
         var m = new LinkedHashMap<>(Json.obj(Json.parse(text)));
         if (!(m.get("schema") instanceof Double d) || d.intValue() != SCHEMA)
-            throw new IllegalArgumentException("unsupported index schema " + m.get("schema"));
+            throw new IllegalArgumentException("unsupported index schema");
         List<Row> rows = new ArrayList<>();
         for (Object o : Json.arr(m.remove("rows"))) {
             var r = Json.obj(o);
@@ -188,8 +188,8 @@ final class AdvisoryIndex {
             s.update(bytes);
             byte[] sig;
             try { sig = Base64.getDecoder().decode(new String(readCapped(sigPath(index), MAX_SMALL_BYTES), StandardCharsets.US_ASCII).strip()); }
-            catch (IOException e) { throw new SecurityException("missing signature " + sigPath(index)); }
-            if (!s.verify(sig)) throw new SecurityException("index signature INVALID: " + index);
+            catch (IOException | IllegalArgumentException e) { throw new SecurityException("advisory index signature missing or unreadable"); }
+            if (!s.verify(sig)) throw new SecurityException("advisory index signature INVALID");
         } else {
             System.err.println("WARNING: --insecure-no-verify: index signature NOT verified; an altered index can hide vulnerable devices");
         }
