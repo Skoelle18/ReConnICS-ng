@@ -55,7 +55,7 @@ class PcapReaderTest {
     }
 
     @Test
-    void rejectsPcapng() throws Exception {
+    void rejectsMalformedPcapngSectionHeader() throws Exception {
         byte[] ng = new byte[24];
         ng[0] = 0x0A;
         ng[1] = 0x0D;

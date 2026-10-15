@@ -45,6 +45,53 @@ public final class PcapTestSupport {
         return out.toByteArray();
     }
 
+    /** One PCAPNG block: type, total length, body (padded to 4), total length. */
+    public static byte[] ngBlock(boolean le, int type, byte[] body) {
+        int pad = (4 - body.length % 4) % 4;
+        int len = 12 + body.length + pad;
+        ByteBuffer bb = ByteBuffer.allocate(len).order(le ? ByteOrder.LITTLE_ENDIAN : ByteOrder.BIG_ENDIAN);
+        bb.putInt(type).putInt(len).put(body).put(new byte[pad]).putInt(len);
+        return bb.array();
+    }
+
+    public static byte[] ngShb(boolean le) {
+        ByteBuffer bb = ByteBuffer.allocate(16).order(le ? ByteOrder.LITTLE_ENDIAN : ByteOrder.BIG_ENDIAN);
+        bb.putInt(0x1A2B3C4D).putShort((short) 1).putShort((short) 0).putLong(-1L);
+        return ngBlock(le, 0x0A0D0D0A, bb.array());
+    }
+
+    /** IDB with optional if_tsresol (pass -1 to omit). */
+    public static byte[] ngIdb(boolean le, int linkType, int tsresol) {
+        ByteBuffer bb = ByteBuffer.allocate(tsresol >= 0 ? 8 + 8 + 4 : 8)
+                .order(le ? ByteOrder.LITTLE_ENDIAN : ByteOrder.BIG_ENDIAN);
+        bb.putShort((short) linkType).putShort((short) 0).putInt(65535);
+        if (tsresol >= 0) {
+            bb.putShort((short) 9).putShort((short) 1).put((byte) tsresol).put(new byte[3]);
+            bb.putShort((short) 0).putShort((short) 0);
+        }
+        return ngBlock(le, 1, bb.array());
+    }
+
+    public static byte[] ngEpb(boolean le, int ifId, long ts, byte[] frame) {
+        ByteBuffer bb = ByteBuffer.allocate(20 + frame.length).order(le ? ByteOrder.LITTLE_ENDIAN : ByteOrder.BIG_ENDIAN);
+        bb.putInt(ifId).putInt((int) (ts >>> 32)).putInt((int) ts).putInt(frame.length).putInt(frame.length).put(frame);
+        return ngBlock(le, 6, bb.array());
+    }
+
+    public static byte[] ngSpb(boolean le, byte[] frame) {
+        ByteBuffer bb = ByteBuffer.allocate(4 + frame.length).order(le ? ByteOrder.LITTLE_ENDIAN : ByteOrder.BIG_ENDIAN);
+        bb.putInt(frame.length).put(frame);
+        return ngBlock(le, 3, bb.array());
+    }
+
+    public static byte[] concat(byte[]... parts) {
+        ByteArrayOutputStream o = new ByteArrayOutputStream();
+        for (byte[] p : parts) {
+            o.writeBytes(p);
+        }
+        return o.toByteArray();
+    }
+
     public static Path writeTempPcap(String name, byte[] pcap) throws IOException {
         Path dir = Files.createTempDirectory("reconnics-test");
         Path file = dir.resolve(name);
