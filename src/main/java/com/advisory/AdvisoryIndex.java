@@ -21,6 +21,8 @@ final class AdvisoryIndex {
 
     final Map<String, Object> meta;
     final List<Row> rows;
+    /** True only when load() verified the signature; match/serve reports mark an unverified index. */
+    boolean verified;
 
     AdvisoryIndex(Map<String, Object> meta, List<Row> rows) { this.meta = meta; this.rows = rows; }
 
@@ -152,7 +154,22 @@ final class AdvisoryIndex {
         Files.writeString(sigPath(index), Base64.getEncoder().encodeToString(s.sign()));
     }
 
-    static AdvisoryIndex load(Path index, Path publicKey) throws Exception {
+    /** Fails closed: an index without a verified signature is refused. */
+    static AdvisoryIndex load(Path index, Path publicKey) throws Exception { return load(index, publicKey, false); }
+
+    /**
+     * Loads the index. With a key, the signature must verify over the exact bytes that are parsed. Without a key the
+     * index is refused unless insecureNoVerify is set (CLI flag --insecure-no-verify), which only warns.
+     */
+    static AdvisoryIndex load(Path index, Path publicKey, boolean insecureNoVerify) throws Exception {
+        AdvisoryIndex idx = read(index, publicKey, insecureNoVerify);
+        idx.verified = publicKey != null;
+        return idx;
+    }
+
+    private static AdvisoryIndex read(Path index, Path publicKey, boolean insecureNoVerify) throws Exception {
+        if (publicKey == null && !insecureNoVerify)
+            throw new SecurityException("advisory index not verified: pass --pubkey, or --insecure-no-verify to accept an unsigned index");
         byte[] bytes = Files.readAllBytes(index);
         if (publicKey != null) {
             PublicKey k = KeyFactory.getInstance("Ed25519").generatePublic(new X509EncodedKeySpec(Files.readAllBytes(publicKey)));
@@ -164,7 +181,7 @@ final class AdvisoryIndex {
             catch (IOException e) { throw new SecurityException("missing signature " + sigPath(index)); }
             if (!s.verify(sig)) throw new SecurityException("index signature INVALID: " + index);
         } else {
-            System.err.println("WARNING: index loaded without --pubkey; signature not verified");
+            System.err.println("WARNING: --insecure-no-verify: index signature NOT verified; an altered index can hide vulnerable devices");
         }
         return parse(new String(bytes, StandardCharsets.UTF_8));
     }

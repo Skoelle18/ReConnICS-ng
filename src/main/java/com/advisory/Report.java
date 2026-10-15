@@ -11,7 +11,14 @@ final class Report {
         return out;
     }
 
-    static Object json(Map<Asset, List<AdvisoryMatcher.Match>> r, Map<String, Object> indexMeta) {
+    static final String UNVERIFIED = "advisory index UNVERIFIED (--insecure-no-verify): an altered index can hide vulnerable devices";
+
+    /** Without the verified flag the report is marked UNVERIFIED (fail-safe). */
+    static Object json(Map<Asset, List<AdvisoryMatcher.Match>> r, Map<String, Object> indexMeta) { return json(r, indexMeta, false); }
+
+    static String html(Map<Asset, List<AdvisoryMatcher.Match>> r, Map<String, Object> indexMeta) { return html(r, indexMeta, false); }
+
+    static Object json(Map<Asset, List<AdvisoryMatcher.Match>> r, Map<String, Object> indexMeta, boolean verified) {
         List<Object> assets = new ArrayList<>();
         r.forEach((a, ms) -> {
             Map<String, Object> o = new LinkedHashMap<>();
@@ -31,6 +38,7 @@ final class Report {
             assets.add(o);
         });
         Map<String, Object> top = new LinkedHashMap<>();
+        top.put("signature", verified ? "verified" : UNVERIFIED);
         top.put("index", indexMeta);
         top.put("assets", assets);
         return top;
@@ -54,7 +62,7 @@ final class Report {
         return s.matches(".*[\",\\n].*") ? '"' + s.replace("\"", "\"\"") + '"' : s;
     }
 
-    static String html(Map<Asset, List<AdvisoryMatcher.Match>> r, Map<String, Object> indexMeta) {
+    static String html(Map<Asset, List<AdvisoryMatcher.Match>> r, Map<String, Object> indexMeta, boolean verified) {
         StringBuilder b = new StringBuilder("""
                 <!doctype html><meta charset="utf-8"><title>ReConICS Advisory Report</title>
                 <style>body{font:14px system-ui,sans-serif;margin:16px;background:#fff;color:#111}
@@ -66,6 +74,7 @@ final class Report {
                 """);
         b.append("<p>Index generated ").append(esc(indexMeta.get("generated"))).append(", KEV catalog ")
                 .append(esc(indexMeta.get("kevCatalogVersion"))).append(", ").append(r.size()).append(" assets.</p>\n");
+        if (!verified) b.append("<p class=kev>WARNING: ").append(esc(UNVERIFIED)).append("</p>\n");
         b.append("<table><tr><th>Asset</th><th>Identity</th><th>Level</th><th>Advisory</th><th>Affected</th><th>CVEs</th><th>CVSS</th></tr>\n");
         r.forEach((a, ms) -> {
             String id = esc(a.id()) + (a.ip() != null && !a.ip().equals(a.id()) ? "<br>" + esc(a.ip()) : "");

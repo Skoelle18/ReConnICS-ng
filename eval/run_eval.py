@@ -71,7 +71,7 @@ def main():
             continue
         cmd = ["java", "-jar", a.jar, "inventory", "--in", str(obs), "--out", str(od)]
         if a.index:
-            cmd += ["--index", a.index] + (["--pubkey", a.pubkey] if a.pubkey else [])
+            cmd += ["--index", a.index] + (["--pubkey", a.pubkey] if a.pubkey else ["--insecure-no-verify"])
         rc, s2, err = run(cmd)
         row.update(inventory_exit=rc, inventory_s=s2)
         if rc != 0:

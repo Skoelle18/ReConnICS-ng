@@ -190,7 +190,7 @@ final class InventoryReport {
          .append(esc(inv.rejected.size())).append(" input items rejected.</p>\n");
         if (!inv.source.isEmpty()) b.append("<p class=\"dim\">Source: ").append(esc(inv.source)).append("</p>\n");
         if (!inv.matched) b.append("<div class=\"b warn\">Matcher not run: no advisory index given (--index). Match columns are empty.</div>\n");
-        else if (!inv.verified) b.append("<div class=\"b bad\">Advisory index UNVERIFIED (no --pubkey). An altered index can hide vulnerable devices.</div>\n");
+        else if (!inv.verified) b.append("<div class=\"b bad\">Advisory index UNVERIFIED (--insecure-no-verify). An altered index can hide vulnerable devices.</div>\n");
         else b.append("<p class=\"dim\">Advisory index signature verified. Index: ").append(esc(inv.indexMeta)).append("</p>\n");
         b.append("<details><summary>Fill rate per CISA attribute</summary><table><tr><th scope=\"col\">Attribute</th><th scope=\"col\">Filled</th><th scope=\"col\">How</th></tr>");
         @SuppressWarnings("unchecked") var fr = (Map<String, String>) s.get("fillRate");

@@ -18,9 +18,10 @@ public final class AdvisoryCli {
                           mirror CSAF OT advisories into --cache, build index (--offline: cache only)
 
             Offline side (air-gapped analyst laptop):
-              match --index FILE [--pubkey FILE] [--format json|csv|html] [--out FILE] ASSETS.json
-              serve --index FILE [--pubkey FILE] [--port 8088]     ingest API for the PCAP project
-              inventory --in OBSERVATIONS.json --out DIR [--oui oui.csv] [--index FILE [--pubkey FILE]]
+              match --index FILE (--pubkey FILE | --insecure-no-verify) [--format json|csv|html] [--out FILE] ASSETS.json
+              serve --index FILE (--pubkey FILE | --insecure-no-verify) [--port 8088]     ingest API for the PCAP project
+              inventory --in OBSERVATIONS.json --out DIR [--oui oui.csv] [--index FILE (--pubkey FILE | --insecure-no-verify)]
+              An index is refused unless its signature verifies (--pubkey); --insecure-no-verify accepts it unverified.
             """;
 
     public static final java.util.Set<String> COMMANDS = java.util.Set.of("keygen", "build-index", "match", "serve", "inventory");
@@ -33,6 +34,7 @@ public final class AdvisoryCli {
         for (int i = 1; i < argv.length; i++) {
             if (!argv[i].startsWith("--")) pos.add(argv[i]);
             else if (argv[i].equals("--offline")) o.put("offline", "1");
+            else if (argv[i].equals("--insecure-no-verify")) o.put("insecure-no-verify", "1");
             else if (i + 1 < argv.length) o.put(argv[i].substring(2), argv[++i]);
             else die("missing value for " + argv[i]);
         }
@@ -62,8 +64,8 @@ public final class AdvisoryCli {
                 var r = Report.run(new AdvisoryMatcher(idx), assets);
                 String text = switch (o.getOrDefault("format", "json")) {
                     case "csv" -> Report.csv(r);
-                    case "html" -> Report.html(r, idx.meta);
-                    case "json" -> Json.write(Report.json(r, idx.meta));
+                    case "html" -> Report.html(r, idx.meta, idx.verified);
+                    case "json" -> Json.write(Report.json(r, idx.meta, idx.verified));
                     default -> { die("unknown --format"); yield ""; }
                 };
                 if (o.containsKey("out")) Files.writeString(Path.of(o.get("out")), text);
@@ -80,7 +82,10 @@ public final class AdvisoryCli {
 
     private static AdvisoryIndex loadIndex(Map<String, String> o) throws Exception {
         if (!o.containsKey("index")) die("--index required");
-        return AdvisoryIndex.load(Path.of(o.get("index")), o.containsKey("pubkey") ? Path.of(o.get("pubkey")) : null);
+        if (!o.containsKey("pubkey") && !o.containsKey("insecure-no-verify"))
+            die("refusing an unverified index: pass --pubkey FILE, or --insecure-no-verify to accept it unsigned");
+        return AdvisoryIndex.load(Path.of(o.get("index")), o.containsKey("pubkey") ? Path.of(o.get("pubkey")) : null,
+                o.containsKey("insecure-no-verify"));
     }
 
     private static void die(String msg) { System.err.println(msg); System.exit(2); }

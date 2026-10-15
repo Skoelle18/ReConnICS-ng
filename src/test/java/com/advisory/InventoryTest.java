@@ -334,7 +334,7 @@ class InventoryTest {
                 "--pubkey", keys.resolve("index-signing.pub").toString()), "missing .sig fails closed");
         Path dir = Files.createDirectories(tmp.resolve("same2"));
         Files.writeString(dir.resolve("report.html"), index().toJson());
-        assertEquals(2, run("--in", ex.toString(), "--out", dir.toString(), "--index", dir.resolve("report.html").toString()));
+        assertEquals(2, run("--in", ex.toString(), "--out", dir.toString(), "--index", dir.resolve("report.html").toString(), "--insecure-no-verify"));
     }
 
     @Test void nikhilParserFormat() {
@@ -390,9 +390,9 @@ class InventoryTest {
         assertEquals(2, run("--in", ex.toString(), "--out", out, "--index", idx.toString(), "--pubkey", pub));
 
         Path bad = write("bad-index.json", "{\"schema\":1,\"rows\":" + "[".repeat(5000) + "}");
-        assertEquals(2, run("--in", ex.toString(), "--out", out, "--index", bad.toString()));
+        assertEquals(2, run("--in", ex.toString(), "--out", out, "--index", bad.toString(), "--insecure-no-verify"));
         Path inf = write("inf-index.json", "{\"schema\":1,\"rows\":[{\"advisory\":\"A\",\"vendor\":\"Acme\",\"product\":\"X100\",\"cves\":[\"C\"],\"kev\":[],\"cvss\":1e999}]}");
-        assertEquals(0, run("--in", ex.toString(), "--out", out, "--index", inf.toString()));
+        assertEquals(0, run("--in", ex.toString(), "--out", out, "--index", inf.toString(), "--insecure-no-verify"));
         String json = Files.readString(Path.of(out, "inventory.json"));
         assertFalse(json.contains("Infinity") || json.contains("NaN"));
         Json.parse(json);

@@ -39,8 +39,8 @@ final class IngestServer {
                     var r = Report.run(matcher, sorted);
                     String q = Objects.toString(ex.getRequestURI().getQuery(), "");
                     if (q.contains("format=csv")) send(ex, 200, Report.csv(r), "text/csv");
-                    else if (q.contains("format=html")) send(ex, 200, Report.html(r, index.meta), "text/html");
-                    else send(ex, 200, Json.write(Report.json(r, index.meta)));
+                    else if (q.contains("format=html")) send(ex, 200, Report.html(r, index.meta, index.verified), "text/html");
+                    else send(ex, 200, Json.write(Report.json(r, index.meta, index.verified)));
                 }
                 case "GET /api/v1/index" -> {
                     Map<String, Object> m = new LinkedHashMap<>(index.meta);

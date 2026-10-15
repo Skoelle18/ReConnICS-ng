@@ -671,8 +671,9 @@ final class Inventory {
 
     private static final String USAGE = """
             usage: java -jar reconnics-ng.jar inventory --in OBSERVATIONS.json --out DIR
-                       [--oui oui.csv] [--index index.json [--pubkey index-signing.pub]]
+                       [--oui oui.csv] [--index index.json (--pubkey index-signing.pub | --insecure-no-verify)]
               writes DIR/inventory.json, DIR/inventory.csv, DIR/report.html. Reads files only; no network.
+              An --index is refused unless its signature verifies; --insecure-no-verify accepts it unverified.
             """;
     private static final Set<String> OPTS = Set.of("--in", "--out", "--oui", "--index", "--pubkey");
 
@@ -681,10 +682,15 @@ final class Inventory {
     static int run(String[] args, PrintStream err) {
         Map<String, String> o = new HashMap<>();
         for (int i = 0; i < args.length; i++) {
+            if (args[i].equals("--insecure-no-verify")) { o.put("insecure-no-verify", "1"); continue; }
             if (!OPTS.contains(args[i]) || i + 1 >= args.length) { err.print(USAGE); return 2; }
             o.put(args[i].substring(2), args[++i]);
         }
         if (!o.containsKey("in") || !o.containsKey("out") || (o.containsKey("pubkey") && !o.containsKey("index"))) { err.print(USAGE); return 2; }
+        if (o.containsKey("index") && !o.containsKey("pubkey") && !o.containsKey("insecure-no-verify")) {
+            err.println("error: refusing an unverified advisory index: pass --pubkey FILE, or --insecure-no-verify to accept it unsigned");
+            return 2;
+        }
         try {
             List<Path> inputs = new ArrayList<>();
             for (String k : List.of("in", "oui", "index", "pubkey")) if (o.containsKey(k)) inputs.add(Path.of(o.get(k)));
@@ -728,7 +734,7 @@ final class Inventory {
                 ok = s.verify(sig);
             } catch (GeneralSecurityException | IOException | IllegalArgumentException e) { ok = false; }
             if (!ok) throw new SecurityException("advisory index signature missing or INVALID");
-        } else err.println("WARNING: advisory index not verified (no --pubkey)");
+        } else err.println("WARNING: --insecure-no-verify: advisory index signature NOT verified");
         AdvisoryIndex idx;
         try {
             String t = decode(b);
