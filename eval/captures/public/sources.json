@@ -1,0 +1,128 @@
+{
+ "s7comm_reading_plc_status.pcap": {
+  "url": "https://media.githubusercontent.com/media/automayt/ICS-pcap/master/S7/s7comm_reading_plc_status/s7comm_reading_plc_status.pcap",
+  "sha256": "e71f81b471bd67da2fd6e40dc69a7179574ba66771c6150cd7bfe232cc07b8a9",
+  "bytes": 25112,
+  "list": "SOURCES.md"
+ },
+ "s7comm_program_blocklist_onlineview.pcap": {
+  "url": "https://media.githubusercontent.com/media/automayt/ICS-pcap/master/S7/s7comm_program_blocklist_onlineview/s7comm_program_blocklist_onlineview.pcap",
+  "sha256": "b2e7014362630b803b413dda595e4ba7a3a910105712f448c22dba517ec02851",
+  "bytes": 13981,
+  "list": "SOURCES.md"
+ },
+ "S7-1511-opc-request-all-types.pcap": {
+  "url": "https://media.githubusercontent.com/media/automayt/ICS-pcap/master/S7/S7-1511-opc-request-all-types/S7-1511-opc-request-all-types.pcap",
+  "sha256": "19a7da2fa329aabf87cc0073bb487e5bbfe2ec4065f1e1ef5ffb25f75424dbe1",
+  "bytes": 10270,
+  "list": "SOURCES.md"
+ },
+ "Modbus.pcap": {
+  "url": "https://media.githubusercontent.com/media/automayt/ICS-pcap/master/MODBUS/Modbus/Modbus.pcap",
+  "sha256": "9e055a2d15a8e447be131002137341ae5f8f8b91b64576cd2fdbd854e141373e",
+  "bytes": 8337,
+  "list": "SOURCES.md"
+ },
+ "MODBUS-TestDataPart2.pcap": {
+  "url": "https://media.githubusercontent.com/media/automayt/ICS-pcap/master/MODBUS/MODBUS-TestDataPart2/MODBUS-TestDataPart2.pcap",
+  "sha256": "f7cca627fe9b740b5881e8b33b4143b59158240192ecbf5caa727a7dda35d110",
+  "bytes": 27764,
+  "list": "SOURCES.md"
+ },
+ "mb.pcap": {
+  "url": "https://media.githubusercontent.com/media/automayt/ICS-pcap/master/ETHERNET_IP/mb/mb.pcap",
+  "sha256": "fc91932509a2a777dee0004cb686e92180aae2ad34d8eb3a447573e46091d41d",
+  "bytes": 7684492,
+  "list": "SOURCES.md"
+ },
+ "iti_enip_test.pcap": {
+  "url": "https://raw.githubusercontent.com/ITI/ICS-Security-Tools/master/pcaps/EthernetIP/enip_test.pcap",
+  "sha256": "0ba6c01fde28912e9f890d839b991cff71cca8e8259e1d93e9c3a312c43bc255",
+  "bytes": 925,
+  "list": "SOURCES.md"
+ },
+ "iti_EIP-FirmwareChange.pcap": {
+  "url": "https://raw.githubusercontent.com/ITI/ICS-Security-Tools/master/pcaps/openics/EIP-FirmwareChange.pcap",
+  "sha256": "3d0f3ea89f8eb56c379c56a915cfd9c469f61f0ee690c66234a92d9c88e37201",
+  "bytes": 3114279,
+  "list": "SOURCES.md"
+ },
+ "iti_modicon_test.pcap": {
+  "url": "https://raw.githubusercontent.com/ITI/ICS-Security-Tools/master/pcaps/modicon/modicon_test.pcap",
+  "sha256": "bd9ddf4762e77426640b875b45351beb1bdf7c59ffd5a370e4d7669717900b32",
+  "bytes": 32126,
+  "list": "SOURCES.md"
+ },
+ "iti_tia_s300_goOnline.pcapng": {
+  "url": "https://raw.githubusercontent.com/ITI/ICS-Security-Tools/master/pcaps/s7/tia_s300_goOnline.pcapng",
+  "sha256": "e6d2359ffbbaf85efc56d85e060059c2cdb902bc19dfeb71f38298e4db8eb152",
+  "bytes": 62240,
+  "list": "SOURCES.md"
+ },
+ "iti_step7_s300_readDiagData.pcapng": {
+  "url": "https://raw.githubusercontent.com/ITI/ICS-Security-Tools/master/pcaps/s7/step7_s300_readDiagData.pcapng",
+  "sha256": "6ba61ac1ec340e9129007a5a7aec16ae1009f9691eda31172c56b155022e702c",
+  "bytes": 73759,
+  "list": "SOURCES.md"
+ },
+ "iti_wincc_s400_production.pcapng": {
+  "url": "https://raw.githubusercontent.com/ITI/ICS-Security-Tools/master/pcaps/s7/wincc_s400_production.pcapng",
+  "sha256": "d0bae738862ee3157c73b2ca90230a3d0c8e21402923155296f9b86804a2f0ae",
+  "bytes": 294072,
+  "list": "SOURCES.md"
+ },
+ "iti_S7-1200-Uploading-OB1-TIAV12.pcap": {
+  "url": "https://raw.githubusercontent.com/ITI/ICS-Security-Tools/master/pcaps/s7/S7-1200-Uploading-OB1-TIAV12.pcap",
+  "sha256": "73e4b36469447e0fd45ccd38ca0583fbe60f6df27372b1ca11066e335deb650e",
+  "bytes": 19895,
+  "list": "SOURCES.md"
+ },
+ "4SICS-GeekLounge-151021.pcap": {
+  "url": "https://share.netresec.com/s/camL59aoxbCRyyZ/download/4SICS-GeekLounge-151021.pcap",
+  "sha256": "7365b0ea475b76bf79b207fd8f83baa45e4449aead5da6a9214bbcffbc5fa7de",
+  "bytes": 139998821,
+  "list": "SOURCES.md"
+ },
+ "iti_EIP-IPAddressChangeAttempt.pcap": {
+  "url": "https://raw.githubusercontent.com/ITI/ICS-Security-Tools/master/pcaps/openics/EIP-IPAddressChangeAttempt.pcap",
+  "sha256": "5eb6a8ee92966600b622a393d95b3cfdee4ce131c9653f1af0077199c9bcb473",
+  "bytes": 2078478,
+  "list": "SOURCES-extra.md"
+ },
+ "iti_cip_unclean.pcap": {
+  "url": "https://raw.githubusercontent.com/ITI/ICS-Security-Tools/master/pcaps/CIP/cip_unclean.pcap",
+  "sha256": "3ba9452e4e65bb8843fdd3d9c7e2d6261824380b066ce994c71cb550966eec5c",
+  "bytes": 5710324,
+  "list": "SOURCES-extra.md"
+ },
+ "iti_tia_s300_updateFirmware.pcapng": {
+  "url": "https://raw.githubusercontent.com/ITI/ICS-Security-Tools/master/pcaps/s7/tia_s300_updateFirmware.pcapng",
+  "sha256": "246b5a75a184b6218366802bf5429620b1338ae10d61b665758ac756cc6de16e",
+  "bytes": 14266140,
+  "list": "SOURCES-extra.md"
+ },
+ "iti_snap7_s300_everything.pcapng": {
+  "url": "https://raw.githubusercontent.com/ITI/ICS-Security-Tools/master/pcaps/s7/snap7_s300_everything.pcapng",
+  "sha256": "2b91f6a8a203ec83e4f2dbb69d5e61602845f23da0baa31d95d029fb24cbd427",
+  "bytes": 8260,
+  "list": "SOURCES-extra.md"
+ },
+ "icsnpp_s7ident.pcap": {
+  "url": "https://raw.githubusercontent.com/cisagov/icsnpp-s7comm/main/testing/traces/s7ident.pcap",
+  "sha256": "7a2ae7f2992669a3eb36a878f0e4f124c86ecdf3fc3a284f78e2e6e1deeea680",
+  "bytes": 4418,
+  "list": "SOURCES-extra.md"
+ },
+ "icsnpp_modbus_example.pcap": {
+  "url": "https://raw.githubusercontent.com/cisagov/icsnpp-modbus/main/testing/traces/modbus_example.pcap",
+  "sha256": "a84656f9af62b2c948200ec288d51b81f03037c277a31a40efee0cfb244f1e30",
+  "bytes": 8946,
+  "list": "SOURCES-extra.md"
+ },
+ "icsnpp_enip_cip_example.pcap": {
+  "url": "https://raw.githubusercontent.com/cisagov/icsnpp-enip/main/testing/traces/enip_cip_example.pcap",
+  "sha256": "26cfe3df042a5d96fd680abf97c4998dd1ea8a396870a8aa2e98ba2ef056af93",
+  "bytes": 93889,
+  "list": "SOURCES-extra.md"
+ }
+}

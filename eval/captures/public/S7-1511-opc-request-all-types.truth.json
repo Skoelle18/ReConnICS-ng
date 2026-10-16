@@ -1,6 +1,6 @@
 {
  "scenario": "S7-1511-opc-request-all-types",
- "description": "Real public capture S7-1511-opc-request-all-types.pcap (67 frames); truth from independent stdlib decoder D:/reconics/work/public-truth/decode.py",
+ "description": "Real public capture S7-1511-opc-request-all-types.pcap (67 frames); truth from independent stdlib decoder eval/truth_decoder/decode.py",
  "source": "see eval/captures/public/SOURCES.md",
  "files": [
   "S7-1511-opc-request-all-types.pcap"
@@ -70,5 +70,7 @@
   "tcp_gaps": 0,
   "ip_fragments": 0,
   "multi_ip_macs": {}
- }
+ },
+ "simulated": false,
+ "site_data": "none"
 }

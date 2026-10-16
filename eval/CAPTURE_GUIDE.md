@@ -136,7 +136,7 @@ ReConICS can read**. Going online with TIA Portal alone usually gives "DISCOVERY
 
 ```
 pip install "python-snap7<2"          # 1.x = native Snap7 library; tested with 1.4.1
-python D:/reconics/work/capture-kit/sim/s7_identity_query.py <PLC_IP> 102 0 1
+python eval/sim/s7_identity_query.py <PLC_IP> 102 0 1
 ```
 
 (rack 0 / slot 1 for S7-1200/1500, rack 0 / slot 2 for S7-300.) This reads SZL 0x0011 and 0x001C, the same
@@ -172,7 +172,7 @@ SCADA/HMI polling (FC3, FC4) carries no identity either. **You must send FC43 yo
 
 ```
 pip install pymodbus                       # tested with pymodbus 3.16.1
-python D:/reconics/work/capture-kit/sim/modbus_fc43_query.py <DEVICE_IP> 502 1      # unit id 1 (try 255 or 0 if no answer)
+python eval/sim/modbus_fc43_query.py <DEVICE_IP> 502 1      # unit id 1 (try 255 or 0 if no answer)
 ```
 
 The script sends FC43 / MEI 14 with read code 1 (basic: objects 0 to 2) and read code 2 (regular: objects 0 to 6).
@@ -196,7 +196,8 @@ needs. A 2 to 5 minute capture with the identity actions somewhere in the middle
 ## 4. Option B: no hardware (software devices on a laptop or VMs)
 
 Use this only if the lab hardware is unavailable. Simulators prove that the pipeline works, but **they are not real
-devices**. Name such captures `..._sim_...` and put `"simulated": true` in the truth `capture.notes`.
+devices**. Name such captures `..._sim_...` and put `"simulated": true` at the **top level** of the truth file (next to `"scenario"`, not inside `capture`; the
+research tables read it there).
 
 **Important: capture on a real or virtual Ethernet adapter, not on loopback.** If server and client run on the same
 Windows PC, the traffic goes over Npcap *Loopback* (link type 0), which ReConICS does **not** read. In our test the jar
@@ -210,7 +211,7 @@ The checker warns when the link type is not Ethernet. Use standard ports (502 / 
 expects them. On Linux, ports below 1024 need `sudo` (or `docker -p 502:5020`).
 
 All commands below were run on 16 Oct 2026 with Python 3.11. Helper scripts are in
-`D:/reconics/work/capture-kit/sim/` (copy them to the VM).
+`eval/sim/` (copy them to the VM; versions and setup in `eval/sim/README.md`).
 
 | Simulator | Answers identity? | Configurable identity? | Verified how |
 |---|---|---|---|
@@ -225,22 +226,21 @@ All commands below were run on 16 Oct 2026 with Python 3.11. Helper scripts are 
 ### 4.1 Modbus FC43 device (pymodbus)
 
 ```
-python -m venv venv && venv\Scripts\activate          (Linux: source venv/bin/activate)
-pip install pymodbus==3.16.1
-python sim/modbus_server.py 502                        # identity is set at the top of the file
-python sim/modbus_fc43_query.py <server_ip> 502 1      # from the client machine, while capturing
+python -m venv venv && venv\Scripts\pip install pymodbus==3.16.1 cpppo==5.2.5    (Linux: venv/bin/pip install ...)
+venv\Scripts\python eval/sim/modbus_server.py 502 <host-only-ip>   # identity at the top of the file; default bind 127.0.0.1
+python eval/sim/modbus_fc43_query.py <server_ip> 502 1      # from the client machine, while capturing
 ```
 
-`sim/modbus_server.py` sets VendorName "Schneider Electric", ProductCode "TM221CE16R", MajorMinorRevision "V1.6.2.0".
+`eval/sim/modbus_server.py` sets VendorName "Schneider Electric", ProductCode "TM221CE16R", MajorMinorRevision "V1.6.2.0".
 Edit those strings to fake other devices. Start several copies on different IPs (VMs) for a "plant". pymodbus ≥ 3.10
 needs the datastore address to start at 1 (already done in the script).
 
 ### 4.2 S7 SZL device (Snap7)
 
 ```
-pip install "python-snap7<2"                 # 1.x bundles the native snap7.dll / libsnap7.so
-python sim/s7_server_native.py 102           # Linux: sudo, or use port 10102 and --ports s7=10102 in the checker
-python sim/s7_identity_query.py <server_ip> 102 0 2
+pip install python-snap7==1.4.1              # separate venv (Linux: venv_s7/bin/pip); 1.x bundles the native snap7.dll / libsnap7.so
+python eval/sim/s7_server_native.py 102 <host-only-ip>   # Linux: sudo, or use port 10102 and --ports s7=10102 in the checker
+python eval/sim/s7_identity_query.py <server_ip> 102 0 2
 ```
 
 Identity is fixed (CPU 315-2 PN/DP). It is good for the pipeline test, but you cannot fake different models.
@@ -248,9 +248,9 @@ Identity is fixed (CPU 315-2 PN/DP). It is good for the pipeline test, but you c
 ### 4.3 EtherNet/IP device (cpppo)
 
 ```
-pip install cpppo
-cd sim            # folder containing cpppo.cfg (identity: 5069-L320ER, rev 33.011, serial 60E1F4A2)
-python -m cpppo.server.enip -a 0.0.0.0:44818 SCADA=INT[10]
+pip install cpppo==5.2.5          # same venv as 4.1 (Linux: venv/bin/pip install cpppo==5.2.5)
+cd eval/sim       # folder containing cpppo.cfg (identity: 5069-L320ER, rev 33.011, serial 60E1F4A2)
+python -m cpppo.server.enip --address <host-only-ip>:44818 SCADA=INT[10]     # never 0.0.0.0
 python enip_identity_query.py <server_ip> 44818 0,2        # ListIdentity UDP+TCP, GAA direct + routed to slot 0 and 2
 ```
 
@@ -299,7 +299,9 @@ The fields and their meaning are the same as in the synthetic lab truths (`eval/
 
 Top level: `scenario`, `description` (2 to 3 sentences: what was connected and what you did), `files` (the capture file
 name(s)), `device_count` (= number of entries in `devices`), `devices`, `not_devices` (usually `[]`), `expect`
-(usually `{}`), `lab` (`{}`), and `capture` (who/when/how, not scored).
+(usually `{}`), `lab` (`{}`), `capture` (who/when/how, not scored), `simulated` (`true` for simulator/test-server
+traffic, else `false`) and `site_data` (`"none"` or `"anonymised"`, see docs/ethics.md). The checker warns if either
+of the last two is missing.
 
 One `devices` entry per thing the tool should list: every PLC, HMI, engineering PC, gateway, drive, switch with an IP.
 
@@ -347,7 +349,8 @@ diagnostics > General* shows firmware **V4.4.0**, module name **PLC_1**. The che
  "capture": {"captured_by": "Sriganesh", "date": "2026-10-17", "location": "PLC lab bench 2",
              "method": "Wireshark on the engineering PC", "tools_used": ["Wireshark 4.4", "TIA Portal V17", "snap7 1.4.1", "pymodbus 3.16.1"],
              "actions_performed": ["10:02 go online PLC_1", "10:03 Online & diagnostics", "10:05 snap7 get_cpu_info", "10:06 FC43 to M221"],
-             "anonymised": false, "notes": ""},
+             "notes": ""},
+ "simulated": false, "site_data": "none",
  "devices": [
   {"id": "192.168.0.10", "ip": "192.168.0.10", "mac": "3c:52:82:11:22:33", "vendor": null, "model": null, "firmware": null,
    "serial": null, "role": "ews", "hostname": null, "identifiable": false, "protocols": ["s7comm", "s7comm-plus", "modbus"]},

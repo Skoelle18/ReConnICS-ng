@@ -1,6 +1,6 @@
 {
  "scenario": "iti_EIP-IPAddressChangeAttempt",
- "description": "Real public capture iti_EIP-IPAddressChangeAttempt.pcap (4154 frames); truth from independent stdlib decoder D:/reconics/work/public-truth/decode.py",
+ "description": "Real public capture iti_EIP-IPAddressChangeAttempt.pcap (4154 frames); truth from independent stdlib decoder eval/truth_decoder/decode.py",
  "source": "see eval/captures/public/SOURCES.md",
  "files": [
   "iti_EIP-IPAddressChangeAttempt.pcap"
@@ -367,5 +367,7 @@
   "multi_ip_macs": {}
  },
  "heldout": true,
- "sha256": "5eb6a8ee92966600b622a393d95b3cfdee4ce131c9653f1af0077199c9bcb473"
+ "sha256": "5eb6a8ee92966600b622a393d95b3cfdee4ce131c9653f1af0077199c9bcb473",
+ "simulated": false,
+ "site_data": "none"
 }

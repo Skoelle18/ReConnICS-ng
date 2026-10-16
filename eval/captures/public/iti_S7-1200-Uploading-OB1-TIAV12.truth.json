@@ -1,6 +1,6 @@
 {
  "scenario": "iti_S7-1200-Uploading-OB1-TIAV12",
- "description": "Real public capture iti_S7-1200-Uploading-OB1-TIAV12.pcap (149 frames); truth from independent stdlib decoder D:/reconics/work/public-truth/decode.py",
+ "description": "Real public capture iti_S7-1200-Uploading-OB1-TIAV12.pcap (149 frames); truth from independent stdlib decoder eval/truth_decoder/decode.py",
  "source": "see eval/captures/public/SOURCES.md",
  "files": [
   "iti_S7-1200-Uploading-OB1-TIAV12.pcap"
@@ -70,5 +70,7 @@
   "tcp_gaps": 0,
   "ip_fragments": 0,
   "multi_ip_macs": {}
- }
+ },
+ "simulated": false,
+ "site_data": "none"
 }

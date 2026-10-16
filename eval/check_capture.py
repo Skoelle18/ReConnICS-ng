@@ -880,6 +880,9 @@ def validate_truth(tpath, info, out, cap_path):
             errs.append('not_devices: kind must be no_device or mac_not_assignable')
     if 'device_count' in t and t['device_count'] != len(t['devices']):
         warns.append('device_count %s != number of devices %d' % (t['device_count'], len(t['devices'])))
+    for k in ('simulated', 'site_data'):
+        if k not in t:
+            warns.append('top-level "%s" missing (simulated: true/false; site_data: none|anonymised)' % k)
     return errs, warns, t
 
 

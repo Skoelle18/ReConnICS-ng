@@ -30,4 +30,4 @@ Checked and found to have **no** identity replies (discovery only): ITI `ModbusT
 `MELSEC` was not tested (the parser has no MELSEC support), EmreEkin `CIPvalue`, `enip.pcap`, `plc*.pcap`, `s71/s73/s7edit`,
 `4SICS-GeekLounge-151020.pcap`, jayateertha043 `ModbusReadCoil.pcapng`, arkime `modbus.pcap`, and zeek `modbus-*` traces.
 `profinet/*` from ITI holds only layer 2 (no IPv4), so the checker reports it as invalid for this tool.
-Full per-file output: `D:/reconics/work/capture-kit/results/` (not in the repo).
+Truth decoder: `eval/truth_decoder/decode.py` (independent, stdlib only) and `build_truth.py`. Per-file checker output was kept locally (not in the repo).

@@ -1,6 +1,6 @@
 {
  "scenario": "icsnpp_s7ident",
- "description": "Real public capture icsnpp_s7ident.pcap (36 frames); truth from independent stdlib decoder D:/reconics/work/public-truth/decode.py",
+ "description": "Real public capture icsnpp_s7ident.pcap (36 frames); truth from independent stdlib decoder eval/truth_decoder/decode.py",
  "source": "see eval/captures/public/SOURCES.md",
  "files": [
   "icsnpp_s7ident.pcap"
@@ -65,5 +65,6 @@
  },
  "heldout": true,
  "sha256": "7a2ae7f2992669a3eb36a878f0e4f124c86ecdf3fc3a284f78e2e6e1deeea680",
- "simulated": true
+ "simulated": true,
+ "site_data": "none"
 }

@@ -49,7 +49,8 @@ def main():
         for cap in sorted(p for p in d.iterdir() if p.suffix.lower() in CAP_EXT):
             stem = cap.name[: -len(cap.suffix)]
             truth = d / f"{stem}.truth.json"
-            if not truth.exists() and (ROOT / "eval" / "heldout" / f"{stem}.truth.json").exists():
+            if (not truth.exists() and d.resolve() == (ROOT / "eval" / "captures" / "public").resolve()
+                    and (ROOT / "eval" / "heldout" / f"{stem}.truth.json").exists()):  # held-out truth only for the hash-pinned folder
                 truth = ROOT / "eval" / "heldout" / f"{stem}.truth.json"
             tag = stem + ("_ng" if cap.suffix == ".pcapng" and (d / f"{stem}.pcap").exists() else "")
             if a.only and stem not in a.only and tag not in a.only:

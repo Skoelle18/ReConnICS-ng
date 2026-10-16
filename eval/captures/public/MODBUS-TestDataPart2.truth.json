@@ -1,6 +1,6 @@
 {
  "scenario": "MODBUS-TestDataPart2",
- "description": "Real public capture MODBUS-TestDataPart2.pcap (350 frames); truth from independent stdlib decoder D:/reconics/work/public-truth/decode.py",
+ "description": "Real public capture MODBUS-TestDataPart2.pcap (350 frames); truth from independent stdlib decoder eval/truth_decoder/decode.py",
  "source": "see eval/captures/public/SOURCES.md",
  "files": [
   "MODBUS-TestDataPart2.pcap"
@@ -75,5 +75,7 @@
   "tcp_gaps": 0,
   "ip_fragments": 0,
   "multi_ip_macs": {}
- }
+ },
+ "simulated": false,
+ "site_data": "none"
 }

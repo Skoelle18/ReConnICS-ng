@@ -124,6 +124,8 @@ Suggested fixes come as a PR from `yashash/fix-advisory`.
 - Tag-triggered `.github/workflows/release.yml`:
   - `mvn -B package`, SHA-256, GitHub build-provenance attestation (`actions/attest-build-provenance`), upload the jar;
   - actions pinned to commit SHAs, write permissions only on that job.
+  - precondition: the repo must be public (or GitHub Enterprise Cloud) before tagging; attestations fail on a private
+    user-owned repo.
 - README: quick-start, sample report, pubkey fingerprint.
 
 ### W7. Black Hat submissions (whole team; prose written by people only, per the Black Hat rule)
@@ -214,7 +216,7 @@ Suggested fixes come as a PR from `yashash/fix-advisory`.
 ## v3 amendments (council round 2). These override anything above.
 
 **R2-1. Held-out truth is done (OT blocker).**
-- Built on 16 Oct with the independent decoder (work/public-truth/decode.py, frame-cited). 5 files are in `D:/reconics/work/heldout/`.
+- Built on 16 Oct with the independent decoder (eval/truth_decoder/decode.py, frame-cited). 5 files are in `eval/heldout/`.
   Each records the capture's SHA-256 and `heldout: true`. All pass `check_capture.py --truth` with 0 errors.
 - Three judgement calls are written into each file's notes:
   - `iti_tia_s300_updateFirmware`: truth firmware is the current V3.2.11, with V3.2.7 kept as history.
