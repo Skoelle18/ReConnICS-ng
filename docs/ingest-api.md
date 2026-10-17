@@ -28,7 +28,25 @@ The file uses the same payload as `POST /api/v1/assets`.
 | `GET` | `/api/v1/assets` | Return the assets exactly as they were posted. |
 | `DELETE` | `/api/v1/assets` | Clear all assets, for example between captures. |
 | `GET` | `/api/v1/matches[?format=csv\|html]` | Advisory matches for every asset. JSON by default. One request at a time; a concurrent one gets `503`. |
-| `GET` | `/api/v1/index` | Index metadata (`generated`, `kevCatalogVersion`, `advisories`, `rows`), useful for staleness checks. |
+| `GET` | `/api/v1/index` | Index metadata (`generated`, `kevCatalogVersion`, `advisories`, `rows`), useful for staleness checks. Under `serve` it also has `verified` and `warning` (stale index). |
+
+### Site console routes
+
+`serve` also keeps site state under `--data` (default `data/site`) and serves the web UI at `/`. These routes back it.
+Writes take `X-Actor` (name for the change log) and, for `validated`, `X-Role: validator`. Every write needs
+`application/json` or `application/octet-stream` (or a non-simple method), so another web page cannot send one
+without a CORS preflight, which the server never answers.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/captures?name=FILE` | Queue a capture (`application/octet-stream` body, up to 4 GiB). `202` with the queue entry; `409` for a file already queued (same SHA-256). |
+| `GET` | `/api/v1/captures` | Queue in order: `state` `queued`/`running`/`done`/`failed`, `summary` (frames, protocols, identity fields), `diff` (`new`, `changed`, `notSeen`), `exit`/`error` when failed. |
+| `DELETE` | `/api/v1/captures/{id}` | Remove a queued or failed capture. |
+| `GET` | `/api/v1/inventory` | `{inventory, rank, site}`: the [`inventory.json`](inventory.md) document for all merged captures plus human edits, record ids in fix-first order, and site fields per id. |
+| `PATCH` | `/api/v1/assets/{id}` | Set `criticality` (`critical`/`high`/`medium`/`low`), `asset_number`, `location`, `logging`, `user_accounts` (comma-separated), `zone`, `owner`, `lifecycle`, `purdue` (`0`-`3.5`), `validated` (boolean, validator only). `""` clears. Returns the change-log entries written. |
+| `GET` | `/api/v1/changes` | Change log, newest first (captures merged, edits, index swaps). |
+| `POST` | `/api/v1/index[?dry=1]` | New index as the body, signature in `X-Index-Signature`. Verified against `--pubkey` first (`403` if it fails); `dry=1` only reports its metadata, otherwise it replaces the served index and re-matches. |
+| `GET` | `/api/v1/export/{inventory.json,inventory.csv,report.html}` | The inventory outputs for the current site. |
 
 ## `POST /api/v1/assets`
 
