@@ -4,9 +4,11 @@ import com.pcap.model.DetectionBasis;
 import com.pcap.model.DeviceObservation;
 import com.pcap.capture.ParsedPacket;
 import com.pcap.capture.ParseStatus;
+import com.pcap.inventory.DeviceMatcher;
 import com.pcap.protocol.enip.EnipIdentityParser;
 import com.pcap.protocol.modbus.ModbusIdentityParser;
 import com.pcap.protocol.s7.S7IdentityParser;
+import com.pcap.util.MacAddress;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,7 +24,18 @@ public final class ProtocolDetector {
 
     public List<DeviceObservation> detect(ParsedPacket packet) {
         List<DeviceObservation> out = new ArrayList<>();
-        if (packet.status() != ParseStatus.OK || !packet.hasTcp() || packet.payloadLength() <= 0) {
+        if (packet.status() == ParseStatus.OK && packet.isArp()) {
+            arpPresence(packet, out);
+            return dropNonUnicast(out);
+        }
+        if (packet.status() != ParseStatus.OK || packet.payloadLength() <= 0) {
+            return out;
+        }
+        if (packet.hasUdp()) {
+            detectUdp(packet, out);
+            return dropNonUnicast(out);
+        }
+        if (!packet.hasTcp()) {
             return out;
         }
         byte[] data = packet.payload();
@@ -34,23 +47,27 @@ public final class ProtocolDetector {
         boolean portS7 = matchesPort(packet, 102);
         boolean portEnip = matchesPort(packet, 44818);
 
-        Optional<ProtocolMessage> modbusMsg = modbus.tryParse(data, off, len, frame);
+        Optional<ProtocolMessage> modbusMsg = modbus.tryParse(data, off, len, frame)
+                .map(m -> byServerPort(packet, 502, m));
         if (modbusMsg.isPresent()) {
             out.add(toObs(packet, modbusMsg.get()));
+            addClient(packet, 502, ProtocolType.MODBUS, out);
         } else if (portModbus) {
             out.add(portOnly(packet, ProtocolType.MODBUS, packet.dstPort() == 502));
         }
 
-        Optional<ProtocolMessage> enipMsg = enip.tryParse(data, off, len, frame);
+        Optional<ProtocolMessage> enipMsg = enip.tryParse(data, off, len, frame, connectionKey(packet));
         if (enipMsg.isPresent()) {
             out.add(toObs(packet, enipMsg.get()));
+            addClient(packet, 44818, ProtocolType.ENIP, out);
         } else if (portEnip) {
             out.add(portOnly(packet, ProtocolType.ENIP, packet.dstPort() == 44818));
         }
 
-        Optional<ProtocolMessage> s7Msg = s7.tryParse(data, off, len, frame);
+        Optional<ProtocolMessage> s7Msg = s7.tryParse(data, off, len, frame, flowKey(packet));
         if (s7Msg.isPresent()) {
             out.add(toObs(packet, s7Msg.get()));
+            addClient(packet, 102, ProtocolType.S7COMM, out);
         } else if (portS7) {
             out.add(portOnly(packet, ProtocolType.S7COMM, packet.dstPort() == 102));
         }
@@ -64,13 +81,130 @@ public final class ProtocolDetector {
             modbus.tryParse(data, off, len, frame).ifPresent(m -> out.add(toObs(packet, m)));
         }
         if (!portEnip && enipMsg.isEmpty() && enip.looksLikeEnip(data, off, len)) {
-            enip.tryParse(data, off, len, frame).ifPresent(m -> out.add(toObs(packet, m)));
+            enip.tryParse(data, off, len, frame, connectionKey(packet)).ifPresent(m -> out.add(toObs(packet, m)));
         }
         if (!portS7 && s7Msg.isEmpty() && s7.looksLikeTpktS7(data, off, len)) {
-            s7.tryParse(data, off, len, frame).ifPresent(m -> out.add(toObs(packet, m)));
+            s7.tryParse(data, off, len, frame, flowKey(packet)).ifPresent(m -> out.add(toObs(packet, m)));
         }
 
-        return out;
+        return dropNonUnicast(out);
+    }
+
+    /**
+     * UDP: EtherNet/IP encapsulation on 44818 (ListIdentity is normally UDP, often broadcast) and
+     * class-1 implicit I/O on 2222 (presence only).
+     */
+    private void detectUdp(ParsedPacket packet, List<DeviceObservation> out) {
+        byte[] data = packet.payload();
+        int off = packet.payloadOffset();
+        int len = packet.payloadLength();
+        long frame = packet.frameNumber();
+        if (matchesPort(packet, 44818)) {
+            Optional<ProtocolMessage> msg = enip.tryParse(data, off, len, frame);
+            if (msg.isPresent()) {
+                out.add(toObs(packet, msg.get()));
+                if (!msg.get().serverOnSrc()) {
+                    // request (often to broadcast): the sender is a client
+                    out.add(endpoint(packet, true, ProtocolType.ENIP, DetectionBasis.HEADER_VALIDATED,
+                            "client", "EtherNet/IP UDP request sender"));
+                }
+            } else {
+                out.add(portOnly(packet, ProtocolType.ENIP, packet.dstPort() == 44818));
+            }
+            return;
+        }
+        if (packet.srcPort() == 2222 || packet.dstPort() == 2222) {
+            boolean cpf = looksLikeCpfIo(data, off, len);
+            DetectionBasis basis = cpf ? DetectionBasis.HEADER_VALIDATED : DetectionBasis.PORT_HEURISTIC;
+            String note = cpf ? "CIP class-1 I/O (CPF sequenced address + connected data)"
+                    : "port heuristic only; not proof of enip-io";
+            out.add(endpoint(packet, true, ProtocolType.ENIP_IO, basis, "io-endpoint", note));
+            out.add(endpoint(packet, false, ProtocolType.ENIP_IO, basis, "io-endpoint", note));
+        }
+    }
+
+    /**
+     * When exactly one side uses the protocol's well-known port, that side is the server; the parser's
+     * own guess (e.g. Modbus request/response from the PDU alone) is only used on non-standard ports.
+     */
+    static ProtocolMessage byServerPort(ParsedPacket p, int port, ProtocolMessage m) {
+        boolean src = p.srcPort() == port;
+        boolean dst = p.dstPort() == port;
+        return src != dst ? m.withServerOnSrc(src) : m;
+    }
+
+    /** The peer of a well-known-port server is a client (EWS/HMI/SCADA): record it with that role hint. */
+    private static void addClient(ParsedPacket p, int port, ProtocolType type, List<DeviceObservation> out) {
+        boolean src = p.srcPort() == port;
+        boolean dst = p.dstPort() == port;
+        if (src != dst) {
+            out.add(endpoint(p, dst, type, DetectionBasis.HEADER_VALIDATED, "client",
+                    type.wireName() + " client (peer of port " + port + ")"));
+        }
+    }
+
+    /**
+     * ARP sender = a live host with that IP/MAC pair (presence only, no ICS protocol). Skipped: ARP probes
+     * (sender 0.0.0.0), VRRP/HSRP virtual MACs (gateway address, not a host), and broadcast/multicast senders.
+     */
+    private static void arpPresence(ParsedPacket p, List<DeviceObservation> out) {
+        if (p.srcIp().isEmpty() || p.srcMac().isEmpty()) {
+            return;
+        }
+        MacAddress mac = p.srcMac().get();
+        if (!p.srcIp().get().isUnicastHost() || mac.isBroadcastOrMulticast()
+                || DeviceMatcher.isVirtualRouterMac(mac.value())
+                || "00:00:00:00:00:00".equals(mac.value())) {
+            return;
+        }
+        out.add(new DeviceObservation(p.frameNumber(), p.srcIp().get(), mac, ProtocolType.UNKNOWN,
+                DetectionBasis.HEADER_VALIDATED, ARP_ROLE, List.of(), "ARP sender"));
+    }
+
+    /** Role marker on ARP observations: the IP announced this MAC itself. */
+    public static final String ARP_ROLE = "arp-sender";
+
+    /** CPF: item count >= 2, first item Sequenced Address (0x8002, len 8). */
+    static boolean looksLikeCpfIo(byte[] data, int off, int len) {
+        if (len < 2 + 4 + 8 + 4) {
+            return false;
+        }
+        int count = (data[off] & 0xFF) | ((data[off + 1] & 0xFF) << 8);
+        int type = (data[off + 2] & 0xFF) | ((data[off + 3] & 0xFF) << 8);
+        int ilen = (data[off + 4] & 0xFF) | ((data[off + 5] & 0xFF) << 8);
+        return count >= 2 && count <= 8 && type == 0x8002 && ilen == 8;
+    }
+
+    private static DeviceObservation endpoint(ParsedPacket packet, boolean src, ProtocolType type,
+                                              DetectionBasis basis, String role, String note) {
+        return new DeviceObservation(
+                packet.frameNumber(),
+                src ? packet.srcIp().orElse(null) : packet.dstIp().orElse(null),
+                src ? packet.srcMac().orElse(null) : packet.dstMac().orElse(null),
+                type, basis, role, List.of(), note);
+    }
+
+    /**
+     * Broadcast / multicast / unspecified addresses are destinations, never assets. A frame sent to a
+     * broadcast/multicast MAC also carries a non-device IP: a subnet-directed broadcast (192.168.1.255) looks
+     * like a unicast host by address alone, so an observation carrying such a MAC is dropped too.
+     */
+    private static List<DeviceObservation> dropNonUnicast(List<DeviceObservation> in) {
+        in.removeIf(o -> o.ip().map(ip -> !ip.isUnicastHost()).orElse(false)
+                || o.mac().map(m -> m.isBroadcastOrMulticast()).orElse(false));
+        return in;
+    }
+
+    /** Direction-independent connection id (lower endpoint first). */
+    static String connectionKey(ParsedPacket p) {
+        String a = p.srcIp().map(Object::toString).orElse("?") + ":" + p.srcPort();
+        String b = p.dstIp().map(Object::toString).orElse("?") + ":" + p.dstPort();
+        return a.compareTo(b) <= 0 ? a + "|" + b : b + "|" + a;
+    }
+
+    static String flowKey(ParsedPacket p) {
+        return p.srcIp().map(Object::toString).orElse("?") + ":" + p.srcPort()
+                + ">" + p.dstIp().map(Object::toString).orElse("?") + ":" + p.dstPort();
     }
 
     private static boolean matchesPort(ParsedPacket p, int port) {

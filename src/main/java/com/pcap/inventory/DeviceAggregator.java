@@ -3,6 +3,7 @@ package com.pcap.inventory;
 import com.pcap.model.DetectionBasis;
 import com.pcap.model.DeviceObservation;
 import com.pcap.model.IdentityField;
+import com.pcap.protocol.ProtocolDetector;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -28,8 +29,19 @@ public final class DeviceAggregator {
             case MESSAGE_DECODED -> messageDecodedCount++;
         }
         CandidateDevice device = matcher.match(obs);
+        if (device == null) {
+            return; // candidate cap reached; counted in droppedOverCap()
+        }
         obs.ip().ifPresent(device::observeIp);
-        obs.mac().ifPresent(device::observeMac);
+        if (obs.detectionBasis() != DetectionBasis.PORT_HEURISTIC) {
+            device.observeRole(obs.role());
+        }
+        // Sub-devices record the carrier MAC only so a lone Modbus unit can be folded back into its IP;
+        // DeviceMatcher.finalizeMacs() never emits a MAC on a sub-device.
+        obs.mac().ifPresent(m -> device.observeMac(m, obs.frameNumber()));
+        if (ProtocolDetector.ARP_ROLE.equals(obs.role())) {
+            obs.mac().ifPresent(device::markOwnMac);
+        }
         device.observeProtocol(obs.protocol(), obs.detectionBasis(), obs.frameNumber());
         for (IdentityField f : obs.identityFields()) {
             device.addField(f);
@@ -38,6 +50,7 @@ public final class DeviceAggregator {
     }
 
     public List<ResolvedAsset> resolveAssets() {
+        matcher.finalizeMacs();
         List<CandidateDevice> candidates = matcher.candidates();
         candidates.sort(Comparator
                 .comparing((CandidateDevice d) -> d.primaryIp().orElse("~"))
@@ -50,6 +63,10 @@ public final class DeviceAggregator {
             assets.add(new ResolvedAsset(c, id));
         }
         return assets;
+    }
+
+    public long droppedOverCap() {
+        return matcher.droppedOverCap();
     }
 
     public int observationCount() {

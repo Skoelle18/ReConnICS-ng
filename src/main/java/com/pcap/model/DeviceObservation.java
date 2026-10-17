@@ -21,6 +21,7 @@ public final class DeviceObservation {
     private final String role;
     private final List<IdentityField> identityFields;
     private final String note;
+    private final String subaddr;
 
     public DeviceObservation(
             long frameNumber,
@@ -31,6 +32,20 @@ public final class DeviceObservation {
             String role,
             List<IdentityField> identityFields,
             String note) {
+        this(frameNumber, ip, mac, protocol, detectionBasis, role, identityFields, note, null);
+    }
+
+    public DeviceObservation(
+            long frameNumber,
+            IpAddress ip,
+            MacAddress mac,
+            ProtocolType protocol,
+            DetectionBasis detectionBasis,
+            String role,
+            List<IdentityField> identityFields,
+            String note,
+            String subaddr) {
+        this.subaddr = subaddr;
         this.frameNumber = frameNumber;
         this.ip = ip;
         this.mac = mac;
@@ -69,6 +84,11 @@ public final class DeviceObservation {
 
     public List<IdentityField> identityFields() {
         return identityFields;
+    }
+
+    /** Sub-device address behind {@link #ip()} ({@code u<unit>} / {@code slot<n>}), if any. */
+    public Optional<String> subaddr() {
+        return Optional.ofNullable(subaddr);
     }
 
     public String note() {

@@ -23,6 +23,9 @@ public final class ParsedPacket {
     private final int payloadLength;
     private final ParseStatus status;
     private final String detail;
+    private final long tcpSeq;
+    private final int tcpFlags;
+    private final boolean arp;
 
     private ParsedPacket(Builder b) {
         this.frameNumber = b.frameNumber;
@@ -42,6 +45,47 @@ public final class ParsedPacket {
         this.payloadLength = b.payloadLength;
         this.status = b.status;
         this.detail = b.detail;
+        this.tcpSeq = b.tcpSeq;
+        this.tcpFlags = b.tcpFlags;
+        this.arp = b.arp;
+    }
+
+    /** ARP request/reply: srcMac/srcIp are the ARP sender hardware/protocol addresses. */
+    public boolean isArp() {
+        return arp;
+    }
+
+    public static final int TCP_FIN = 0x01;
+    public static final int TCP_SYN = 0x02;
+    public static final int TCP_RST = 0x04;
+
+    /** TCP sequence number (unsigned 32-bit), or -1 when not TCP. */
+    public long tcpSeq() {
+        return tcpSeq;
+    }
+
+    public int tcpFlags() {
+        return tcpFlags;
+    }
+
+    /**
+     * Copy of this packet's headers carrying a different (reassembled) payload, attributed to {@code frame}.
+     */
+    public ParsedPacket withPayload(long frame, byte[] data, int offset, int length) {
+        Builder b = new Builder(frame, timestampMicros);
+        b.srcMac = srcMac;
+        b.dstMac = dstMac;
+        b.vlanId = vlanId;
+        b.etherType = etherType;
+        b.srcIp = srcIp;
+        b.dstIp = dstIp;
+        b.ipProtocol = ipProtocol;
+        b.ipv4Fragment = ipv4Fragment;
+        b.srcPort = srcPort;
+        b.dstPort = dstPort;
+        b.tcpSeq = tcpSeq;
+        b.tcpFlags = tcpFlags;
+        return b.payload(data, offset, length).status(status, detail).build();
     }
 
     public long frameNumber() {
@@ -147,6 +191,9 @@ public final class ParsedPacket {
         private int payloadLength;
         private ParseStatus status = ParseStatus.OK;
         private String detail = "";
+        private long tcpSeq = -1;
+        private int tcpFlags;
+        private boolean arp;
 
         private Builder(long frameNumber, long timestampMicros) {
             this.frameNumber = frameNumber;
@@ -200,6 +247,17 @@ public final class ParsedPacket {
 
         public Builder dstPort(int v) {
             dstPort = v;
+            return this;
+        }
+
+        public Builder arp(boolean v) {
+            arp = v;
+            return this;
+        }
+
+        public Builder tcp(long seq, int flags) {
+            tcpSeq = seq;
+            tcpFlags = flags;
             return this;
         }
 

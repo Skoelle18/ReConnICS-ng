@@ -15,6 +15,7 @@ public final class ProtocolMessage {
     private final List<IdentityField> fields;
     private final String detail;
     private final boolean serverOnSrc;
+    private final String subaddr;
 
     public ProtocolMessage(
             ProtocolType protocol,
@@ -23,6 +24,22 @@ public final class ProtocolMessage {
             List<IdentityField> fields,
             String detail,
             boolean serverOnSrc) {
+        this(protocol, basis, identityExchange, fields, detail, serverOnSrc, null);
+    }
+
+    /**
+     * @param subaddr sub-device behind the responding IP ({@code u<unit>} Modbus gateway unit,
+     *                {@code slot<n>} CIP backplane slot), or null for the device itself
+     */
+    public ProtocolMessage(
+            ProtocolType protocol,
+            DetectionBasis basis,
+            boolean identityExchange,
+            List<IdentityField> fields,
+            String detail,
+            boolean serverOnSrc,
+            String subaddr) {
+        this.subaddr = subaddr;
         this.protocol = protocol;
         this.basis = basis;
         this.identityExchange = identityExchange;
@@ -55,6 +72,16 @@ public final class ProtocolMessage {
         return serverOnSrc;
     }
 
+    public String subaddr() {
+        return subaddr;
+    }
+
+    /** Same message with the server side fixed by transport evidence (well-known port). */
+    public ProtocolMessage withServerOnSrc(boolean onSrc) {
+        return onSrc == serverOnSrc ? this
+                : new ProtocolMessage(protocol, basis, identityExchange, fields, detail, onSrc, subaddr);
+    }
+
     public DeviceObservation toObservation(
             long frame,
             com.pcap.util.IpAddress srcIp,
@@ -63,7 +90,13 @@ public final class ProtocolMessage {
             com.pcap.util.MacAddress dstMac) {
         com.pcap.util.IpAddress deviceIp = serverOnSrc ? srcIp : dstIp;
         com.pcap.util.MacAddress deviceMac = serverOnSrc ? srcMac : dstMac;
-        String role = serverOnSrc ? "server" : "client-or-target";
+        // The observed device is the responder side in both directions (request target / reply sender).
+        String role = "server";
+        if (subaddr != null) {
+            // A sub-device is reached through the responding IP. The carrier MAC is passed along so the
+            // matcher can fold a lone unit back into its IP; it is never emitted on a sub-device asset.
+            return new DeviceObservation(frame, deviceIp, deviceMac, protocol, basis, role, fields, detail, subaddr);
+        }
         return new DeviceObservation(frame, deviceIp, deviceMac, protocol, basis, role, fields, detail);
     }
 }

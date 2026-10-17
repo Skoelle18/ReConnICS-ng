@@ -131,7 +131,7 @@ public final class CliCommand {
         ps.println("  6 output error");
         ps.println("  7 schema validation failure");
         ps.println();
-        ps.println("Supported: classic PCAP (Ethernet/IPv4/TCP). PCAPNG is rejected with guidance.");
+        ps.println("Supported: classic PCAP and PCAPNG (Ethernet/IPv4, TCP and UDP).");
         ps.println("Protocols: Modbus FC43/14, EtherNet/IP ListIdentity, S7 SZL 0x0011/0x001C subset.");
     }
 
