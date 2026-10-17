@@ -85,3 +85,26 @@ Stored in the separate local lab workspace, not included in this repository:
 - `captures/loopback-modbus.pcap`
 - `captures/loopback-inventory.json`
 - `notes/work-log.md`
+
+## Modbus identity parser tests
+
+Date: 2026-10-17
+
+Command:
+`mvn -Dtest=ModbusIdentityParserTest,EndToEndAnalysisTest test`
+
+Result:
+- Tests run: 10
+- Failures: 0
+- Errors: 0
+- Skipped: 0
+- Build: SUCCESS
+- EndToEndAnalysisTest: 4 passed
+- ModbusIdentityParserTest: 6 passed
+
+Interpretation:
+The existing synthetic unit and end-to-end test cases for Modbus identity
+decoding passed. This validates only the scenarios covered by those tests.
+It does not establish identity-decoding success on the repository sample PCAP
+or on a physical PLC. The inspected sample stream contained no server response
+payload for the FC43/14 requests.
