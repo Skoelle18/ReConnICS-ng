@@ -128,7 +128,8 @@ records `matchedAs`. Other order numbers (I/O, CPs) get no guess.
 - Every string is cleaned and every CVSS clamped to 0–10; a non-finite CVSS becomes 0.
 - With `--pubkey`, the Ed25519 signature in `<index>.sig` must verify against the exact bytes that get parsed.
 - A bad signature or an unreadable index exits 2. It never falls back silently to "matcher not run".
-- Without `--pubkey` the report shows an "UNVERIFIED" banner.
+- Without `--pubkey` the index is refused (exit 2) unless `--insecure-no-verify` is given; the report then shows an
+  "UNVERIFIED" banner.
 
 **Fix-first order** (CSV `rank`, HTML table)
 1. `kevAtModel`: a KEV-listed advisory matched at EXACT or PROBABLE. A KEV match on vendor alone does not count, since

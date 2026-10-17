@@ -2,16 +2,9 @@ package com.advisory;
 
 import java.io.IOException;
 import java.io.PrintStream;
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
-import java.security.KeyFactory;
-import java.security.Signature;
-import java.security.spec.X509EncodedKeySpec;
 import java.text.Normalizer;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -25,8 +18,8 @@ import static com.advisory.AdvisoryMatcher.Level.*;
  * Contract: docs/inventory.md, docs/asset.schema.json. Plan: docs/plans/2026-10-12-inventory-scoring-reports.md.
  */
 final class Inventory {
-    static final int MAX_IN = 16 << 20, MAX_INDEX = 64 << 20, MAX_SMALL = 4096, MAX_ENTRIES = 100_000, MAX_ROWS = 200_000;
-    static final int MAX_STR = 256, MAX_LIST = 256, MAX_EVIDENCE = 512, MAX_DEPTH = 64, MAX_ADVISORIES = 64, MAX_LOSERS = 16;
+    static final int MAX_IN = 16 << 20, MAX_ENTRIES = 100_000, MAX_ROWS = 200_000;
+    static final int MAX_STR = 256, MAX_LIST = 256, MAX_EVIDENCE = 512, MAX_ADVISORIES = 64, MAX_LOSERS = 16;
     static final String NO_EVIDENCE = "no evidence supplied by parser";
 
     enum Conf { LOW, MEDIUM, HIGH }
@@ -77,6 +70,7 @@ final class Inventory {
         final String id, ip, subaddr;
         final Map<String, Field> f = new TreeMap<>();
         final List<Map<String, Object>> missing = new ArrayList<>();
+        final List<String> alerts = new ArrayList<>();
         String macHint, nextStep;
         int filled;
         AdvisoryMatcher.Level ceiling;
@@ -136,45 +130,17 @@ final class Inventory {
         return s.substring(0, end);
     }
 
-    /** Teammate Json has no depth limit and throws assorted runtime exceptions; never let either escape. */
-    static void depthCheck(String t) {
-        int d = 0;
-        boolean str = false;
-        for (int i = 0; i < t.length(); i++) {
-            char c = t.charAt(i);
-            if (str) { if (c == '\\') i++; else if (c == '"') str = false; }
-            else if (c == '"') str = true;
-            else if (c == '[' || c == '{') { if (++d > MAX_DEPTH) throw new IllegalArgumentException("JSON nested too deeply"); }
-            else if (c == ']' || c == '}') d--;
-        }
-    }
-
+    /** Json.parse caps nesting and throws only IllegalArgumentException; keep its position-only message out of the CLI. */
     static Object parseSafe(String t) {
-        depthCheck(t);
         try { return Json.parse(t); }
-        catch (RuntimeException | StackOverflowError e) { throw new IllegalArgumentException("invalid JSON document"); }
-    }
-
-    static byte[] readBytes(Path p, long max) throws IOException {
-        try (var in = Files.newInputStream(p)) {                // bounded even for FIFOs / growing files
-            byte[] b = in.readNBytes((int) Math.min(Integer.MAX_VALUE - 8, max + 1));
-            if (b.length > max) throw new IllegalArgumentException("input file too large");
-            return b;
-        }
-    }
-
-    static String decode(byte[] b) {
-        try {
-            String s = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(b)).toString();
-            return s.startsWith("\uFEFF") ? s.substring(1) : s;
-        } catch (CharacterCodingException e) { throw new IllegalArgumentException("input file is not valid UTF-8"); }
+        catch (IllegalArgumentException e) { throw new IllegalArgumentException("invalid JSON document"); }
     }
 
     // ------------------------------------------------------------------ load
 
     private static final class Obs {
         final int index;
+        long lastFrame = -1;                       // attributes.lastFrame from the parser (data-contract.md), -1 = absent
         String ip, mac, subaddr;
         final Map<String, Field> f = new LinkedHashMap<>();
         final Set<String> dirs = new TreeSet<>();
@@ -218,6 +184,8 @@ final class Inventory {
         Obs o = new Obs(idx);
         var entry = Json.obj(e);
         String parserEv = parserEvidence(Json.obj(entry.get("attributes")));
+        if (Json.obj(entry.get("attributes")).get("lastFrame") instanceof Double lf && Double.isFinite(lf) && lf >= 0 && lf < 1e15)
+            o.lastFrame = lf.longValue();
         for (var en : entry.entrySet()) {
             if (!INPUT_KEYS.contains(en.getKey()) || en.getValue() == null) continue;   // null = absent (data-contract.md)
             Object val = en.getValue();
@@ -384,7 +352,6 @@ final class Inventory {
                     .computeIfAbsent(sub, k -> new ArrayList<>()).add(o);
         }
 
-        Comparator<Obs> inputOrder = Comparator.comparingInt(o -> o.index);
         for (var e : byIp.entrySet()) {
             String ip = e.getKey();
             var groups = e.getValue();
@@ -401,7 +368,6 @@ final class Inventory {
             }
             Rec p = null;
             if (!parentObs.isEmpty()) {
-                parentObs.sort(inputOrder);
                 p = record(ip, null, parentObs, gateway, oui);
                 records.add(p);
             }
@@ -429,16 +395,71 @@ final class Inventory {
     }
 
     private Rec record(String ip, String sub, List<Obs> obs, Set<String> gateway, Map<String, String> oui) {
+        obs = chronological(obs);
         String id = ip == null ? obs.get(0).mac : sub == null ? ip : ip + "/" + sub;
         Rec r = new Rec(id, ip, sub);
         r.f.putAll(resolve(obs));
+        boolean replaced = false;
+        if (sub == null && ip != null) {
+            List<Obs> current = currentDevice(r, obs, gateway);
+            if (current != obs) {                             // replaced device: identity only from the current NIC's observations
+                replaced = true;
+                Map<String, Field> now = resolve(current);
+                for (String k : IDENTITY_KEYS) { r.f.remove(k); if (now.containsKey(k)) r.f.put(k, now.get(k)); }
+            }
+        }
         if (sub != null) r.macHint = "Behind a gateway or backplane; a MAC does not apply.";
-        else assignMac(r, obs, gateway, oui);
+        else assignMac(r, obs, gateway, oui, replaced);
         role(r, obs);
         return r;
     }
 
-    /** Highest confidence wins; ties go to the first observation, except firmware (last one, i.e. newest in capture order). */
+    /**
+     * Capture order: by the parser's attributes.lastFrame when every observation carries it, else input order (the
+     * parser lists assets in no guaranteed time order, so input order is only a fallback).
+     */
+    private static List<Obs> chronological(List<Obs> obs) {
+        List<Obs> out = new ArrayList<>(obs);
+        boolean frames = out.stream().allMatch(o -> o.lastFrame >= 0);
+        out.sort(frames ? Comparator.<Obs>comparingLong(o -> o.lastFrame).thenComparingInt(o -> o.index) : Comparator.comparingInt(o -> o.index));
+        return out;
+    }
+
+    /** Fields that describe one physical device; they must come from one coherent set of observations. */
+    static final List<String> IDENTITY_KEYS = List.of("vendor", "model", "firmware", "serial", "deviceType", "os", "hostname", "role");
+
+    /**
+     * One IP, several (non-gateway) MACs whose identities disagree on vendor, model or serial: the device was replaced
+     * (or two devices fight over the IP). Returns the observations of the latest MAC in capture order plus MAC-less
+     * ones, and adds an alert; otherwise returns obs unchanged (redundant NICs of one device stay fused).
+     */
+    private static List<Obs> currentDevice(Rec r, List<Obs> obs, Set<String> gateway) {
+        Map<String, List<Obs>> byMac = new LinkedHashMap<>();
+        String latest = null;
+        for (Obs o : obs)
+            if (o.mac != null && !gateway.contains(o.mac)) { byMac.computeIfAbsent(o.mac, k -> new ArrayList<>()).add(o); latest = o.mac; }
+        if (byMac.size() < 2) return obs;
+        Map<String, Field> now = resolve(byMac.get(latest));
+        List<String> earlier = new ArrayList<>();
+        for (var e : byMac.entrySet()) {
+            if (e.getKey().equals(latest)) continue;
+            Map<String, Field> old = resolve(e.getValue());
+            if (conflicts(old, now, "vendor") || conflicts(old, now, "model") || conflicts(old, now, "serial"))
+                earlier.add(e.getKey() + " (" + Objects.toString(old.get("vendor") == null ? null : old.get("vendor").str(), "?") + " "
+                        + Objects.toString(old.get("model") == null ? null : old.get("model").str(), "?") + ")");
+        }
+        if (earlier.isEmpty()) return obs;
+        r.alerts.add(cap("IP conflict or device replaced during the capture: earlier MAC " + String.join(", ", earlier)
+                + "; identity shown is from the latest MAC " + latest + ". Confirm on site.", MAX_EVIDENCE));
+        List<Obs> out = new ArrayList<>();
+        for (Obs o : obs) if (o.mac == null || gateway.contains(o.mac) || o.mac.equals(latest)) out.add(o);
+        return out;
+    }
+
+    /** Fields whose equal-confidence tie goes to the latest observation (the device's current state); others keep the first. */
+    static final Set<String> LATEST_WINS = Set.of("vendor", "model", "firmware", "serial", "hostname", "deviceType");
+
+    /** Highest confidence wins; a tie goes to the latest observation for identity fields, else to the first. */
     static Map<String, Field> resolve(List<Obs> obs) {
         Map<String, List<Field>> c = new TreeMap<>();
         for (Obs o : obs)
@@ -467,7 +488,7 @@ final class Inventory {
         Field w = fs.get(0);
         for (Field x : fs) {
             int d = x.conf().compareTo(w.conf());
-            if (d > 0 || (d == 0 && k.equals("firmware"))) w = x;
+            if (d > 0 || (d == 0 && LATEST_WINS.contains(k))) w = x;   // identity tie: latest in capture order = current state
         }
         StringBuilder ev = new StringBuilder(w.evidence());
         Set<String> losers = new LinkedHashSet<>();
@@ -482,7 +503,8 @@ final class Inventory {
         return new Field(w.value(), c, cap(ev.toString(), MAX_EVIDENCE), true, false);
     }
 
-    private static void assignMac(Rec r, List<Obs> obs, Set<String> gateway, Map<String, String> oui) {
+    /** Most frequent MAC (redundant NICs, noise); after a replacement / IP conflict the latest one is the current NIC. */
+    private static void assignMac(Rec r, List<Obs> obs, Set<String> gateway, Map<String, String> oui, boolean replaced) {
         Map<String, Integer> count = new TreeMap<>();
         Map<String, Field> best = new HashMap<>();
         boolean sawGateway = false;
@@ -498,7 +520,8 @@ final class Inventory {
             return;
         }
         String mac = null;
-        for (var e : count.entrySet()) if (mac == null || e.getValue() > count.get(mac)) mac = e.getKey();
+        if (replaced) { for (Obs o : obs) if (o.mac != null && count.containsKey(o.mac)) mac = o.mac; }
+        else for (var e : count.entrySet()) if (mac == null || e.getValue() > count.get(mac)) mac = e.getKey();
         Field bf = best.get(mac);
         if (count.size() > 1) {
             List<String> others = new ArrayList<>(count.keySet());
@@ -671,8 +694,9 @@ final class Inventory {
 
     private static final String USAGE = """
             usage: java -jar reconnics-ng.jar inventory --in OBSERVATIONS.json --out DIR
-                       [--oui oui.csv] [--index index.json [--pubkey index-signing.pub]]
+                       [--oui oui.csv] [--index index.json (--pubkey index-signing.pub | --insecure-no-verify)]
               writes DIR/inventory.json, DIR/inventory.csv, DIR/report.html. Reads files only; no network.
+              An --index is refused unless its signature verifies; --insecure-no-verify accepts it unverified.
             """;
     private static final Set<String> OPTS = Set.of("--in", "--out", "--oui", "--index", "--pubkey");
 
@@ -681,10 +705,15 @@ final class Inventory {
     static int run(String[] args, PrintStream err) {
         Map<String, String> o = new HashMap<>();
         for (int i = 0; i < args.length; i++) {
+            if (args[i].equals("--insecure-no-verify")) { o.put("insecure-no-verify", "1"); continue; }
             if (!OPTS.contains(args[i]) || i + 1 >= args.length) { err.print(USAGE); return 2; }
             o.put(args[i].substring(2), args[++i]);
         }
         if (!o.containsKey("in") || !o.containsKey("out") || (o.containsKey("pubkey") && !o.containsKey("index"))) { err.print(USAGE); return 2; }
+        if (o.containsKey("index") && !o.containsKey("pubkey") && !o.containsKey("insecure-no-verify")) {
+            err.println("error: refusing an unverified advisory index: pass --pubkey FILE, or --insecure-no-verify to accept it unsigned");
+            return 2;
+        }
         try {
             List<Path> inputs = new ArrayList<>();
             for (String k : List.of("in", "oui", "index", "pubkey")) if (o.containsKey(k)) inputs.add(Path.of(o.get(k)));
@@ -696,8 +725,8 @@ final class Inventory {
                     if (Files.exists(p) && Files.exists(t) && Files.isSameFile(p, t))
                         throw new IllegalArgumentException("an output file would overwrite an input file");
             }
-            Map<String, String> oui = o.containsKey("oui") ? loadOui(decode(readBytes(Path.of(o.get("oui")), MAX_IN))) : null;
-            Inventory inv = build(decode(readBytes(Path.of(o.get("in")), MAX_IN)), oui);
+            Map<String, String> oui = o.containsKey("oui") ? loadOui(AdvisoryIndex.utf8(AdvisoryIndex.readCapped(Path.of(o.get("oui")), MAX_IN))) : null;
+            Inventory inv = build(AdvisoryIndex.utf8(AdvisoryIndex.readCapped(Path.of(o.get("in")), MAX_IN)), oui);
             if (o.containsKey("index")) inv.loadIndex(Path.of(o.get("index")), o.containsKey("pubkey") ? Path.of(o.get("pubkey")) : null, err);
             InventoryReport.write(inv, out);
             err.printf("%d assets, %d rejected input items -> %s%n", inv.records.size(), inv.rejected.size(), out);
@@ -714,27 +743,16 @@ final class Inventory {
         return 2;
     }
 
-    /** Fails closed: a bad signature or a malformed index stops the run instead of silently skipping matching. */
+    /**
+     * Fails closed: a bad signature or a malformed index stops the run instead of silently skipping matching. The
+     * signature check is AdvisoryIndex.load's: it verifies and parses the same bytes.
+     */
     private void loadIndex(Path index, Path pubkey, PrintStream err) throws IOException {
-        byte[] b = readBytes(index, MAX_INDEX);
-        boolean ok = false;
-        if (pubkey != null) {
-            try {
-                var key = KeyFactory.getInstance("Ed25519").generatePublic(new X509EncodedKeySpec(readBytes(pubkey, MAX_SMALL)));
-                Signature s = Signature.getInstance("Ed25519");
-                s.initVerify(key);
-                s.update(b);
-                byte[] sig = Base64.getDecoder().decode(new String(readBytes(AdvisoryIndex.sigPath(index), MAX_SMALL), StandardCharsets.US_ASCII).strip());
-                ok = s.verify(sig);
-            } catch (GeneralSecurityException | IOException | IllegalArgumentException e) { ok = false; }
-            if (!ok) throw new SecurityException("advisory index signature missing or INVALID");
-        } else err.println("WARNING: advisory index not verified (no --pubkey)");
         AdvisoryIndex idx;
-        try {
-            String t = decode(b);
-            depthCheck(t);
-            idx = AdvisoryIndex.parse(t);
-        } catch (RuntimeException | StackOverflowError e) { throw new IllegalArgumentException("advisory index is invalid"); }
-        match(idx, ok);
+        try { idx = AdvisoryIndex.load(index, pubkey, pubkey == null); }
+        catch (SecurityException | GeneralSecurityException e) { throw new SecurityException("advisory index signature missing or INVALID"); }
+        catch (IOException e) { throw e; }
+        catch (Exception e) { throw new IllegalArgumentException("advisory index is invalid"); }
+        match(idx, pubkey != null);
     }
 }

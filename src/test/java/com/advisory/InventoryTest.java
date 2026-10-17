@@ -85,7 +85,9 @@ class InventoryTest {
 
         i = inv("[{\"ip\":\"10.0.0.1\"," + h("vendor", "A") + "," + h("firmware", "1.0") + "},{\"ip\":\"10.0.0.1\"," + h("vendor", "B") + "," + h("firmware", "1.1") + "}]");
         var r = rec(i, "10.0.0.1");
-        assertEquals("A", v(r, "vendor"));
+        // A9: equal-confidence ties now go to the latest observation for every field, not only firmware. The old rule
+        // (vendor/model from the first, firmware from the last) fused two devices into one identity that never existed.
+        assertEquals("B", v(r, "vendor"), "tie goes to the last observation in capture order");
         assertEquals(MEDIUM, r.f.get("vendor").conf());
         assertEquals("1.1", v(r, "firmware"), "firmware tie goes to the last observation in capture order");
         assertEquals(MEDIUM, r.f.get("firmware").conf());
@@ -334,7 +336,7 @@ class InventoryTest {
                 "--pubkey", keys.resolve("index-signing.pub").toString()), "missing .sig fails closed");
         Path dir = Files.createDirectories(tmp.resolve("same2"));
         Files.writeString(dir.resolve("report.html"), index().toJson());
-        assertEquals(2, run("--in", ex.toString(), "--out", dir.toString(), "--index", dir.resolve("report.html").toString()));
+        assertEquals(2, run("--in", ex.toString(), "--out", dir.toString(), "--index", dir.resolve("report.html").toString(), "--insecure-no-verify"));
     }
 
     @Test void nikhilParserFormat() {
@@ -390,11 +392,70 @@ class InventoryTest {
         assertEquals(2, run("--in", ex.toString(), "--out", out, "--index", idx.toString(), "--pubkey", pub));
 
         Path bad = write("bad-index.json", "{\"schema\":1,\"rows\":" + "[".repeat(5000) + "}");
-        assertEquals(2, run("--in", ex.toString(), "--out", out, "--index", bad.toString()));
+        assertEquals(2, run("--in", ex.toString(), "--out", out, "--index", bad.toString(), "--insecure-no-verify"));
         Path inf = write("inf-index.json", "{\"schema\":1,\"rows\":[{\"advisory\":\"A\",\"vendor\":\"Acme\",\"product\":\"X100\",\"cves\":[\"C\"],\"kev\":[],\"cvss\":1e999}]}");
-        assertEquals(0, run("--in", ex.toString(), "--out", out, "--index", inf.toString()));
+        assertEquals(0, run("--in", ex.toString(), "--out", out, "--index", inf.toString(), "--insecure-no-verify"));
         String json = Files.readString(Path.of(out, "inventory.json"));
         assertFalse(json.contains("Infinity") || json.contains("NaN"));
         Json.parse(json);
+    }
+
+    // A9: one IP, device replaced mid-capture (different MAC, different identity) -> latest device wins, coherently
+    @Test void replacedDeviceKeepsCoherentLatestIdentity() {
+        String old = "{\"ip\":\"10.0.1.63\"," + h("mac", "00:80:f4:e7:d8:50") + "," + h("vendor", "Schneider Electric") + ","
+                + h("model", "TM221CE16R") + "," + h("firmware", "V1.6.2.0") + "," + h("serial", "OLD1") + "}";
+        String neu = "{\"ip\":\"10.0.1.63\"," + h("mac", "00:80:f4:14:c2:56") + "," + h("vendor", "Schneider Electric") + ","
+                + h("model", "TM241CEC24T") + "," + h("firmware", "V5.1.9.34") + "}";
+        // the old device is seen more often than the new one: frequency must not decide the MAC
+        var i = inv("[" + old + "," + old + "," + old + "," + neu + "]");
+        var r = rec(i, "10.0.1.63");
+        assertEquals("00:80:f4:14:c2:56", v(r, "mac"), "latest MAC = current NIC");
+        assertEquals("TM241CEC24T", v(r, "model"));
+        assertEquals("V5.1.9.34", v(r, "firmware"));
+        assertNull(r.f.get("serial"), "the old device's serial must not be fused into the new identity");
+        assertEquals(1, r.alerts.size());
+        assertTrue(r.alerts.get(0).contains("replaced") && r.alerts.get(0).contains("00:80:f4:e7:d8:50"), r.alerts.toString());
+        assertTrue(InventoryReport.json(i).contains("\"alerts\""));
+        assertTrue(InventoryReport.html(i, InventoryReport.rank(i)).contains("Alert: "));
+
+        // two NICs with the same identity (redundant pair): no replacement alert, fields still fused
+        String a = "{\"ip\":\"10.0.0.9\"," + h("mac", "00:1d:9c:00:00:01") + "," + h("vendor", "Acme") + "," + h("model", "X100") + "}";
+        String b = "{\"ip\":\"10.0.0.9\"," + h("mac", "00:1d:9c:00:00:02") + "," + h("firmware", "2.0") + "}";
+        r = rec(inv("[" + a + "," + b + "]"), "10.0.0.9");
+        assertTrue(r.alerts.isEmpty());
+        assertEquals("X100", v(r, "model"));
+        assertEquals("2.0", v(r, "firmware"));
+    }
+
+    // review S6: "latest" is the parser's attributes.lastFrame, not the order assets happen to be listed in
+    @Test void latestIsByLastFrameNotInputOrder() {
+        String neu = "{\"ip\":\"10.0.1.63\"," + h("mac", "00:80:f4:14:c2:56") + "," + h("vendor", "Schneider Electric") + ","
+                + h("model", "TM241CEC24T") + ",\"attributes\":{\"firstFrame\":900,\"lastFrame\":990}}";
+        String old = "{\"ip\":\"10.0.1.63\"," + h("mac", "00:80:f4:e7:d8:50") + "," + h("vendor", "Schneider Electric") + ","
+                + h("model", "TM221CE16R") + ",\"attributes\":{\"firstFrame\":1,\"lastFrame\":40}}";
+        var r = rec(inv("[" + neu + "," + old + "]"), "10.0.1.63");         // newest listed first
+        assertEquals("TM241CEC24T", v(r, "model"), "highest lastFrame is the current device");
+        assertEquals("00:80:f4:14:c2:56", v(r, "mac"));
+        assertEquals(1, r.alerts.size());
+        // without frames on every observation: input order is the fallback
+        r = rec(inv("[" + neu.replace("\"lastFrame\":990", "\"x\":0") + "," + old + "]"), "10.0.1.63");
+        assertEquals("TM221CE16R", v(r, "model"));
+    }
+
+    // review S6: latest-wins ties only for identity fields; MAC by frequency unless the IP saw a replacement
+    @Test void latestWinsOnlyForIdentityAndMacByFrequency() {
+        var i = inv("[{\"ip\":\"10.0.0.1\"," + h("location", "hall A") + "," + h("os", "VxWorks 6") + "},"
+                + "{\"ip\":\"10.0.0.1\"," + h("location", "hall B") + "," + h("os", "VxWorks 7") + "," + h("hostname", "plc-2") + "},"
+                + "{\"ip\":\"10.0.0.1\"," + h("hostname", "plc-1") + "}]");
+        var r = rec(i, "10.0.0.1");
+        assertEquals("hall A", v(r, "location"), "non-identity tie keeps the first observation");
+        assertEquals("VxWorks 6", v(r, "os"));
+        assertEquals("plc-1", v(r, "hostname"), "identity tie goes to the latest");
+        // redundant pair, one identity: the MAC seen most often stays, even if another appears last
+        String a = "{\"ip\":\"10.0.0.9\"," + h("mac", "00:1d:9c:00:00:01") + "," + h("vendor", "Acme") + "}";
+        String b = "{\"ip\":\"10.0.0.9\"," + h("mac", "00:1d:9c:00:00:02") + "," + h("vendor", "Acme") + "}";
+        r = rec(inv("[" + a + "," + a + "," + a + "," + b + "]"), "10.0.0.9");
+        assertEquals("00:1d:9c:00:00:01", v(r, "mac"));
+        assertTrue(r.alerts.isEmpty());
     }
 }
