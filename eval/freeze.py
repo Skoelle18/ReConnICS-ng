@@ -78,6 +78,11 @@ def main():
     if out.exists() and not warnings:
         die(f"{out.relative_to(ROOT)} already exists; a frozen run never reuses a folder. Move it away to re-run.")
 
+    # generate the synthetic lab scenarios first, so they are part of the capture list below (fresh clones have none)
+    g = subprocess.run([sys.executable, "eval/lab/scenarios.py"], cwd=ROOT, capture_output=True, text=True)
+    if g.returncode != 0:
+        die("lab scenario generation failed\n" + (g.stdout + g.stderr)[-1500:])
+
     # capture integrity before anything runs: held-out against its truth file, every public file against sources.json
     heldout = {p.name[: -len(".truth.json")]: json.loads(p.read_text(encoding="utf-8"))["sha256"]
                for p in (ROOT / "eval" / "heldout").glob("*.truth.json")}
@@ -124,7 +129,7 @@ def main():
         (Path(td) / "a.json").write_text('{"assets": []}', encoding="utf-8")
         run(["java", "-jar", str(jar), "match", "--index", a.index, "--pubkey", a.pubkey, "--out", str(Path(td) / "m.json"),
              str(Path(td) / "a.json")], "signed-index check", hint="--index/--pubkey do not verify; no capture was run.")
-    run([sys.executable, "eval/lab/scenarios.py"], "lab scenario generation")
+    cmds.insert(0, subprocess.list2cmdline([sys.executable, "eval/lab/scenarios.py"]))
 
     ev = [sys.executable, "eval/run_eval.py", "--jar", str(jar), "--index", a.index, "--pubkey", a.pubkey,
           "--out", str(out), "--dirs", *map(str, dirs)]
