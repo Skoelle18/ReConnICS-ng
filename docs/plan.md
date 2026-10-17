@@ -33,8 +33,8 @@ matched against CSAF OT and KEV, with JSON/CSV/HTML outputs and no active scanni
 
 **Gaps and next steps** (deferred to after 20 Oct per [remaining-work plan](plans/2026-10-16-remaining-work.md) W8 unless noted)
 - [ ] Verify CSAF PGP signatures (`.asc`) at sync time. That needs BouncyCastle or a `gpg` subprocess. Today we rely only on TLS to GitHub. **Deferred; target: before Arsenal (2 Nov).**
-- [ ] Show a staleness warning in the report when the index is more than N days old. In open PR #5 (not merged).
-- [ ] `vers:` ranges with disjoint intervals (`>=1|<2|>=5|<6`). Constraints are currently ANDed, which handles every single-interval range. In open PR #3 (not merged).
+- [x] Show a staleness warning (CLI stderr, JSON `warning`, HTML banner) when the index is more than 30 days old.
+- [x] `vers:` ranges with disjoint intervals (`>=1|<2|>=5|<6`), evaluated with VERS interval semantics.
 - [ ] A vendor alias table (e.g. `Allen-Bradley` → `Rockwell Automation`) once real PCAP output shows misses. **Deferred.**
 - [ ] Schedule the sync (cron or a GitHub Action on the online side) so the index refreshes nightly. **Deferred.**
 

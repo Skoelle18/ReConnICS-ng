@@ -1,6 +1,7 @@
 package com.pcap.model;
 
 import com.pcap.protocol.ProtocolType;
+import com.pcap.util.ByteReader;
 
 public final class IdentityField {
     public enum Kind {
@@ -9,6 +10,8 @@ public final class IdentityField {
         FIRMWARE,
         SERIAL,
         PRODUCT_NAME,
+        HOSTNAME,
+        DEVICE_TYPE,
         OTHER
     }
 
@@ -25,7 +28,7 @@ public final class IdentityField {
             Evidence evidence,
             Confidence confidence) {
         this.kind = kind;
-        this.value = value;
+        this.value = ByteReader.sanitize(value);
         this.sourceProtocol = sourceProtocol;
         this.evidence = evidence;
         this.confidence = confidence;

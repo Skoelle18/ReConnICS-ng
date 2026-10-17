@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pcap.cli.CliCommand;
 import com.pcap.cli.ExitCode;
+import com.pcap.output.IngestModels;
 import com.pcap.service.AnalysisService;
 import com.pcap.support.PcapTestSupport;
 import org.junit.jupiter.api.Test;
@@ -40,7 +41,9 @@ class EndToEndAnalysisTest {
         assertTrue(result.report().schemaValid());
         assertTrue(result.report().identityFieldsDecoded() >= 3);
         assertFalse(result.document().assets.isEmpty());
-        assertEquals("Acme", ((com.pcap.output.IngestModels.FieldObject) result.document().assets.get(0).vendor).value);
+        // P6: the client 10.10.1.10 is now an asset too (and sorts first); select the server by IP.
+        var server = result.document().assets.stream().filter(a -> "10.10.1.31".equals(a.ip)).findFirst().orElseThrow();
+        assertEquals("Acme", ((IngestModels.FieldObject) server.vendor).value);
     }
 
     @Test
