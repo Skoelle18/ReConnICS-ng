@@ -1,6 +1,6 @@
 {
  "scenario": "mb",
- "description": "Real public capture mb.pcap (55800 frames); truth from independent stdlib decoder D:/reconics/work/public-truth/decode.py",
+ "description": "Real public capture mb.pcap (55800 frames); truth from independent stdlib decoder eval/truth_decoder/decode.py",
  "source": "see eval/captures/public/SOURCES.md",
  "files": [
   "mb.pcap"
@@ -1400,5 +1400,7 @@
   "tcp_gaps": 0,
   "ip_fragments": 0,
   "multi_ip_macs": {}
- }
+ },
+ "simulated": false,
+ "site_data": "none"
 }

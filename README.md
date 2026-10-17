@@ -109,6 +109,22 @@ java -jar target/reconnics-ng.jar analyze assets/modbus.pcap --post http://127.0
 curl 'http://127.0.0.1:8088/api/v1/matches?format=html' > report.html
 ```
 
+Arsenal demo (one command): `scripts/demo.sh [CAPTURE] --index data/index.json --pubkey keys/index-signing.pub`.
+
+## Evaluation
+
+How detection and identity are measured, the held-out set, and the research tables: [`eval/README.md`](eval/README.md).
+
+## Verifying the index
+
+Copy the public key to the offline side once, separately from the USB that carries the index, and check it:
+
+```bash
+sha256sum keys/index-signing.pub   # must equal: TBD after the key holder is named (docs/plan.md, "Signing key custody")
+```
+
+Release jars (from v0.1, built by `.github/workflows/release.yml`): `sha256sum -c reconnics-ng.jar.sha256` and `gh attestation verify reconnics-ng.jar -R Skoelle18/ReConnICS-ng`. Precondition for v0.1: attestations only work on a public repo (or GitHub Enterprise Cloud), so the repo must be public before the tag is pushed.
+
 ## License
 
 See `LICENSE` if present in the repository root.

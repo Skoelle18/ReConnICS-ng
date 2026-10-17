@@ -1,6 +1,6 @@
 {
  "scenario": "icsnpp_modbus_example",
- "description": "Real public capture icsnpp_modbus_example.pcap (100 frames); truth from independent stdlib decoder D:/reconics/work/public-truth/decode.py",
+ "description": "Real public capture icsnpp_modbus_example.pcap (100 frames); truth from independent stdlib decoder eval/truth_decoder/decode.py",
  "source": "see eval/captures/public/SOURCES.md",
  "files": [
   "icsnpp_modbus_example.pcap"
@@ -96,5 +96,6 @@
  },
  "heldout": true,
  "sha256": "a84656f9af62b2c948200ec288d51b81f03037c277a31a40efee0cfb244f1e30",
- "simulated": true
+ "simulated": true,
+ "site_data": "none"
 }

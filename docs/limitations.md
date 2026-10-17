@@ -55,3 +55,37 @@ Presence of TCP/502 traffic does **not** imply FC43/14 identity responses. Run t
 ## CIP vendor mapping
 
 A small curated ODVA vendor-ID table is included for common IDs (checked against Wireshark's `cip_vendor_vals`). Unmapped IDs are emitted as `CIP Vendor ID <n>` with `MEDIUM` confidence. Raw IDs remain in evidence.
+
+## Inputs not built yet
+
+- **Zeek / ICSNPP logs** are a *planned* input, not a built one (docs/plan.md §2, connector 2). The proposal's comparison
+  table says "we use its logs as one input"; read that as "planned". Today the input is a capture file (classic PCAP or pcapng).
+
+## Advisory feed integrity
+
+- The CSAF feed is protected only by TLS to GitHub at sync time. CSAF PGP signatures (`.asc`) are not verified yet;
+  target: before Arsenal (2 Nov 2026).
+- The built index is Ed25519-signed and verification is mandatory: `match` and `serve` need `--pubkey`, or an explicit
+  `--insecure-no-verify`.
+
+## Identity is observed, not authenticated
+
+- Vendor, model, firmware and serial come from what a device *sent*. Any host can send the same bytes, so identity is
+  spoofable. An advisory match means "observed identity matches", never "confirmed vulnerable".
+
+## Passive limit
+
+- A device that never sends an identity-bearing message (Modbus FC43 reply, S7 SZL reply, ENIP ListIdentity, CIP
+  Identity) during the capture cannot be identified, only detected. The research tables measure this per capture
+  (eval/research_tables.py, table 2).
+
+## How numbers are labelled
+
+- Published numbers cite a commit hash and the `eval/run_eval.py` command; output is archived in `eval/results/<hash>/`.
+- Held-out captures (`eval/heldout/`) give the headline numbers. Development-set, synthetic (`eval/lab/`) and
+  simulated (simulator or test-server) captures are reported separately and labelled as such.
+- Overlap with the dev set (same physical devices): dev `iti_enip_test` shows the same 1756-ENBT (10.1.1.164, serial
+  00524D8E, firmware 4.003) as held-out `icsnpp_enip_cip_example`, and dev `iti_EIP-FirmwareChange` shows the same
+  chassis/ENBT (serial 0051AEC3) as held-out `iti_EIP-IPAddressChangeAttempt`. Also, dev `iti_tia_s300_goOnline` shows the same CPU 315 (serial S C-B1U393142011, PLC_1) as held-out
+  `iti_tia_s300_updateFirmware`, so all 3 real held-out captures overlap the dev set. Fixes tuned on those dev captures may
+  therefore carry over to these two held-out captures; their held-out numbers are not fully independent.

@@ -31,12 +31,28 @@ matched against CSAF OT and KEV, with JSON/CSV/HTML outputs and no active scanni
 - **Distribution.** The README plans git as the distribution source. Commit `index.json` and `.sig` to a release branch or tag, and
   pull or copy them onto USB from there. Git history then doubles as the audit trail of what each offline site had.
 
-**Gaps and next steps**
-- [ ] Verify CSAF PGP signatures (`.asc`) at sync time. That needs BouncyCastle or a `gpg` subprocess. Today we rely only on TLS to GitHub.
+**Gaps and next steps** (deferred to after 20 Oct per [remaining-work plan](plans/2026-10-16-remaining-work.md) W8 unless noted)
+- [ ] Verify CSAF PGP signatures (`.asc`) at sync time. That needs BouncyCastle or a `gpg` subprocess. Today we rely only on TLS to GitHub. **Deferred; target: before Arsenal (2 Nov).**
 - [x] Show a staleness warning (CLI stderr, JSON `warning`, HTML banner) when the index is more than 30 days old.
 - [x] `vers:` ranges with disjoint intervals (`>=1|<2|>=5|<6`), evaluated with VERS interval semantics.
-- [ ] A vendor alias table (e.g. `Allen-Bradley` → `Rockwell Automation`) once real PCAP output shows misses.
-- [ ] Schedule the sync (cron or a GitHub Action on the online side) so the index refreshes nightly.
+- [ ] A vendor alias table (e.g. `Allen-Bradley` → `Rockwell Automation`) once real PCAP output shows misses. **Deferred.**
+- [ ] Schedule the sync (cron or a GitHub Action on the online side) so the index refreshes nightly. **Deferred.**
+
+Also deferred (W8): swimlane diagram, architecture.md rewrite, Zeek/ICSNPP adapter, CI fuzz gate / Dependabot /
+pinned eval requirements.
+
+### Signing key custody
+
+- **Holder:** TBD at the 16 Oct team call. Record the name and date here.
+- **Storage:** the private key (`keys/index-signing.key`) stays offline and encrypted (e.g. on an encrypted USB or in a
+  password-manager attachment). It is never in CI, never in git (`keys/` is in `.gitignore`).
+- **Fingerprint:** SHA-256 of the public key file (`sha256sum keys/index-signing.pub`), published in README.md
+  ("Verifying the index"). Offline sites compare it before trusting a copied pubkey.
+- **Rotation:** generate a new pair (`keygen`), re-sign the index (`build-index --sign-key`), publish the new
+  fingerprint in README.md. The old key is revoked by removing its fingerprint from README.md and noting the date here.
+- **Compromise:** same steps as rotation, immediately, plus an announcement (release notes and team channel) telling
+  offline sites to replace the pubkey and re-copy the index.
+- Revocation log: none yet.
 
 ## 2. Device connectors (passive only)
 
@@ -75,6 +91,6 @@ Maven build, Java 21+ (tested on 25). The runtime is **standard library only**, 
 ## Open questions for the team
 
 1. Is git still the distribution plan for the index? If so, which repo and branch hold the signed index?
-2. Who holds the signing key on the online side?
+2. Who holds the signing key on the online side? (See "Signing key custody" above; to be named at the 16 Oct call.)
 3. Does the PCAP project emit vendor *names* or raw vendor IDs? (See ingest-api.md.)
 4. Should the matcher's HTML report merge into the PCAP project's single-file report, or stay separate?

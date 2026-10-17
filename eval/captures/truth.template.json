@@ -4,6 +4,9 @@
  "description": "",
  "files": [""],
  "device_count": 0,
+ "simulated": false,
+ "site_data": "none",
+ "_help_top": "simulated: true for simulator/test-server traffic (CAPTURE_GUIDE section 4). site_data: none | anonymised (docs/ethics.md). Both stay at the top level.",
  "capture": {
   "_help": "Who/when/where. Not scored, but we need it for the paper.",
   "captured_by": "",
@@ -13,7 +16,6 @@
   "capture_point": "",
   "tools_used": ["Wireshark 4.x", "TIA Portal V17", "..."],
   "actions_performed": ["10:02 TIA Portal Accessible devices", "10:04 Go online to PLC_1", "..."],
-  "anonymised": false,
   "notes": ""
  },
  "devices": [

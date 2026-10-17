@@ -31,8 +31,25 @@ Public truth files were built with an independent byte-level decoder (not this p
 (`icsnpp_s7ident`, `icsnpp_modbus_example`). Truth comes from an independent stdlib decoder written from the Wireshark
 dissector sources, with each value cited to a frame. Each file records the capture's SHA-256.
 Disclosure: these captures were run once with the pre-fix jar as a baseline and scanned by check_capture.py. No fix was
-developed or tuned against them. The decoder and the fixes share an author; a Wireshark cross-check is planned.
+developed or tuned against them. The decoder (`truth_decoder/decode.py`, `build_truth.py`) and the fixes share an
+author; `crosscheck_wireshark.py` checks the held-out truth values against Wireshark's dissectors.
+Overlap with the dev set (same physical devices): dev `iti_enip_test` shows the same 1756-ENBT (10.1.1.164, serial
+00524D8E, firmware 4.003) as held-out `icsnpp_enip_cip_example`, and dev `iti_EIP-FirmwareChange` shows the same
+chassis/ENBT (serial 0051AEC3) as held-out `iti_EIP-IPAddressChangeAttempt`. Also, dev `iti_tia_s300_goOnline` shows the same CPU 315 (serial S C-B1U393142011, PLC_1) as held-out
+`iti_tia_s300_updateFirmware`, so all 3 real held-out captures overlap the dev set. Fixes tuned on those dev captures may
+therefore carry over to these two held-out captures; their held-out numbers are not fully independent.
 
 `python eval/research_tables.py --runs eval/out --index ... --pubkey ...` produces the research-question tables:
 CISA-14 fill rate, identity availability, and risk hidden by missing fields. Groups: heldout-real, heldout-sim,
 dev-public, lab, synthetic.
+
+## Frozen run and the other tools
+
+| Path | What |
+|---|---|
+| `freeze.py --index IDX --pubkey PUB` | the 17 Oct frozen run: clean tree, SHA-256 of every public capture checked against `captures/public/sources.json` and of each held-out capture against its `heldout/*.truth.json` (mismatch stops the run), `mvn package` (tests), one signed-index check, run_eval + research tables over lab, public, held-out and team captures, `manifest.json` (commit, commands, versions, SHA-256 of every capture, index, index signature and pubkey) into a fresh `results/<hash>/` (refuses to reuse one). Results incl. `mvn.log`/`run_eval.log` are committed (text only); pcaps never. A capture that fails inside run_eval is reported as measured: the run stays publishable and the failure is listed in `manifest.json` `failed` and in `summary.md`. `--skip-heldout` / `--allow-dirty` are for testing: unpublishable, written to the git-ignored `results/<hash>-TESTING/` |
+| `captures/fetch_public.py` | downloads the public captures from `captures/public/sources.json` (URLs from SOURCES*.md) and refuses any file whose SHA-256 differs from the pinned one; `--check-only` verifies local copies |
+| `advisory/` | advisory-match accuracy: `make_candidates.py` builds the labelling sheet, `score.py` gives precision/recall per level; labelling rules in `advisory/README.md` |
+| `crosscheck_wireshark.py` | checks held-out truth values against tshark's dissectors, frame by frame (needs Wireshark; `--selftest` runs without it) |
+| `truth_decoder/` | the independent stdlib decoder and truth builder the public and held-out truth files came from |
+| `sim/` | simulator fallback (pymodbus, snap7, cpppo) for when no hardware capture is usable; see `sim/README.md` |

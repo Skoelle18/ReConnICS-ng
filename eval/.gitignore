@@ -4,3 +4,13 @@ __pycache__/
 captures/**/*.pcap
 captures/**/*.pcapng
 captures/**/*.cap
+captures/**/*.part
+# eval/results/<hash>/ is committed (small text, the frozen numbers); the repo-root "results/" rule is overridden here.
+!results/
+results/**/observations.json
+results/**/_blanked/
+results/**/report.html
+results/**/*.pcap*
+results/*-TESTING/
+# mvn.log / run_eval.log are part of the frozen record (the root .gitignore drops *.log)
+!results/**/*.log

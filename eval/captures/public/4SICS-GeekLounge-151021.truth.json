@@ -1,9 +1,9 @@
 {
  "scenario": "4SICS-GeekLounge-151021",
- "description": "Real public capture 4SICS-GeekLounge-151021.pcap (1253100 frames); truth from independent stdlib decoder D:/reconics/work/public-truth/decode.py",
+ "description": "Real public capture 4SICS-GeekLounge-151021.pcap (1253100 frames); truth from independent stdlib decoder eval/truth_decoder/decode.py",
  "source": "see eval/captures/public/SOURCES.md",
  "files": [
-  "D:/reconics/reconics-local/testdata/public/4SICS-GeekLounge-151021.pcap"
+  "4SICS-GeekLounge-151021.pcap"
  ],
  "device_count": 50,
  "required_count": 32,
@@ -1137,5 +1137,7 @@
     "21.2.2.2"
    ]
   }
- }
+ },
+ "simulated": false,
+ "site_data": "none"
 }

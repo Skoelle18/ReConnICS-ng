@@ -1,6 +1,6 @@
 {
  "scenario": "icsnpp_enip_cip_example",
- "description": "Real public capture icsnpp_enip_cip_example.pcap (776 frames); truth from independent stdlib decoder D:/reconics/work/public-truth/decode.py",
+ "description": "Real public capture icsnpp_enip_cip_example.pcap (776 frames); truth from independent stdlib decoder eval/truth_decoder/decode.py",
  "source": "see eval/captures/public/SOURCES.md",
  "files": [
   "icsnpp_enip_cip_example.pcap"
@@ -258,5 +258,7 @@
   "multi_ip_macs": {}
  },
  "heldout": true,
- "sha256": "26cfe3df042a5d96fd680abf97c4998dd1ea8a396870a8aa2e98ba2ef056af93"
+ "sha256": "26cfe3df042a5d96fd680abf97c4998dd1ea8a396870a8aa2e98ba2ef056af93",
+ "simulated": false,
+ "site_data": "none"
 }

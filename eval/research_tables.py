@@ -30,6 +30,13 @@ def load(p):
     return json.loads(Path(p).read_text(encoding="utf-8"))
 
 
+def ident_share(truth):
+    """(devices that sent identity, devices counted): required devices plus any optional one that sent identity, so an
+    identity-bearing device marked optional (e.g. a loopback test server) is not dropped from the count."""
+    ds = [x for x in truth["devices"] if not x.get("optional") or x.get("identifiable")]
+    return sum(1 for x in ds if x.get("identifiable")), len(ds)
+
+
 def group_of(capture_file, truth):
     """Plan split: held-out (headline) apart from dev; simulated apart from real equipment."""
     s = str(capture_file).replace("\\", "/")
@@ -103,10 +110,7 @@ def main():
                 c[1] += 1
                 if filled(asset, at):
                     c[0] += 1
-        ident_truth = None
-        if tr:
-            req = [x for x in tr["devices"] if not x.get("optional")]
-            ident_truth = (sum(1 for x in req if x.get("identifiable")), len(req))
+        ident_truth = ident_share(tr) if tr else None
         ident_tool = sum(1 for x in inv.get("assets", []) if x.get("vendor") or x.get("model"))
         t2.append((row["capture"], g, ident_truth, ident_tool, len(inv.get("assets", []))))
 
@@ -143,7 +147,7 @@ def main():
         md.append(f"| {at} | " + " | ".join(f"{fill[g][at][0] / fill[g][at][1]:.2f}" if fill[g][at][1] else "-"
                                             for g in sorted(fill)) + " |")
     md += ["", "## Table 2. Identity availability per capture", "",
-           "| capture | source | devices with an identity message (truth, required) | identified by tool | assets |",
+           "| capture | source | devices with an identity message (truth: required + optional that sent identity) | identified by tool | assets |",
            "|---|---|---|---|---|"]
     for cap, g, it, tool, n in t2:
         md.append(f"| {cap} | {g} | {f'{it[0]}/{it[1]}' if it else 'no truth'} | {tool} | {n} |")

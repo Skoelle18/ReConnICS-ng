@@ -1,6 +1,6 @@
 {
  "scenario": "iti_tia_s300_updateFirmware",
- "description": "Real public capture iti_tia_s300_updateFirmware.pcapng (67749 frames); truth from independent stdlib decoder D:/reconics/work/public-truth/decode.py",
+ "description": "Real public capture iti_tia_s300_updateFirmware.pcapng (67749 frames); truth from independent stdlib decoder eval/truth_decoder/decode.py",
  "source": "see eval/captures/public/SOURCES.md",
  "files": [
   "iti_tia_s300_updateFirmware.pcapng"
@@ -89,5 +89,7 @@
   "multi_ip_macs": {}
  },
  "heldout": true,
- "sha256": "246b5a75a184b6218366802bf5429620b1338ae10d61b665758ac756cc6de16e"
+ "sha256": "246b5a75a184b6218366802bf5429620b1338ae10d61b665758ac756cc6de16e",
+ "simulated": false,
+ "site_data": "none"
 }
