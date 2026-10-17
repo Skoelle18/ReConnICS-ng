@@ -1,0 +1,373 @@
+{
+ "scenario": "iti_EIP-IPAddressChangeAttempt",
+ "description": "Real public capture iti_EIP-IPAddressChangeAttempt.pcap (4154 frames); truth from independent stdlib decoder eval/truth_decoder/decode.py",
+ "source": "see eval/captures/public/SOURCES.md",
+ "files": [
+  "iti_EIP-IPAddressChangeAttempt.pcap"
+ ],
+ "device_count": 15,
+ "required_count": 9,
+ "identifiable_count": 4,
+ "devices": [
+  {
+   "id": "192.168.10.120",
+   "ip": "192.168.10.120",
+   "alt_ids": [
+    "192.168.10.125"
+   ],
+   "mac": "00:00:bc:3e:eb:e4",
+   "model": "1756-ENBT/A",
+   "firmware": "4.007",
+   "firmware_aliases": [
+    "4.7"
+   ],
+   "serial": "0051AEC3",
+   "role": "comms_adapter",
+   "hostname": null,
+   "identifiable": true,
+   "protocols": [
+    "enip"
+   ],
+   "vendor": "Rockwell Automation",
+   "vendor_aliases": [
+    "Allen-Bradley",
+    "Rockwell Automation/Allen-Bradley",
+    "Rockwell"
+   ],
+   "evidence": {
+    "identity": "CIP Identity direct frames 1097, 3613-3919; ListIdentity/udp frames 3986-4154; slot1 route 0101 returns the same serial",
+    "ip_change": "same MAC 00:00:bc:3e:eb:e4 sends as 192.168.10.125 (frames 2-1097) then 192.168.10.120 (from 3380)"
+   }
+  },
+  {
+   "id": "192.168.10.120/slot0",
+   "alt_ids": [
+    "192.168.10.125/slot0"
+   ],
+   "ip": "192.168.10.120",
+   "model": "1756-L61/B LOGIX5561",
+   "firmware": "16.020",
+   "firmware_aliases": [
+    "16.20"
+   ],
+   "serial": "0051823F",
+   "role": "plc",
+   "mac": null,
+   "hostname": null,
+   "identifiable": true,
+   "protocols": [
+    "enip"
+   ],
+   "vendor": "Rockwell Automation",
+   "vendor_aliases": [
+    "Allen-Bradley",
+    "Rockwell Automation/Allen-Bradley",
+    "Rockwell"
+   ],
+   "evidence": {
+    "identity": "CIP Get_Attributes_All via Unconnected Send route 0100"
+   }
+  },
+  {
+   "id": "192.168.10.120/slot2",
+   "alt_ids": [
+    "192.168.10.125/slot2"
+   ],
+   "ip": "192.168.10.120",
+   "model": "MVI56 ProSoft Technology, Inc.",
+   "firmware": "1.002",
+   "firmware_aliases": [
+    "1.2"
+   ],
+   "serial": "0000AD77",
+   "role": "comms_adapter",
+   "mac": null,
+   "hostname": null,
+   "identifiable": true,
+   "protocols": [
+    "enip"
+   ],
+   "vendor": "ProSoft Technology",
+   "vendor_aliases": [
+    "ProSoft Technology, Inc.",
+    "Prosoft Technology",
+    "CIP Vendor ID 309"
+   ],
+   "evidence": {
+    "identity": "CIP Get_Attributes_All via Unconnected Send route 0102"
+   }
+  },
+  {
+   "id": "192.168.10.120/slot3",
+   "alt_ids": [
+    "192.168.10.125/slot3"
+   ],
+   "ip": "192.168.10.120",
+   "model": "MVI56 ProSoft Technology, Inc.",
+   "firmware": "1.002",
+   "firmware_aliases": [
+    "1.2"
+   ],
+   "serial": "0000AD5E",
+   "role": "comms_adapter",
+   "mac": null,
+   "hostname": null,
+   "identifiable": true,
+   "protocols": [
+    "enip"
+   ],
+   "vendor": "ProSoft Technology",
+   "vendor_aliases": [
+    "ProSoft Technology, Inc.",
+    "Prosoft Technology",
+    "CIP Vendor ID 309"
+   ],
+   "evidence": {
+    "identity": "CIP Get_Attributes_All via Unconnected Send route 0103"
+   }
+  },
+  {
+   "id": "192.168.10.1",
+   "ip": "192.168.10.1",
+   "mac": "00:15:17:68:39:f4",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 1)"
+  },
+  {
+   "id": "192.168.10.21",
+   "ip": "192.168.10.21",
+   "mac": "00:0c:29:19:9e:8e",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "seen": {
+    "first_frame": 2077,
+    "sent_unicast": 18,
+    "ttl": {
+     "128": 20
+    }
+   }
+  },
+  {
+   "id": "192.168.10.22",
+   "ip": "192.168.10.22",
+   "mac": "00:0c:29:e8:32:7a",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "seen": {
+    "first_frame": 370,
+    "sent_unicast": 18,
+    "ttl": {
+     "128": 20
+    }
+   }
+  },
+  {
+   "id": "192.168.10.23",
+   "ip": "192.168.10.23",
+   "mac": "00:0c:29:40:8c:b1",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 2639,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 2639)"
+  },
+  {
+   "id": "192.168.10.24",
+   "ip": "192.168.10.24",
+   "mac": "00:0c:29:f7:85:99",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "seen": {
+    "first_frame": 2237,
+    "sent_unicast": 18,
+    "ttl": {
+     "128": 20
+    }
+   }
+  },
+  {
+   "id": "192.168.10.105",
+   "ip": "192.168.10.105",
+   "mac": "00:1d:09:99:b2:2c",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "enip"
+   ],
+   "seen": {
+    "first_frame": 2,
+    "sent_unicast": 635,
+    "ttl": {
+     "128": 675
+    }
+   }
+  },
+  {
+   "id": "192.168.10.106",
+   "ip": "192.168.10.106",
+   "mac": "00:80:a3:8c:33:62",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "seen": {
+    "first_frame": 1109,
+    "sent_unicast": 1959,
+    "ttl": {
+     "64": 1959
+    }
+   }
+  },
+  {
+   "id": "192.168.10.131",
+   "ip": "192.168.10.131",
+   "mac": "00:e0:62:60:35:d0",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 3482,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 3482)"
+  },
+  {
+   "id": "192.168.10.136",
+   "ip": "192.168.10.136",
+   "mac": "00:e0:62:60:35:d0",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 580,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 580)"
+  },
+  {
+   "id": "192.168.10.200",
+   "ip": "192.168.10.200",
+   "mac": "00:1e:4f:10:e3:bb",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 1109,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "only a destination (2012 frames, first 1109)"
+  },
+  {
+   "id": "208.73.217.142",
+   "ip": "208.73.217.142",
+   "mac": "00:21:91:06:f1:66",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 1822,
+    "sent_unicast": 0,
+    "ttl": {
+     "1": 2
+    }
+   },
+   "notes": "only broadcast/multicast sender (2 frames)"
+  }
+ ],
+ "not_devices": [],
+ "expect": {
+  "note": "model = SZL 0x0011 idx1 MlfB / CIP product name; firmware = SZL 0x0011 idx7 (V+3 bytes) / CIP revision major.minor(3 digits); serial = SZL 0x001C idx5 / CIP serial (hex, 8 digits); hostname = SZL 0x001C idx2 module name (alias idx1 AS name)"
+ },
+ "notes": "One 1756-ENBT whose IP changes .125 -> .120 (same MAC), fronting a ControlLogix chassis read via CIP Unconnected Send: slot0 1756-L61 16.020, slot1 = the ENBT itself (same serial, folded into the parent), slots 2-3 ProSoft MVI56 (CIP vendor 309). Expected output: .120 with alt id .125, plus /slot0, /slot2, /slot3.",
+ "truth_uncertain": false,
+ "decoder": {
+  "frames": 4154,
+  "linktypes": [
+   1
+  ],
+  "tcp_gaps": 0,
+  "ip_fragments": 0,
+  "multi_ip_macs": {}
+ },
+ "heldout": true,
+ "sha256": "5eb6a8ee92966600b622a393d95b3cfdee4ce131c9653f1af0077199c9bcb473",
+ "simulated": false,
+ "site_data": "none"
+}

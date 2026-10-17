@@ -1,0 +1,264 @@
+{
+ "scenario": "icsnpp_enip_cip_example",
+ "description": "Real public capture icsnpp_enip_cip_example.pcap (776 frames); truth from independent stdlib decoder eval/truth_decoder/decode.py",
+ "source": "see eval/captures/public/SOURCES.md",
+ "files": [
+  "icsnpp_enip_cip_example.pcap"
+ ],
+ "device_count": 10,
+ "required_count": 6,
+ "identifiable_count": 1,
+ "devices": [
+  {
+   "id": "10.1.1.164",
+   "ip": "10.1.1.164",
+   "mac": "00:19:07:24:3c:ca",
+   "vendor": "Rockwell Automation",
+   "model": "1756-ENBT/A",
+   "firmware": "4.003",
+   "serial": "00524D8E",
+   "role": "comms_adapter",
+   "hostname": null,
+   "identifiable": true,
+   "protocols": [
+    "enip"
+   ],
+   "vendor_aliases": [
+    "Allen-Bradley",
+    "Rockwell Automation/Allen-Bradley",
+    "Rockwell"
+   ],
+   "firmware_aliases": [
+    "4.3"
+   ],
+   "serial_aliases": [
+    "0x00524D8E"
+   ],
+   "evidence": {
+    "vendor_id": "vendor_id=1 via ListIdentity/tcp, frames 372..372 (x1)",
+    "device_type": "device_type=12 via ListIdentity/tcp, frames 372..372 (x1)",
+    "product_code": "product_code=58 via ListIdentity/tcp, frames 372..372 (x1)",
+    "revision": "revision=4.003 via ListIdentity/tcp, frames 372..372 (x1)",
+    "serial": "serial=00524D8E via ListIdentity/tcp, frames 372..372 (x1)",
+    "product_name": "product_name=1756-ENBT/A via ListIdentity/tcp, frames 372..372 (x1)"
+   },
+   "seen": {
+    "first_frame": 366,
+    "sent_unicast": 6,
+    "ttl": {
+     "52": 6
+    }
+   }
+  },
+  {
+   "id": "10.1.1.167",
+   "ip": "10.1.1.167",
+   "mac": "3c:a9:f4:21:22:f8",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "enip"
+   ],
+   "seen": {
+    "first_frame": 366,
+    "sent_unicast": 5,
+    "ttl": {
+     "128": 4,
+     "47": 1
+    }
+   }
+  },
+  {
+   "id": "192.168.1.4",
+   "ip": "192.168.1.4",
+   "mac": "64:4b:f0:2b:31:71",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 558,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 558)"
+  },
+  {
+   "id": "192.168.1.22",
+   "ip": "192.168.1.22",
+   "mac": "00:1d:9c:c5:13:dd",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "enip-io"
+   ],
+   "seen": {
+    "first_frame": 377,
+    "sent_unicast": 30,
+    "ttl": {
+     "64": 30
+    }
+   }
+  },
+  {
+   "id": "192.168.1.24",
+   "ip": "192.168.1.24",
+   "mac": "34:c0:f9:fe:65:6b",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "enip-io"
+   ],
+   "seen": {
+    "first_frame": 377,
+    "sent_unicast": 368,
+    "ttl": {
+     "64": 368
+    }
+   }
+  },
+  {
+   "id": "192.168.10.21",
+   "ip": "192.168.10.21",
+   "mac": "00:0c:29:19:9e:8e",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 126,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 126)"
+  },
+  {
+   "id": "192.168.10.24",
+   "ip": "192.168.10.24",
+   "mac": "00:0c:29:f7:85:99",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 125,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 125)"
+  },
+  {
+   "id": "192.168.10.105",
+   "ip": "192.168.10.105",
+   "mac": "00:1d:09:99:b2:2c",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "enip"
+   ],
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 176,
+    "ttl": {
+     "128": 176
+    }
+   }
+  },
+  {
+   "id": "192.168.10.120",
+   "ip": "192.168.10.120",
+   "mac": "00:00:bc:3e:eb:e4",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "enip"
+   ],
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 175,
+    "ttl": {
+     "64": 175
+    }
+   }
+  },
+  {
+   "id": "192.168.10.131",
+   "ip": "192.168.10.131",
+   "mac": "00:e0:62:60:35:d0",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "optional": true,
+   "seen": {
+    "first_frame": 107,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "ARP only (ops [1], first frame 107)"
+  }
+ ],
+ "not_devices": [],
+ "expect": {
+  "note": "model = SZL 0x0011 idx1 MlfB / CIP product name; firmware = SZL 0x0011 idx7 (V+3 bytes) / CIP revision major.minor(3 digits); serial = SZL 0x001C idx5 / CIP serial (hex, 8 digits); hostname = SZL 0x001C idx2 module name (alias idx1 AS name)"
+ },
+ "notes": "",
+ "truth_uncertain": false,
+ "decoder": {
+  "frames": 776,
+  "linktypes": [
+   1
+  ],
+  "tcp_gaps": 0,
+  "ip_fragments": 0,
+  "multi_ip_macs": {}
+ },
+ "heldout": true,
+ "sha256": "26cfe3df042a5d96fd680abf97c4998dd1ea8a396870a8aa2e98ba2ef056af93",
+ "simulated": false,
+ "site_data": "none"
+}

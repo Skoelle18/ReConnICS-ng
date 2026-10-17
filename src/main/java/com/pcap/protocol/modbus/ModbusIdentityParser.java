@@ -165,21 +165,33 @@ public final class ModbusIdentityParser {
             fields.add(new IdentityField(kind, value, ProtocolType.MODBUS, ev, Confidence.HIGH));
         }
 
+        // Unit 0 and 255 address the TCP device itself; 1..247 behind a gateway is a serial-side sub-device.
+        String subaddr = !fields.isEmpty() && unit >= 1 && unit <= 247 ? "u" + unit : null;
         return Optional.of(new ProtocolMessage(
                 ProtocolType.MODBUS,
                 fields.isEmpty() ? DetectionBasis.HEADER_VALIDATED : DetectionBasis.MESSAGE_DECODED,
                 true,
                 fields,
-                "Modbus FC43/14 response objects=" + objectCount + " code=" + readDeviceIdCode,
-                true));
+                "Modbus FC43/14 response objects=" + objectCount + " code=" + readDeviceIdCode + " unit=" + unit,
+                true,
+                subaddr));
     }
 
     private static boolean isLikelyRequest(int fc, boolean exception, ByteReader pduAfterFc) {
         if (exception) {
             return false;
         }
-        // Heuristic: responses often longer; for identity we already special-case.
-        return true;
+        // Used only when neither side is on port 502 (ProtocolDetector fixes direction by port otherwise).
+        int rest = pduAfterFc.remaining();
+        return switch (fc) {
+            // read coils/inputs/registers: request = addr+qty (4); response = byteCount + byteCount bytes
+            case 1, 2, 3, 4 -> !(rest >= 1 && pduAfterFc.u8(pduAfterFc.position()) == rest - 1 && rest != 4);
+            // write single coil/register: request and echo are identical; treat as request
+            case 5, 6 -> true;
+            // write multiple: request = addr+qty+byteCount+data (>5); response = addr+qty (4)
+            case 15, 16 -> rest != 4;
+            default -> true;
+        };
     }
 
     public boolean looksLikeMbap(byte[] data, int offset, int length) {

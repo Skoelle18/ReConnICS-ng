@@ -13,7 +13,7 @@ final class TransportParser {
         ByteReader r = new ByteReader(data, offset, length);
         int src = r.u16be();
         int dst = r.u16be();
-        r.u32be(); // seq
+        long seq = r.u32be();
         r.u32be(); // ack
         int dataOffsetFlags = r.u16be();
         int dataOffset = ((dataOffsetFlags >> 12) & 0x0F) * 4;
@@ -25,7 +25,7 @@ final class TransportParser {
         }
         int payloadOff = offset + dataOffset;
         int payloadLen = length - dataOffset;
-        return new Result(ParseStatus.OK, "", src, dst, payloadOff, payloadLen);
+        return new Result(ParseStatus.OK, "", src, dst, payloadOff, payloadLen, seq, dataOffsetFlags & 0x3F);
     }
 
     static Result parseUdp(byte[] data, int offset, int length) {
@@ -44,7 +44,7 @@ final class TransportParser {
         if (payloadLen < 0) {
             return Result.fail(ParseStatus.MALFORMED, "UDP payload length negative");
         }
-        return new Result(ParseStatus.OK, "", src, dst, payloadOff, payloadLen);
+        return new Result(ParseStatus.OK, "", src, dst, payloadOff, payloadLen, -1, 0);
     }
 
     record Result(
@@ -53,9 +53,11 @@ final class TransportParser {
             int srcPort,
             int dstPort,
             int payloadOffset,
-            int payloadLength) {
+            int payloadLength,
+            long seq,
+            int flags) {
         static Result fail(ParseStatus s, String d) {
-            return new Result(s, d, -1, -1, 0, 0);
+            return new Result(s, d, -1, -1, 0, 0, -1, 0);
         }
     }
 }

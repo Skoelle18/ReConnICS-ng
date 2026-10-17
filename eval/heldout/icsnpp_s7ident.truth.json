@@ -1,0 +1,70 @@
+{
+ "scenario": "icsnpp_s7ident",
+ "description": "Real public capture icsnpp_s7ident.pcap (36 frames); truth from independent stdlib decoder eval/truth_decoder/decode.py",
+ "source": "see eval/captures/public/SOURCES.md",
+ "files": [
+  "icsnpp_s7ident.pcap"
+ ],
+ "device_count": 1,
+ "required_count": 1,
+ "identifiable_count": 1,
+ "devices": [
+  {
+   "id": "172.17.0.2",
+   "ip": "172.17.0.2",
+   "mac": "00:00:00:00:00:00",
+   "vendor": "Siemens",
+   "model": "6ES7 315-2EH14-0AB0",
+   "firmware": "V3.2.6",
+   "serial": "S C-C2UR28922012",
+   "role": "plc",
+   "hostname": "CPU 315-2 PN/DP",
+   "identifiable": true,
+   "protocols": [
+    "s7comm"
+   ],
+   "vendor_aliases": [
+    "Siemens AG"
+   ],
+   "hostname_aliases": [
+    "SNAP7-SERVER"
+   ],
+   "model_aliases": [
+    "CPU 315-2 PN/DP"
+   ],
+   "evidence": {
+    "model": "SZL 0x0011 idx 1 MlfB, frame 11",
+    "firmware": "SZL 0x0011 idx 7 Ausbg/Ausbe raw 00c056030206, frame 11",
+    "serial": "SZL 0x001C idx 5, frame 13",
+    "hostname": "SZL 0x001C idx 2 (module name), frame 13",
+    "plant_id": "'' (SZL 0x001C idx 3, frame 13)"
+   },
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 36,
+    "ttl": {
+     "64": 36
+    }
+   }
+  }
+ ],
+ "not_devices": [],
+ "expect": {
+  "note": "model = SZL 0x0011 idx1 MlfB / CIP product name; firmware = SZL 0x0011 idx7 (V+3 bytes) / CIP revision major.minor(3 digits); serial = SZL 0x001C idx5 / CIP serial (hex, 8 digits); hostname = SZL 0x001C idx2 module name (alias idx1 AS name)"
+ },
+ "notes": "Snap7 server in a container (172.17.0.2, MAC 00:00:00:00:00:00): simulated, reported apart from real equipment.",
+ "truth_uncertain": false,
+ "decoder": {
+  "frames": 36,
+  "linktypes": [
+   1
+  ],
+  "tcp_gaps": 0,
+  "ip_fragments": 0,
+  "multi_ip_macs": {}
+ },
+ "heldout": true,
+ "sha256": "7a2ae7f2992669a3eb36a878f0e4f124c86ecdf3fc3a284f78e2e6e1deeea680",
+ "simulated": true,
+ "site_data": "none"
+}

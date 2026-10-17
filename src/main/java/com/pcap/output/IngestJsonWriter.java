@@ -95,6 +95,10 @@ public final class IngestJsonWriter {
         String mac = ra.device().primaryMac().orElse(null);
         a.ip = ip;
         a.mac = mac;
+        a.subaddr = ra.device().subaddr().orElse(null);
+        if (a.subaddr != null) {
+            a.mac = null;
+        }
         a.id = ra.device().captureScopedId();
         if (a.id == null || a.id.isBlank()) {
             a.id = ip != null ? ip : mac;
@@ -103,11 +107,18 @@ public final class IngestJsonWriter {
         a.vendor = field(ra.identity().vendor());
         a.model = field(ra.identity().model());
         a.firmware = field(ra.identity().firmware());
+        a.hostname = field(ra.identity().hostname());
+        a.serial = field(ra.identity().serial());
+        a.deviceType = field(ra.identity().deviceType());
 
         Map<String, Object> attrs = new LinkedHashMap<>();
         attrs.put("firstFrame", ra.device().firstFrame());
         attrs.put("lastFrame", ra.device().lastFrame());
         attrs.put("detectionBases", ra.device().detectionBases().stream().map(Enum::name).toList());
+        ra.device().roleHint().ifPresent(r -> attrs.put("role", r));
+        if (ra.device().roles().size() > 1) {
+            attrs.put("roles", new ArrayList<>(ra.device().roles()));
+        }
         if (!ra.device().mergeNotes().isEmpty()) {
             attrs.put("mergeNotes", new ArrayList<>(ra.device().mergeNotes()));
         }

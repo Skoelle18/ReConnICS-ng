@@ -22,8 +22,9 @@ class EnipIdentityParserTest {
         assertEquals(DetectionBasis.MESSAGE_DECODED, msg.basis());
         assertEquals("Rockwell Automation", field(msg, IdentityField.Kind.VENDOR));
         assertEquals("1756-L61", field(msg, IdentityField.Kind.MODEL));
-        assertEquals("12.34", field(msg, IdentityField.Kind.FIRMWARE));
-        assertTrue(msg.fields().stream().anyMatch(f -> f.kind() == IdentityField.Kind.SERIAL));
+        // P11: CIP revision is major.%03d minor (Rockwell/RSLinx display, advisory ranges use it)
+        assertEquals("12.034", field(msg, IdentityField.Kind.FIRMWARE));
+        assertEquals("ABCDEF01", field(msg, IdentityField.Kind.SERIAL));
     }
 
     @Test
@@ -98,4 +99,19 @@ class EnipIdentityParserTest {
         bb.put(data);
         return bb.array();
     }
+
+    // P11 regression: vendor IDs verified against Wireshark cip_vendor_vals
+    @Test
+    void vendorTableMatchesWireshark() {
+        assertEquals("Schneider Electric", EnipIdentityParser.VENDOR_NAMES.get(243));
+        assertEquals("Siemens", EnipIdentityParser.VENDOR_NAMES.get(1251));
+        assertEquals("Omron", EnipIdentityParser.VENDOR_NAMES.get(47));
+        assertEquals("WAGO", EnipIdentityParser.VENDOR_NAMES.get(40));
+        assertEquals("Moxa", EnipIdentityParser.VENDOR_NAMES.get(991));
+        // IDs that were mapped wrongly before (Wireshark: 4 Parker Hannifin, 11 ASCO, 263 Sense, 806 TI, 884 Harms+Wende)
+        for (int wrong : new int[]{4, 11, 263, 806, 884}) {
+            assertNull(EnipIdentityParser.VENDOR_NAMES.get(wrong), "vendor " + wrong);
+        }
+    }
+
 }

@@ -1,0 +1,76 @@
+{
+ "scenario": "S7-1511-opc-request-all-types",
+ "description": "Real public capture S7-1511-opc-request-all-types.pcap (67 frames); truth from independent stdlib decoder eval/truth_decoder/decode.py",
+ "source": "see eval/captures/public/SOURCES.md",
+ "files": [
+  "S7-1511-opc-request-all-types.pcap"
+ ],
+ "device_count": 2,
+ "required_count": 2,
+ "identifiable_count": 0,
+ "devices": [
+  {
+   "id": "192.168.25.139",
+   "ip": "192.168.25.139",
+   "mac": "00:1b:1b:13:41:73",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "s7comm",
+    "s7comm-plus"
+   ],
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 21,
+    "ttl": {
+     "30": 21
+    }
+   }
+  },
+  {
+   "id": "192.168.25.146",
+   "ip": "192.168.25.146",
+   "mac": "00:50:56:34:60:5d",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "s7comm",
+    "s7comm-plus"
+   ],
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 46,
+    "ttl": {
+     "128": 46
+    }
+   }
+  }
+ ],
+ "not_devices": [],
+ "expect": {
+  "note": "model = SZL 0x0011 idx1 MlfB / CIP product name; firmware = SZL 0x0011 idx7 (V+3 bytes) / CIP revision major.minor(3 digits); serial = SZL 0x001C idx5 / CIP serial (hex, 8 digits); hostname = SZL 0x001C idx2 module name (alias idx1 AS name)"
+ },
+ "notes": "OPC UA client reading an S7-1511 over S7comm-plus (0x72) -> no classic SZL identity, not identifiable.",
+ "truth_uncertain": false,
+ "decoder": {
+  "frames": 67,
+  "linktypes": [
+   1
+  ],
+  "tcp_gaps": 0,
+  "ip_fragments": 0,
+  "multi_ip_macs": {}
+ },
+ "simulated": false,
+ "site_data": "none"
+}

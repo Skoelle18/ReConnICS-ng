@@ -15,7 +15,7 @@ java -jar target/reconnics-ng.jar serve --index data/index.json --pubkey keys/in
 There's also a file mode with no server, for batch use or CI:
 
 ```
-java -jar target/reconnics-ng.jar match --index data/index.json --format json|csv|html ASSETS.json
+java -jar target/reconnics-ng.jar match --index data/index.json --pubkey keys/index-signing.pub --format json|csv|html ASSETS.json
 ```
 
 The file uses the same payload as `POST /api/v1/assets`.
@@ -27,7 +27,7 @@ The file uses the same payload as `POST /api/v1/assets`.
 | `POST` | `/api/v1/assets` | Upsert observed assets, keyed by `id`. Re-posting the same id replaces it. |
 | `GET` | `/api/v1/assets` | Return the assets exactly as they were posted. |
 | `DELETE` | `/api/v1/assets` | Clear all assets, for example between captures. |
-| `GET` | `/api/v1/matches[?format=csv\|html]` | Advisory matches for every asset. JSON by default. |
+| `GET` | `/api/v1/matches[?format=csv\|html]` | Advisory matches for every asset. JSON by default. One request at a time; a concurrent one gets `503`. |
 | `GET` | `/api/v1/index` | Index metadata (`generated`, `kevCatalogVersion`, `advisories`, `rows`), useful for staleness checks. |
 
 ## `POST /api/v1/assets`
@@ -82,7 +82,7 @@ echoed back. **Prefer the object form.** The proposal requires every filled fiel
 | Level | Condition |
 |---|---|
 | `EXACT` | Vendor, model, and firmware all match. The firmware falls inside the advisory's affected version or `vers:` range. |
-| `PROBABLE` | Vendor and model match, but the firmware is unknown or the advisory lists no parseable version. |
+| `PROBABLE` | Vendor and model match, but the firmware is unknown or the advisory lists no parseable version; or the advisory names only the product line the model belongs to (`ControlLogix` for a 1756-L61). |
 | `POSSIBLE` | Only the vendor is known. The asset has no model, and every advisory for that vendor is returned. |
 | `NONE` | No vendor, a known model that appears in no advisory, or a firmware version outside every affected range. |
 

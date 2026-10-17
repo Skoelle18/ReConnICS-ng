@@ -1,0 +1,101 @@
+{
+ "scenario": "icsnpp_modbus_example",
+ "description": "Real public capture icsnpp_modbus_example.pcap (100 frames); truth from independent stdlib decoder eval/truth_decoder/decode.py",
+ "source": "see eval/captures/public/SOURCES.md",
+ "files": [
+  "icsnpp_modbus_example.pcap"
+ ],
+ "device_count": 3,
+ "required_count": 2,
+ "identifiable_count": 1,
+ "devices": [
+  {
+   "id": "3.15.227.20",
+   "ip": "3.15.227.20",
+   "mac": "50:6a:03:ae:49:7d",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "modbus"
+   ],
+   "seen": {
+    "first_frame": 99,
+    "sent_unicast": 1,
+    "ttl": {
+     "42": 1
+    }
+   }
+  },
+  {
+   "id": "127.0.0.1",
+   "ip": "127.0.0.1",
+   "mac": null,
+   "vendor": "Zeek Modbus Test",
+   "model": "Protocol Parsing is fun!",
+   "firmware": "1.2.3.6",
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": true,
+   "protocols": [
+    "modbus"
+   ],
+   "evidence": {
+    "identity": "Modbus FC43 unit 1 reply frame 94: VendorName, ProductCode, MajorMinorRevision"
+   },
+   "optional": true,
+   "seen": {
+    "first_frame": null,
+    "sent_unicast": 0,
+    "ttl": {}
+   },
+   "notes": "no unicast traffic"
+  },
+  {
+   "id": "192.168.1.6",
+   "ip": "192.168.1.6",
+   "mac": "04:0e:3c:1f:4b:c1",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "modbus"
+   ],
+   "seen": {
+    "first_frame": 99,
+    "sent_unicast": 1,
+    "ttl": {
+     "64": 1
+    }
+   }
+  }
+ ],
+ "not_devices": [],
+ "expect": {
+  "note": "model = SZL 0x0011 idx1 MlfB / CIP product name; firmware = SZL 0x0011 idx7 (V+3 bytes) / CIP revision major.minor(3 digits); serial = SZL 0x001C idx5 / CIP serial (hex, 8 digits); hostname = SZL 0x001C idx2 module name (alias idx1 AS name)"
+ },
+ "notes": "Loopback capture of a Modbus TEST SERVER (cisagov/icsnpp-modbus test data), not real equipment. Client and server are both 127.0.0.1. Report separately from real-equipment held-out numbers.",
+ "truth_uncertain": false,
+ "decoder": {
+  "frames": 100,
+  "linktypes": [
+   1
+  ],
+  "tcp_gaps": 0,
+  "ip_fragments": 0,
+  "multi_ip_macs": {}
+ },
+ "heldout": true,
+ "sha256": "a84656f9af62b2c948200ec288d51b81f03037c277a31a40efee0cfb244f1e30",
+ "simulated": true,
+ "site_data": "none"
+}

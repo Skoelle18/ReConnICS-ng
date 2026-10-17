@@ -1,0 +1,49 @@
+{
+ "_help": "Answer key for ONE capture. Copy to eval/captures/lab/<capture-name>.truth.json (same base name as the .pcapng). Delete every _help key when done. Unknown value = null (never guess). Full instructions: eval/CAPTURE_GUIDE.md section 6. Check with: python eval/check_capture.py <capture>.pcapng --truth <capture>.truth.json",
+ "scenario": "",
+ "description": "",
+ "files": [""],
+ "device_count": 0,
+ "simulated": false,
+ "site_data": "none",
+ "_help_top": "simulated: true for simulator/test-server traffic (CAPTURE_GUIDE section 4). site_data: none | anonymised (docs/ethics.md). Both stay at the top level.",
+ "capture": {
+  "_help": "Who/when/where. Not scored, but we need it for the paper.",
+  "captured_by": "",
+  "date": "YYYY-MM-DD",
+  "location": "college lab name / bench",
+  "method": "SPAN port on switch X, port N mirrored to port M | capture on the engineering PC | VM host-only network",
+  "capture_point": "",
+  "tools_used": ["Wireshark 4.x", "TIA Portal V17", "..."],
+  "actions_performed": ["10:02 TIA Portal Accessible devices", "10:04 Go online to PLC_1", "..."],
+  "notes": ""
+ },
+ "devices": [
+  {
+   "_help": "One entry per device the tool should list. id = IP, or IP/u<unit> for a Modbus unit behind a gateway, or IP/slot<n> for a module in a backplane slot reached through a comms card.",
+   "id": "",
+   "ip": "",
+   "mac": null,
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": "",
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [],
+   "vendor_aliases": [],
+   "model_aliases": [],
+   "source": {
+    "_help": "Where you read each value (label photo file name, web page, TIA Portal Online & diagnostics, RSLinx Device Properties ...). Not scored.",
+    "vendor": "",
+    "model": "",
+    "firmware": "",
+    "serial": ""
+   }
+  }
+ ],
+ "not_devices": [],
+ "expect": {},
+ "lab": {}
+}

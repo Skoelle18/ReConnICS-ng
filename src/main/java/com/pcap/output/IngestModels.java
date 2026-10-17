@@ -25,10 +25,18 @@ public final class IngestModels {
         public String id;
         public String ip;
         public String mac;
+        /** Sub-device behind {@code ip}: {@code u<unit>} (Modbus gateway) or {@code slot<n>} (CIP backplane). */
+        public String subaddr;
         public List<String> protocols;
         public Object vendor;
         public Object model;
         public Object firmware;
+        /** Station / module name (S7 SZL 0x001C index 2). */
+        public Object hostname;
+        /** Device serial number as reported by the identity object. */
+        public Object serial;
+        /** Device type for role derivation: {@code cip:0xNN} or {@code s7:<module type>}. */
+        public Object deviceType;
         public Map<String, Object> attributes;
     }
 

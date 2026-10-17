@@ -1,0 +1,70 @@
+ReConICS (Reconnics NG)
+Copyright the ReConICS team. Licensed under the GNU GPL v3 (see LICENSE).
+
+This NOTICE covers third-party material used for testing and evaluation. None of it is part of the built jar.
+Licences were checked on 17 Oct 2026 against the GitHub repository licence field and the source pages.
+Per-file details: eval/captures/public/SOURCES.md and SOURCES-extra.md.
+
+Rule: "redistributable" files may be shipped (e.g. on the Arsenal demo set) with the attribution below.
+"Fetch-only" files are never redistributed by this project; the fetch script downloads them from the source URL
+and checks the SHA-256 recorded in SOURCES*.md. When a licence is unclear, the file is fetch-only.
+
+------------------------------------------------------------------------------------------------------------------
+REDISTRIBUTABLE (with attribution)
+------------------------------------------------------------------------------------------------------------------
+
+ITI ICS-Security-Tools sample captures
+  Source:  https://github.com/ITI/ICS-Security-Tools/tree/master/pcaps
+  Licence: CC-BY-4.0 (https://creativecommons.org/licenses/by/4.0/)
+  Credit:  (c) Information Trust Institute (ITI), University of Illinois, and the original contributors.
+  Files:   iti_enip_test, iti_modicon_test, iti_EIP-FirmwareChange, iti_EIP-IPAddressChangeAttempt, iti_cip_unclean
+  The openics/EIP-* captures are the Digital Bond Quickdraw test captures
+  (same traffic as pcaps/quickdraw/CL5000EIP-*). Credit: Digital Bond, Quickdraw project.
+
+CISA ICSNPP test traces
+  Source:  https://github.com/cisagov/icsnpp-s7comm, https://github.com/cisagov/icsnpp-modbus,
+           https://github.com/cisagov/icsnpp-enip (testing/traces/)
+  Licence: BSD-3-Clause. Credit: CISA ICSNPP / Battelle Energy Alliance. Keep the BSD-3 notice of each repo.
+  Files:   icsnpp_s7ident (Snap7 simulator), icsnpp_modbus_example (test server), icsnpp_enip_cip_example
+
+------------------------------------------------------------------------------------------------------------------
+FETCH-ONLY (never redistributed)
+------------------------------------------------------------------------------------------------------------------
+
+gymgit S7 captures (also re-hosted in the ITI repo under pcaps/s7/)
+  Source:  https://github.com/gymgit/s7-pcaps
+  Licence: unclear -> fetch-only. The author writes "created for public use" but the repo has no licence; it is not
+           clear that ITI's CC-BY-4.0 covers these files.
+  Files:   iti_tia_s300_updateFirmware, iti_tia_s300_goOnline, iti_step7_s300_readDiagData, iti_wincc_s400_production,
+           iti_snap7_s300_everything
+
+iti_S7-1200-Uploading-OB1-TIAV12 (ITI pcaps/s7/ folder, a re-host)
+  Source:  https://github.com/ITI/ICS-Security-Tools/tree/master/pcaps/s7 (also in ricardojoserf/s7-parser s7_test/)
+  Licence: unclear -> fetch-only. The original author is not stated and the s7/ folder re-hosts third-party captures,
+           so ITI's CC-BY-4.0 cannot be assumed to cover it.
+
+automayt ICS-pcap mirror (re-hosts Wireshark wiki, Digital Bond and 4SICS captures)
+  Source:  https://github.com/automayt/ICS-pcap
+  Licence: none stated -> fetch-only.
+  Files:   S7-1511-opc-request-all-types, Modbus, MODBUS-TestDataPart2, mb,
+           s7comm_reading_plc_status, s7comm_program_blocklist_onlineview
+           (the two s7comm_* files are Wireshark wiki SampleCaptures by Thomas Wiens; the wiki states no licence)
+
+EmreEkin ICS-Pcaps
+  Source:  https://github.com/EmreEkin/ICS-Pcaps
+  Licence: none stated -> fetch-only (and not currently used in the evaluation).
+
+4SICS Geek Lounge captures
+  Source:  https://www.netresec.com/?page=PCAP4SICS
+  Credit:  CS3Sthlm (formerly 4SICS), captured by Netresec. Netresec asks that CS3Sthlm be credited when the
+           dataset is redistributed or used in training, with a link back to the page.
+  Status:  no formal licence -> fetch-only (also too large to ship). File: 4SICS-GeekLounge-151021
+
+------------------------------------------------------------------------------------------------------------------
+REFERENCE ONLY (no code copied)
+------------------------------------------------------------------------------------------------------------------
+
+Wireshark protocol dissectors (packet-s7comm*.c, packet-enip.c, packet-cip.c, packet-mbtcp.c)
+  Source:  https://github.com/wireshark/wireshark, GPL-2.0-or-later
+  Used as a reference for protocol field layouts only, both for the parser and for the independent truth decoder.
+  No Wireshark source code is copied into this project.

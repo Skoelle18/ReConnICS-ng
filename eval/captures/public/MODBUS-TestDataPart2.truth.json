@@ -1,0 +1,81 @@
+{
+ "scenario": "MODBUS-TestDataPart2",
+ "description": "Real public capture MODBUS-TestDataPart2.pcap (350 frames); truth from independent stdlib decoder eval/truth_decoder/decode.py",
+ "source": "see eval/captures/public/SOURCES.md",
+ "files": [
+  "MODBUS-TestDataPart2.pcap"
+ ],
+ "device_count": 2,
+ "required_count": 2,
+ "identifiable_count": 0,
+ "devices": [
+  {
+   "id": "166.161.16.230",
+   "ip": "166.161.16.230",
+   "mac": null,
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "modbus"
+   ],
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 181,
+    "ttl": {
+     "43": 181
+    }
+   },
+   "notes": "routed: frames carry router/gateway MAC 00:c0:a8:f2:bf:fb"
+  },
+  {
+   "id": "192.168.66.235",
+   "ip": "192.168.66.235",
+   "mac": "00:0c:29:6b:2d:28",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": null,
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "modbus"
+   ],
+   "seen": {
+    "first_frame": 1,
+    "sent_unicast": 169,
+    "ttl": {
+     "128": 169
+    }
+   }
+  }
+ ],
+ "not_devices": [
+  {
+   "kind": "mac_not_assignable",
+   "mac": "00:c0:a8:f2:bf:fb",
+   "reason": "gateway MAC: every frame from 166.161.16.230 (TTL 43, i.e. ~21 hops) carries it; client 192.168.66.235 is in another /8"
+  }
+ ],
+ "expect": {
+  "note": "model = SZL 0x0011 idx1 MlfB / CIP product name; firmware = SZL 0x0011 idx7 (V+3 bytes) / CIP revision major.minor(3 digits); serial = SZL 0x001C idx5 / CIP serial (hex, 8 digits); hostname = SZL 0x001C idx2 module name (alias idx1 AS name)"
+ },
+ "notes": "166.161.16.230 is the Modbus server but is routed (TTL 43 on all 181 frames, first frame 4); its frames carry the gateway MAC 00:c0:a8:f2:bf:fb, so mac=null. Frames 1-2 (SYN retries) went to a second gateway MAC 00:90:4c:91:00:01. Only Modbus FC43 traffic: request at frame with fc 0x2b answered with exception 0xab -> no identity. Fuzz-style capture (every FC 0x00-0x7f once).",
+ "truth_uncertain": false,
+ "decoder": {
+  "frames": 350,
+  "linktypes": [
+   1
+  ],
+  "tcp_gaps": 0,
+  "ip_fragments": 0,
+  "multi_ip_macs": {}
+ },
+ "simulated": false,
+ "site_data": "none"
+}
