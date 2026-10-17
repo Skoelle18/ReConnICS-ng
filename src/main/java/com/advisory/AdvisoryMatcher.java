@@ -131,7 +131,7 @@ final class AdvisoryMatcher {
 
     /** "vers:all/*", "vers:intdot/*", "*", "all", "all versions": every version is affected. */
     static boolean allVersions(String expr) {
-        return expr != null && ALL.matcher(expr.strip().toLowerCase(java.util.Locale.ROOT)).matches();
+        return expr != null && ALL.matcher(expr.strip().toLowerCase(Locale.ROOT)).matches();
     }
 
     private static final Pattern CONSTRAINT = Pattern.compile("^(<=|>=|!=|<|>|=)?\\s*(.+)$");
@@ -145,7 +145,7 @@ final class AdvisoryMatcher {
      * interval or point, so disjoint ranges such as "&gt;=1|&lt;2|&gt;=5|&lt;6" work. null = not machine-readable.
      */
     static Boolean inRange(String v, String range) {
-        String r = range.strip().toLowerCase(java.util.Locale.ROOT);
+        String r = range.strip().toLowerCase(Locale.ROOT);
         if (allVersions(r)) return true;
         if (!numeric(v)) return null;               // "abc" against "<=20": unknown, not affected-by-default
         if (r.startsWith("vers:")) {
@@ -216,7 +216,7 @@ final class AdvisoryMatcher {
     }
 
     private static List<String> parts(String v) {
-        String s = v.toLowerCase().strip().replaceFirst("^(v|version|rev|r)\\s*(?=\\d)", "");
+        String s = v.toLowerCase(Locale.ROOT).strip().replaceFirst("^(v|version|rev|r)\\s*(?=\\d)", "");
         List<String> l = new ArrayList<>();
         Matcher m = PART.matcher(s);
         while (m.find()) l.add(m.group());
@@ -226,7 +226,7 @@ final class AdvisoryMatcher {
     static Set<String> tokens(String s) {
         if (s == null) return Set.of();
         Set<String> t = new LinkedHashSet<>();
-        for (String w : s.toLowerCase().split("[^a-z0-9]+")) if (!w.isEmpty() && !NOISE.contains(w)) t.add(w);
+        for (String w : s.toLowerCase(Locale.ROOT).split("[^a-z0-9]+")) if (!w.isEmpty() && !NOISE.contains(w)) t.add(w);
         return t;
     }
 

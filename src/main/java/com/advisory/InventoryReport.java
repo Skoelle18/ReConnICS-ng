@@ -67,6 +67,8 @@ final class InventoryReport {
         s.put("matcher", inv.matched ? (inv.verified ? "run, index signature verified" : "run, index UNVERIFIED") : "not run");
         if (inv.matched) {
             s.put("index", inv.indexMeta);
+            String stale = AdvisoryIndex.staleness(inv.indexMeta, java.time.Instant.now());
+            if (stale != null) s.put("indexWarning", stale);
             s.put("kevAtModelAssets", inv.records.stream().filter(r -> r.match != null && r.match.kevAtModel()).count());
         }
         Map<String, String> fill = new LinkedHashMap<>();
@@ -193,6 +195,8 @@ final class InventoryReport {
         if (!inv.matched) b.append("<div class=\"b warn\">Matcher not run: no advisory index given (--index). Match columns are empty.</div>\n");
         else if (!inv.verified) b.append("<div class=\"b bad\">Advisory index UNVERIFIED (--insecure-no-verify). An altered index can hide vulnerable devices.</div>\n");
         else b.append("<p class=\"dim\">Advisory index signature verified. Index: ").append(esc(inv.indexMeta)).append("</p>\n");
+        String stale = inv.matched ? AdvisoryIndex.staleness(inv.indexMeta, java.time.Instant.now()) : null;
+        if (stale != null) b.append("<div class=\"b warn\">").append(esc(stale)).append("</div>\n");
         b.append("<details><summary>Fill rate per CISA attribute</summary><table><tr><th scope=\"col\">Attribute</th><th scope=\"col\">Filled</th><th scope=\"col\">How</th></tr>");
         @SuppressWarnings("unchecked") var fr = (Map<String, String>) s.get("fillRate");
         for (var a : Inventory.Attr.values())

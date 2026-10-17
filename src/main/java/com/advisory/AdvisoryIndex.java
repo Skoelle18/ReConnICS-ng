@@ -1,6 +1,9 @@
 package com.advisory;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,6 +18,8 @@ import java.util.*;
 
 final class AdvisoryIndex {
     static final int SCHEMA = 1;
+    /** Size caps for untrusted files: the index (live index is ~7 MB), asset/ingest documents, keys and signatures. */
+    static final long MAX_INDEX_BYTES = 64L << 20, MAX_ASSETS_BYTES = 16L << 20, MAX_SMALL_BYTES = 4096;
 
     record Row(String advisory, String title, String vendor, String product, String version, String range,
                List<String> cves, List<String> kev, double cvss) {}
@@ -51,8 +56,9 @@ final class AdvisoryIndex {
             for (Object sc : Json.arr(vuln.get("scores"))) {
                 var score = Json.obj(sc);
                 Object base = Json.obj(score.getOrDefault("cvss_v3", score.get("cvss_v2"))).get("baseScore");
-                if (!(base instanceof Double d)) continue;
-                for (Object pid : Json.arr(score.get("products"))) cvss.merge((String) pid, d, Math::max);
+                if (!(base instanceof Double d) || Double.isNaN(d)) continue;
+                double c = cvss(d);
+                for (Object pid : Json.arr(score.get("products"))) if (pid instanceof String p) cvss.merge(p, c, Math::max);
             }
         }
 
@@ -114,19 +120,38 @@ final class AdvisoryIndex {
     static AdvisoryIndex parse(String text) {
         var m = new LinkedHashMap<>(Json.obj(Json.parse(text)));
         if (!(m.get("schema") instanceof Double d) || d.intValue() != SCHEMA)
-            throw new IllegalArgumentException("unsupported index schema " + m.get("schema"));
+            throw new IllegalArgumentException("unsupported index schema");
         List<Row> rows = new ArrayList<>();
         for (Object o : Json.arr(m.remove("rows"))) {
             var r = Json.obj(o);
             rows.add(new Row(Json.str(r.get("advisory")), Json.str(r.get("title")), Json.str(r.get("vendor")),
                     Json.str(r.get("product")), Json.str(r.get("version")), Json.str(r.get("range")),
                     strings(r.get("cves")), strings(r.get("kev")),
-                    r.get("cvss") instanceof Double c ? c : 0.0));
+                    r.get("cvss") instanceof Double c ? cvss(c) : 0.0));
         }
         return new AdvisoryIndex(m, rows);
     }
 
-    private static List<String> strings(Object o) { return Json.arr(o).stream().map(String::valueOf).toList(); }
+    /** CVSS base scores live in 0-10: clamp out-of-range values (1e999 parses to Infinity), NaN becomes 0. */
+    static double cvss(double d) { return Double.isNaN(d) ? 0.0 : Math.max(0.0, Math.min(10.0, d)); }
+
+    /** Only real strings: a number or null inside "cves"/"kev" used to become "1.0" / "null". */
+    private static List<String> strings(Object o) { return Json.arr(o).stream().filter(String.class::isInstance).map(String.class::cast).toList(); }
+
+    static final int STALE_DAYS = 30;
+
+    /**
+     * Fixed-text warning when meta.generated is older than STALE_DAYS (or unreadable / in the future), else null.
+     * New advisories published after the build are invisible to the matcher, so an old index under-reports.
+     */
+    static String staleness(Map<String, Object> meta, Instant now) {
+        if (!(meta.get("generated") instanceof String g)) return "advisory index has no build date; it may be out of date";
+        Instant t;
+        try { t = Instant.parse(g); } catch (java.time.format.DateTimeParseException e) { return "advisory index build date is unreadable; it may be out of date"; }
+        long days = java.time.Duration.between(t, now).toDays();
+        if (t.isAfter(now.plus(java.time.Duration.ofDays(1)))) return "advisory index build date is in the future; check the system clock";
+        return days > STALE_DAYS ? "advisory index is " + days + " days old (over " + STALE_DAYS + "); advisories published since then are not matched. Rebuild it." : null;
+    }
 
     static Map<String, Object> newMeta(String source, Object kevVersion, int advisories) {
         Map<String, Object> m = new LinkedHashMap<>();
@@ -170,20 +195,40 @@ final class AdvisoryIndex {
     private static AdvisoryIndex read(Path index, Path publicKey, boolean insecureNoVerify) throws Exception {
         if (publicKey == null && !insecureNoVerify)
             throw new SecurityException("advisory index not verified: pass --pubkey, or --insecure-no-verify to accept an unsigned index");
-        byte[] bytes = Files.readAllBytes(index);
+        byte[] bytes = readCapped(index, MAX_INDEX_BYTES);
         if (publicKey != null) {
-            PublicKey k = KeyFactory.getInstance("Ed25519").generatePublic(new X509EncodedKeySpec(Files.readAllBytes(publicKey)));
+            PublicKey k = KeyFactory.getInstance("Ed25519").generatePublic(new X509EncodedKeySpec(readCapped(publicKey, MAX_SMALL_BYTES)));
             Signature s = Signature.getInstance("Ed25519");
             s.initVerify(k);
             s.update(bytes);
             byte[] sig;
-            try { sig = Base64.getDecoder().decode(Files.readString(sigPath(index)).strip()); }
-            catch (IOException e) { throw new SecurityException("missing signature " + sigPath(index)); }
-            if (!s.verify(sig)) throw new SecurityException("index signature INVALID: " + index);
+            try { sig = Base64.getDecoder().decode(new String(readCapped(sigPath(index), MAX_SMALL_BYTES), StandardCharsets.US_ASCII).strip()); }
+            catch (IOException | IllegalArgumentException e) { throw new SecurityException("advisory index signature missing or unreadable"); }
+            if (!s.verify(sig)) throw new SecurityException("advisory index signature INVALID");
         } else {
             System.err.println("WARNING: --insecure-no-verify: index signature NOT verified; an altered index can hide vulnerable devices");
         }
-        return parse(new String(bytes, StandardCharsets.UTF_8));
+        return parse(utf8(bytes));     // the exact bytes that were verified
+    }
+
+    /** Reads at most max bytes; bounded even for FIFOs, devices or files that grow while being read. */
+    static byte[] readCapped(Path p, long max) throws IOException {
+        try (var in = Files.newInputStream(p)) {
+            byte[] b = in.readNBytes((int) Math.min(Integer.MAX_VALUE - 8, max + 1));
+            if (b.length > max) throw new IllegalArgumentException("file too large");
+            return b;
+        }
+    }
+
+    /** Strict UTF-8: malformed bytes are rejected instead of silently becoming U+FFFD. A leading BOM is dropped. */
+    static String utf8(byte[] b) {
+        try {
+            String s = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(b)).toString();
+            return s.startsWith("\uFEFF") ? s.substring(1) : s;
+        } catch (CharacterCodingException e) {
+            throw new IllegalArgumentException("file is not valid UTF-8");
+        }
     }
 
     static Path sigPath(Path index) { return index.resolveSibling(index.getFileName() + ".sig"); }
