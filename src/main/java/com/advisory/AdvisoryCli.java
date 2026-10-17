@@ -19,7 +19,8 @@ public final class AdvisoryCli {
 
             Offline side (air-gapped analyst laptop):
               match --index FILE (--pubkey FILE | --insecure-no-verify) [--format json|csv|html] [--out FILE] ASSETS.json
-              serve --index FILE (--pubkey FILE | --insecure-no-verify) [--port 8088]     ingest API for the PCAP project
+              serve --index FILE (--pubkey FILE | --insecure-no-verify) [--port 8088] [--data data/site]
+                          local web UI + ingest API on 127.0.0.1; captures, edits and change log kept under --data
               inventory --in OBSERVATIONS.json --out DIR [--oui oui.csv] [--index FILE (--pubkey FILE | --insecure-no-verify)]
               An index is refused unless its signature verifies (--pubkey); --insecure-no-verify accepts it unverified.
             """;
@@ -73,8 +74,10 @@ public final class AdvisoryCli {
             }
             case "serve" -> {
                 int port = Integer.parseInt(o.getOrDefault("port", "8088"));
-                new IngestServer(loadIndex(o)).start(port);
-                System.err.println("ingest API on http://127.0.0.1:" + port + "/api/v1/");
+                var site = new Site(Path.of(o.getOrDefault("data", "data/site")), loadIndex(o), Path.of(o.get("index")),
+                        o.containsKey("pubkey") ? Path.of(o.get("pubkey")) : null, o.containsKey("insecure-no-verify"));
+                new IngestServer(site).start(port);
+                System.err.println("UI on http://127.0.0.1:" + port + "/  (ingest API under /api/v1/, site data in " + site.dir + ")");
             }
             default -> { System.err.print(USAGE); System.exit(2); }
         }
