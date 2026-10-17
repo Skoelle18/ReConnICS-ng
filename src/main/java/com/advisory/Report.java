@@ -40,6 +40,8 @@ final class Report {
         Map<String, Object> top = new LinkedHashMap<>();
         top.put("signature", verified ? "verified" : UNVERIFIED);
         top.put("index", indexMeta);
+        String stale = AdvisoryIndex.staleness(indexMeta, java.time.Instant.now());
+        if (stale != null) top.put("warning", stale);
         top.put("assets", assets);
         return top;
     }
@@ -56,10 +58,19 @@ final class Report {
         return b.toString();
     }
 
-    private static String cell(String s) {
+    /**
+     * CSV cell, safe to open in a spreadsheet: a value starting with = + - @ or with any leading whitespace/control
+     * (tab, CR, LF, NBSP: Excel trims them and then evaluates a formula) is prefixed with ', and a value containing
+     * a comma, semicolon or TAB (the delimiter in some locales / on paste), quote, CR or LF is quoted. The old regex used '.' (no DOTALL), so "a\n\nb" and any CR went unquoted
+     * and could inject rows.
+     */
+    static String cell(String s) {
         if (s == null) return "";
-        if (!s.isEmpty() && "=+-@".indexOf(s.charAt(0)) >= 0) s = "'" + s;
-        return s.matches(".*[\",\\n].*") ? '"' + s.replace("\"", "\"\"") + '"' : s;
+        char c = s.isEmpty() ? 'x' : s.charAt(0);
+        if ("=+-@".indexOf(c) >= 0 || Character.isWhitespace(c) || Character.isSpaceChar(c) || Character.isISOControl(c)) s = "'" + s;
+        if (s.indexOf(',') >= 0 || s.indexOf(';') >= 0 || s.indexOf('\t') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0 || s.indexOf('\r') >= 0)
+            s = '"' + s.replace("\"", "\"\"") + '"';
+        return s;
     }
 
     static String html(Map<Asset, List<AdvisoryMatcher.Match>> r, Map<String, Object> indexMeta, boolean verified) {
@@ -72,6 +83,8 @@ final class Report {
                 .EXACT{background:#511}.PROBABLE{background:#530}.POSSIBLE{background:#440}.kev{color:#f66}}</style>
                 <h1>ReConICS Advisory Report</h1>
                 """);
+        String stale = AdvisoryIndex.staleness(indexMeta, java.time.Instant.now());
+        if (stale != null) b.append("<p class=kev>WARNING: ").append(esc(stale)).append("</p>\n");
         b.append("<p>Index generated ").append(esc(indexMeta.get("generated"))).append(", KEV catalog ")
                 .append(esc(indexMeta.get("kevCatalogVersion"))).append(", ").append(r.size()).append(" assets.</p>\n");
         if (!verified) b.append("<p class=kev>WARNING: ").append(esc(UNVERIFIED)).append("</p>\n");
@@ -92,6 +105,7 @@ final class Report {
     }
 
     private static String esc(Object o) {
-        return String.valueOf(o).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
+        return String.valueOf(o).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
+                .replace("'", "&#39;");
     }
 }
