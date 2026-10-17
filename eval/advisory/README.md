@@ -17,6 +17,12 @@ Labeller: **Vineeth** (not the person who fixes the matcher). Label **before** a
 5. Add a row (copy the device columns) for any advisory you know applies but is missing. Write reasons in `note`.
 6. Save as `labelled.csv` next to this file and commit it with your name in the commit message.
 
+**`labels.csv`**: labelled by an independent agent from CSAF product trees on 17 Oct 2026; human spot-check pending.
+Built from the raw CSAF cache only (no matcher code, no tool output) with the helpers in a scratch folder outside the repo
+(`hits.py` pulls each row's affected/fixed products + version conditions, `decide.py` holds the per-advisory decisions
+with the product_id and condition cited in `note`). Two rows were added (step 5): ICSA-19-106-03 for 8asset/1 and
+8asset/2 (Modicon M221 listed known_affected, no version). It is the sheet to pass as `--sheet` below.
+
 Scoring (after labelling):
 ```
 python eval/advisory/score.py --sheet eval/advisory/labelled.csv --assets-out assets.json

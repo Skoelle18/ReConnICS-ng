@@ -74,7 +74,7 @@ def decoded(row):
     out["firmware"].update(f"{a}.{b}" for a, b in zip(vals(row, "cip.id.major_rev"), vals(row, "cip.id.minor_rev")))
     out["serial"].update(vals(row, "s7comm.szl.001c.0005.serialn"))
     out["serial"].update(f"{num(s):08X}" for s in vals(row, "enip.lir.serial") + vals(row, "cip.id.serial_number"))
-    out["hostname"].update(vals(row, "s7comm.szl.001c.0002.name") + vals(row, "s7comm.szl.001c.0001.name"))
+    out["hostname"].update(vals(row, "s7comm.szl.001c.0002.name"))     # SZL 0x001C idx 2 = module name (idx 1 = station, an alias)
     out["vendor"].update(VENDOR_IDS.get(num(v), f"cip vendor {num(v)}") for v in vals(row, "enip.lir.vendor") + vals(row, "cip.id.vendor_id"))
     fc43 = {"0": "vendor", "1": "model", "2": "firmware"}         # FC43 objects: VendorName, ProductCode, MajorMinorRevision
     for o, s in zip(raw(row, "modbus.object_id"), raw(row, "modbus.object_str_value")):
@@ -144,9 +144,9 @@ def compare(truth, rows):
         else:
             scope = [r for r in rows if r.get("ip.src") == ip]
             how = " (by IP, no frame cited)"
-            if any(r["frame.number"] in rt for r in scope):     # route data available: keep this slot's replies only
-                scope = [r for r in scope if rt.get(r["frame.number"]) == (slot or None)]
-                how = " (by route path)"
+        if any(r["frame.number"] in rt for r in scope):         # route data available: keep this slot's replies only
+            scope = [r for r in scope if rt.get(r["frame.number"]) == (slot or None)]
+            how = " (by route path)"
         seen = {k: set() for k in CHECK}
         for r in scope:
             for k, v in decoded(r).items():
@@ -217,6 +217,11 @@ def selftest():
     sw = {"devices": [{"id": "10.0.0.2/slot2", "vendor": "ProSoft", "serial": "0000BE88", "evidence": {}},
                       {"id": "10.0.0.2/slot3", "vendor": "ProSoft", "serial": "0000AD77", "evidence": {}}]}
     got = {(d, k): v for d, k, _, v, _ in compare(sw, rows)}
+    assert got[("10.0.0.2/slot2", "serial")] == "DISAGREE (by route path)", got
+    assert got[("10.0.0.2/slot3", "serial")] == "DISAGREE (by route path)", got
+    # same swap when the truth cites both slots' frames: the route filter still applies, so still DISAGREE
+    cited = {"devices": [dict(d, evidence={"identity": "CIP GAA frames 50, 52"}) for d in sw["devices"]]}
+    got = {(d, k): v for d, k, _, v, _ in compare(cited, rows)}
     assert got[("10.0.0.2/slot2", "serial")] == "DISAGREE (by route path)", got
     assert got[("10.0.0.2/slot3", "serial")] == "DISAGREE (by route path)", got
     noroute = [dict(r, **{"enip.response_to": ""}) for r in rows]

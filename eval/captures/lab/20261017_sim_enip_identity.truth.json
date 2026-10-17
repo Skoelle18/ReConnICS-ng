@@ -1,0 +1,83 @@
+{
+ "scenario": "enip_identity",
+ "description": "SIMULATED. cpppo EtherNet/IP server on 127.0.0.2:44818 with eval/sim/cpppo.cfg identity; eval/sim/enip_identity_query.py sends ListIdentity over UDP and TCP and CIP Get_Attributes_All (class 1 inst 1) direct and routed to slot 0, twice.",
+ "files": [
+  "20261017_sim_enip_identity.pcap"
+ ],
+ "device_count": 2,
+ "simulated": true,
+ "site_data": "none",
+ "capture": {
+  "captured_by": "Yashash (agent, simulator fallback W4)",
+  "date": "2026-10-17",
+  "location": "single Windows 11 PC, loopback only (127.0.0.x)",
+  "method": "Npcap loopback capture via eval/sim/capture_lo.py, converted to Ethernet by eval/sim/sim_lab.py convert",
+  "capture_point": "Npcap Loopback adapter",
+  "tools_used": [
+   "Npcap (wpcap.dll via ctypes)",
+   "Python 3.11.14",
+   "cpppo 5.2.5 (cpppo.server.enip)"
+  ],
+  "actions_performed": [
+   "enip_identity_query.py 127.0.0.2 44818 0 (ListIdentity UDP #1->#2, TCP #8; GAA direct #16, routed slot0 #20)",
+   "repeat (ListIdentity #26->#27, TCP #33; GAA #41, #45)"
+  ],
+  "notes": "Identity from eval/sim/cpppo.cfg [Identity]: vendor 1, device type 14, product code 166, rev 33.011, serial 60E1F4A2, product name '5069-L320ER/A LOGIX5320ER'. cpppo supports Get_Attributes_All on Identity; it ignores the route path. MACs are synthetic (02:00:00:00:00:<last IP octet>): the Npcap loopback capture (link type 0) has no Ethernet header, so eval/sim/sim_lab.py convert rewrote each frame as Ethernet. Identity values come from the simulator config, not real hardware. Reproduce: eval/sim/RECORD.md."
+ },
+ "devices": [
+  {
+   "id": "127.0.0.1",
+   "ip": "127.0.0.1",
+   "mac": "02:00:00:00:00:01",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": "ews",
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "enip"
+   ],
+   "source": {
+    "vendor": "client scripts eval/sim/*_query.py on the same PC; no identity"
+   }
+  },
+  {
+   "id": "127.0.0.2",
+   "ip": "127.0.0.2",
+   "mac": "02:00:00:00:00:02",
+   "vendor": "Rockwell Automation",
+   "model": "5069-L320ER",
+   "firmware": "33.011",
+   "serial": "60E1F4A2",
+   "role": "plc",
+   "hostname": null,
+   "identifiable": true,
+   "protocols": [
+    "enip"
+   ],
+   "alt_ids": [
+    "127.0.0.2/slot0"
+   ],
+   "vendor_aliases": [
+    "Allen-Bradley",
+    "Rockwell Automation/Allen-Bradley",
+    "Rockwell"
+   ],
+   "model_aliases": [
+    "5069-L320ER/A LOGIX5320ER"
+   ],
+   "source": {
+    "vendor": "ListIdentity vendor id 1 (frames 2, 8, 27, 33)",
+    "model": "ListIdentity product_name frames 2, 8, 27, 33; CIP GAA frames 16, 20, 41, 45",
+    "firmware": "rev 33.011 in the same frames (cpppo.cfg Product Revision 2849)",
+    "serial": "60E1F4A2 in the same frames (cpppo.cfg Serial Number 1625420962)",
+    "alt_ids": "cpppo ignores the CIP route path, so the GAA routed to backplane slot 0 is answered by the same simulated controller; slot0 is not a separate module"
+   }
+  }
+ ],
+ "not_devices": [],
+ "expect": {},
+ "lab": {}
+}
