@@ -1,0 +1,2 @@
+capture,endpoint,protocol,service_port,known_role,expected_exchange,expected_register_values,identity_known
+loopback-modbus.pcap,127.0.0.1,Modbus/TCP,15020,local test simulator,FC3 read starting at register 0 quantity 2,123;456,no device identity supplied

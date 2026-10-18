@@ -71,6 +71,32 @@ class ModbusIdentityParserTest {
         assertTrue(parser.tryParse(raw, 0, raw.length, 1).isEmpty());
     }
 
+    @Test
+    void rejectsExcessiveIdentityObjectCount() {
+        byte[] pdu = new byte[]{
+                0x2B, 0x0E, 0x01, 0x01, 0x00, 0x00, 0x41
+        }; // Claims 65 objects; parser limit is 64.
+        byte[] mbap = mbap(5, pdu);
+
+        ProtocolMessage msg = parser.tryParse(mbap, 0, mbap.length, 1).orElseThrow();
+
+        assertEquals(DetectionBasis.HEADER_VALIDATED, msg.basis());
+        assertTrue(msg.fields().isEmpty());
+        assertTrue(msg.detail().contains("object count too large"));
+    }
+
+    @Test
+    void truncatedFc43MeiMessageProducesNoIdentityFields() {
+        byte[] pdu = new byte[]{0x2B, 0x0E};
+        byte[] mbap = mbap(6, pdu);
+
+        ProtocolMessage msg = parser.tryParse(mbap, 0, mbap.length, 1).orElseThrow();
+
+        assertEquals(DetectionBasis.HEADER_VALIDATED, msg.basis());
+        assertTrue(msg.fields().isEmpty());
+        assertTrue(msg.detail().contains("truncated"));
+    }
+
     private static String field(ProtocolMessage msg, IdentityField.Kind kind) {
         return msg.fields().stream().filter(f -> f.kind() == kind).findFirst().orElseThrow().value();
     }

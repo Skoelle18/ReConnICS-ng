@@ -12,6 +12,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -44,6 +46,129 @@ class EndToEndAnalysisTest {
         // P6: the client 10.10.1.10 is now an asset too (and sorts first); select the server by IP.
         var server = result.document().assets.stream().filter(a -> "10.10.1.31".equals(a.ip)).findFirst().orElseThrow();
         assertEquals("Acme", ((IngestModels.FieldObject) server.vendor).value);
+    }
+
+    @Test
+    void analyzesSyntheticEnipIdentityCapture() throws Exception {
+        byte[] payload = enipIdentityResponse(1, "1756-L61", 12, 34);
+        byte[] frame = PcapTestSupport.ethernetIpv4Tcp(
+                PcapTestSupport.mac("00:11:22:33:44:55"),
+                PcapTestSupport.mac("00:11:22:33:44:66"),
+                PcapTestSupport.ipv4("10.10.1.31"),
+                PcapTestSupport.ipv4("10.10.1.10"),
+                44818, 49152, payload);
+        Path pcap = PcapTestSupport.writeTempPcap("enip-id.pcap",
+                PcapTestSupport.classicPcap(true, false, 1, frame));
+
+        AnalysisService.AnalysisResult result =
+                new AnalysisService().analyze(pcap, false);
+
+        assertTrue(result.report().schemaValid());
+        assertTrue(result.report().identityFieldsDecoded() >= 3);
+        assertFalse(result.document().assets.isEmpty());
+        var asset = result.document().assets.get(0);
+        assertEquals("Rockwell Automation", fieldValue(asset.vendor));
+        assertEquals("1756-L61", fieldValue(asset.model));
+        assertEquals("12.34", fieldValue(asset.firmware));
+    }
+
+    @Test
+    void analyzesSyntheticS7IdentityCapture() throws Exception {
+        byte[] payload = s7IdentityResponse("6ES7 315-2EH14-0AB0");
+        byte[] frame = PcapTestSupport.ethernetIpv4Tcp(
+                PcapTestSupport.mac("00:11:22:33:44:55"),
+                PcapTestSupport.mac("00:11:22:33:44:66"),
+                PcapTestSupport.ipv4("10.10.1.31"),
+                PcapTestSupport.ipv4("10.10.1.10"),
+                102, 49153, payload);
+        Path pcap = PcapTestSupport.writeTempPcap("s7-id.pcap",
+                PcapTestSupport.classicPcap(true, false, 1, frame));
+
+        AnalysisService.AnalysisResult result =
+                new AnalysisService().analyze(pcap, false);
+
+        assertTrue(result.report().schemaValid());
+        assertFalse(result.document().assets.isEmpty());
+        var asset = result.document().assets.get(0);
+        assertEquals("Siemens", fieldValue(asset.vendor));
+        assertEquals("6ES7 315-2EH14-0AB0", fieldValue(asset.model));
+    }
+
+    private static String fieldValue(Object field) {
+        assertNotNull(field, "Expected identity field");
+        return ((com.pcap.output.IngestModels.FieldObject) field).value;
+    }
+
+    private static byte[] enipIdentityResponse(
+            int vendorId, String name, int major, int minor) {
+        byte[] nameBytes = name.getBytes(StandardCharsets.US_ASCII);
+        ByteBuffer item = ByteBuffer.allocate(33 + nameBytes.length)
+                .order(ByteOrder.LITTLE_ENDIAN);
+        item.putShort((short) 1);       // CIP Identity item type
+        item.put(new byte[16]);         // Socket address
+        item.putShort((short) vendorId);
+        item.putShort((short) 14);      // Device type
+        item.putShort((short) 55);      // Product code
+        item.put((byte) major);
+        item.put((byte) minor);
+        item.putShort((short) 0);       // Status
+        item.putInt(0xABCDEF01);        // Serial number
+        item.put((byte) nameBytes.length);
+        item.put(nameBytes);
+
+        ByteBuffer body = ByteBuffer.allocate(6 + item.array().length)
+                .order(ByteOrder.LITTLE_ENDIAN);
+        body.putShort((short) 1);       // Item count
+        body.putShort((short) 0x000C);  // ListIdentity item
+        body.putShort((short) item.array().length);
+        body.put(item.array());
+
+        ByteBuffer packet = ByteBuffer.allocate(24 + body.array().length)
+                .order(ByteOrder.LITTLE_ENDIAN);
+        packet.putShort((short) 0x0063); // ListIdentity command
+        packet.putShort((short) body.array().length);
+        packet.putInt(0);
+        packet.putInt(0);
+        packet.put(new byte[8]);
+        packet.putInt(0);
+        packet.put(body.array());
+        return packet.array();
+    }
+
+    private static byte[] s7IdentityResponse(String mlfb) {
+        byte[] entry = new byte[22];
+        entry[0] = 0;
+        entry[1] = 1;
+        byte[] model = mlfb.getBytes(StandardCharsets.US_ASCII);
+        System.arraycopy(model, 0, entry, 2, Math.min(20, model.length));
+
+        byte[] data = ByteBuffer.allocate(12 + entry.length)
+                .put((byte) 0xFF).put((byte) 0x09)
+                .putShort((short) (8 + entry.length))
+                .putShort((short) 0x0011)  // SZL module identification
+                .putShort((short) 0x0001)
+                .putShort((short) entry.length)
+                .putShort((short) 1)
+                .put(entry)
+                .array();
+
+        byte[] param = new byte[] {
+                0x00, 0x01, 0x12, 0x04, 0x11, 0x44, 0x01, 0x00
+        };
+        int s7Length = 12 + param.length + data.length;
+        int tpktLength = 4 + 3 + s7Length;
+        ByteBuffer packet = ByteBuffer.allocate(tpktLength);
+        packet.put((byte) 3).put((byte) 0).putShort((short) tpktLength);
+        packet.put((byte) 2).put((byte) 0xF0).put((byte) 0x80);
+        packet.put((byte) 0x32).put((byte) 3);
+        packet.putShort((short) 0);
+        packet.putShort((short) 1);
+        packet.putShort((short) param.length);
+        packet.putShort((short) data.length);
+        packet.put((byte) 0).put((byte) 0);
+        packet.put(param);
+        packet.put(data);
+        return packet.array();
     }
 
     @Test
