@@ -109,6 +109,20 @@ java -jar target/reconnics-ng.jar analyze assets/modbus.pcap --post http://127.0
 curl 'http://127.0.0.1:8088/api/v1/matches?format=html' > report.html
 ```
 
+## Site console (local web UI)
+
+```bash
+java -jar target/reconnics-ng.jar serve --index data/index.json --pubkey keys/index-signing.pub [--data data/site]
+# open http://127.0.0.1:8088/
+```
+
+Queue PCAPs (they run one at a time and merge into one site inventory), browse the fix-first inventory with
+evidence for every CISA attribute, fill in what passive capture cannot (criticality, location, zone, Purdue level, ...),
+validate records, see matched advisories, import a new signed index and export JSON/CSV/HTML. Every edit lands in an
+append-only change log. State lives in plain files under `--data`; the server only listens on 127.0.0.1 and serves
+no remote content. Routes: [`docs/ingest-api.md`](docs/ingest-api.md#site-console-routes). Design:
+[`docs/plans/2026-10-17-ui.md`](docs/plans/2026-10-17-ui.md).
+
 Arsenal demo (one command): `scripts/demo.sh [CAPTURE] --index data/index.json --pubkey keys/index-signing.pub`.
 
 ## Evaluation

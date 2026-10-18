@@ -110,7 +110,6 @@ final class IngestServer {
         }
         String len = ex.getRequestHeaders().getFirst("Content-Length");
         if (len != null && (!len.strip().matches("\\d{1,12}") || Long.parseLong(len.strip()) > MAX_BODY)) {
-            ex.getResponseHeaders().set("Connection", "close");   // don't wait to drain a body we refuse
             error(ex, 413, "request body too large"); return;
         }
         byte[] body = ex.getRequestBody().readNBytes(MAX_BODY + 1);
@@ -154,6 +153,5 @@ final class IngestServer {
             ex.getResponseHeaders().set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'");
         ex.sendResponseHeaders(code, b.length);
         ex.getResponseBody().write(b);
-        ex.getResponseBody().flush();   // send now; closing the exchange first drains the unread request body
     }
 }
