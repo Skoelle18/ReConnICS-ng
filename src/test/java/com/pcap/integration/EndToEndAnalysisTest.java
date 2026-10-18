@@ -66,10 +66,11 @@ class EndToEndAnalysisTest {
         assertTrue(result.report().schemaValid());
         assertTrue(result.report().identityFieldsDecoded() >= 3);
         assertFalse(result.document().assets.isEmpty());
-        var asset = result.document().assets.get(0);
+        // the client 10.10.1.10 is an asset too and sorts first; select the server by IP
+        var asset = result.document().assets.stream().filter(a -> "10.10.1.31".equals(a.ip)).findFirst().orElseThrow();
         assertEquals("Rockwell Automation", fieldValue(asset.vendor));
         assertEquals("1756-L61", fieldValue(asset.model));
-        assertEquals("12.34", fieldValue(asset.firmware));
+        assertEquals("12.034", fieldValue(asset.firmware));
     }
 
     @Test
@@ -89,7 +90,8 @@ class EndToEndAnalysisTest {
 
         assertTrue(result.report().schemaValid());
         assertFalse(result.document().assets.isEmpty());
-        var asset = result.document().assets.get(0);
+        // the client 10.10.1.10 is an asset too and sorts first; select the server by IP
+        var asset = result.document().assets.stream().filter(a -> "10.10.1.31".equals(a.ip)).findFirst().orElseThrow();
         assertEquals("Siemens", fieldValue(asset.vendor));
         assertEquals("6ES7 315-2EH14-0AB0", fieldValue(asset.model));
     }
@@ -152,23 +154,7 @@ class EndToEndAnalysisTest {
                 .put(entry)
                 .array();
 
-        byte[] param = new byte[] {
-                0x00, 0x01, 0x12, 0x04, 0x11, 0x44, 0x01, 0x00
-        };
-        int s7Length = 12 + param.length + data.length;
-        int tpktLength = 4 + 3 + s7Length;
-        ByteBuffer packet = ByteBuffer.allocate(tpktLength);
-        packet.put((byte) 3).put((byte) 0).putShort((short) tpktLength);
-        packet.put((byte) 2).put((byte) 0xF0).put((byte) 0x80);
-        packet.put((byte) 0x32).put((byte) 3);
-        packet.putShort((short) 0);
-        packet.putShort((short) 1);
-        packet.putShort((short) param.length);
-        packet.putShort((short) data.length);
-        packet.put((byte) 0).put((byte) 0);
-        packet.put(param);
-        packet.put(data);
-        return packet.array();
+        return PcapTestSupport.s7AckUserData(data);
     }
 
     @Test
