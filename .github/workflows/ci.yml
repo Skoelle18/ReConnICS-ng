@@ -20,6 +20,11 @@ jobs:
           cache: maven
       - name: Build and test
         run: mvn -B -ntp package
+      - name: UI unit tests (site console JavaScript)
+        working-directory: src/test/ui
+        run: |
+          npm ci --no-fund --no-audit
+          npm test
       - name: Smoke run on the example input
         run: |
           java -jar target/reconnics-ng.jar inventory --in docs/examples/observations.json --out /tmp/smoke
