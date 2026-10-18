@@ -1,0 +1,132 @@
+{
+ "scenario": "modbus_fc43",
+ "description": "SIMULATED. pymodbus 3.16.1 server on 127.0.0.2:502 (eval/sim/modbus_server.py, single context = answers every unit id); eval/sim/modbus_fc43_query.py reads FC43 basic+regular for unit 1 and then unit 2 (gateway-style ids).",
+ "files": [
+  "20261017_sim_modbus_fc43.pcap"
+ ],
+ "device_count": 4,
+ "simulated": true,
+ "site_data": "none",
+ "capture": {
+  "captured_by": "Yashash (agent, simulator fallback W4)",
+  "date": "2026-10-17",
+  "location": "single Windows 11 PC, loopback only (127.0.0.x)",
+  "method": "Npcap loopback capture via eval/sim/capture_lo.py, converted to Ethernet by eval/sim/sim_lab.py convert",
+  "capture_point": "Npcap Loopback adapter",
+  "tools_used": [
+   "Npcap (wpcap.dll via ctypes)",
+   "Python 3.11.14",
+   "pymodbus 3.16.1"
+  ],
+  "actions_performed": [
+   "modbus_fc43_query.py 127.0.0.2 502 1 (req #4/#8, replies #6/#10)",
+   "modbus_fc43_query.py 127.0.0.2 502 2 (req #19/#23, replies #21/#25)"
+  ],
+  "notes": "Identity from eval/sim/modbus_server.py: VendorName Schneider Electric, ProductCode TM221CE16R, MajorMinorRevision V1.6.2.0 (+ regular objects 0x03-0x05). pymodbus single=True context answers ALL unit ids with the same identity, so u1/u2 are a simulated gateway case (same values, two unit ids), not two distinct devices. MACs are synthetic (02:00:00:00:00:<last IP octet>): the Npcap loopback capture (link type 0) has no Ethernet header, so eval/sim/sim_lab.py convert rewrote each frame as Ethernet. Identity values come from the simulator config, not real hardware. Reproduce: eval/sim/RECORD.md."
+ },
+ "devices": [
+  {
+   "id": "127.0.0.1",
+   "ip": "127.0.0.1",
+   "mac": "02:00:00:00:00:01",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": "ews",
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "modbus"
+   ],
+   "source": {
+    "vendor": "client scripts eval/sim/*_query.py on the same PC; no identity"
+   }
+  },
+  {
+   "id": "127.0.0.2",
+   "ip": "127.0.0.2",
+   "mac": "02:00:00:00:00:02",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": "gateway",
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "modbus"
+   ],
+   "source": {
+    "vendor": "Modbus TCP endpoint answering 2 unit ids; no unit 0/255 identity read, so the endpoint itself has no identity"
+   }
+  },
+  {
+   "id": "127.0.0.2/u1",
+   "ip": "127.0.0.2",
+   "mac": null,
+   "vendor": "Schneider Electric",
+   "model": "TM221CE16R",
+   "firmware": "1.6.2.0",
+   "serial": null,
+   "role": "plc",
+   "hostname": null,
+   "identifiable": true,
+   "protocols": [
+    "modbus"
+   ],
+   "vendor_aliases": [
+    "Schneider Automation",
+    "Schneider"
+   ],
+   "model_aliases": [
+    "Modicon M221"
+   ],
+   "firmware_aliases": [
+    "V1.6.2.0"
+   ],
+   "source": {
+    "vendor": "FC43 object 0x00 frames 6, 10",
+    "model": "FC43 object 0x01 frames 6, 10",
+    "firmware": "FC43 object 0x02=V1.6.2.0 frames 6, 10",
+    "serial": "FC43 has no serial",
+    "unit": "unit 1"
+   }
+  },
+  {
+   "id": "127.0.0.2/u2",
+   "ip": "127.0.0.2",
+   "mac": null,
+   "vendor": "Schneider Electric",
+   "model": "TM221CE16R",
+   "firmware": "1.6.2.0",
+   "serial": null,
+   "role": "plc",
+   "hostname": null,
+   "identifiable": true,
+   "protocols": [
+    "modbus"
+   ],
+   "vendor_aliases": [
+    "Schneider Automation",
+    "Schneider"
+   ],
+   "model_aliases": [
+    "Modicon M221"
+   ],
+   "firmware_aliases": [
+    "V1.6.2.0"
+   ],
+   "source": {
+    "vendor": "FC43 object 0x00 frames 21, 25",
+    "model": "FC43 object 0x01 frames 21, 25",
+    "firmware": "FC43 object 0x02=V1.6.2.0 frames 21, 25",
+    "serial": "FC43 has no serial",
+    "unit": "unit 2"
+   }
+  }
+ ],
+ "not_devices": [],
+ "expect": {},
+ "lab": {}
+}

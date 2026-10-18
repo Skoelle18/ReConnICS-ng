@@ -1,0 +1,161 @@
+{
+ "scenario": "plant_mixed",
+ "description": "SIMULATED. Three simulators on separate loopback IPs: snap7 S7-315 at 127.0.0.2:102, cpppo 5069-L320ER at 127.0.0.3:44818, pymodbus M221 at 127.0.0.4:502. Over ~190 s the client 127.0.0.1 polls Modbus FC3 every 2 s and S7 DB1 every 10 s, and runs each identity query twice.",
+ "files": [
+  "20261017_sim_plant_mixed.pcap"
+ ],
+ "device_count": 4,
+ "simulated": true,
+ "site_data": "none",
+ "capture": {
+  "captured_by": "Yashash (agent, simulator fallback W4)",
+  "date": "2026-10-17",
+  "location": "single Windows 11 PC, loopback only (127.0.0.x)",
+  "method": "Npcap loopback capture via eval/sim/capture_lo.py, converted to Ethernet by eval/sim/sim_lab.py convert",
+  "capture_point": "Npcap Loopback adapter",
+  "tools_used": [
+   "Npcap (wpcap.dll via ctypes)",
+   "Python 3.11.14",
+   "python-snap7 1.4.1 (native snap7 server + client)",
+   "cpppo 5.2.5 (cpppo.server.enip)",
+   "pymodbus 3.16.1"
+  ],
+  "actions_performed": [
+   "t+0 FC3 polling (93 reads, unit 1) and S7 DB1 read polling (19 reads) start",
+   "t+10 s s7_identity_query (replies #52/#56)",
+   "t+40 s enip_identity_query (#135,#141,#149,#153)",
+   "t+70 s modbus_fc43_query unit 1 (#236,#240)",
+   "t+110 s s7 again (#355/#359)",
+   "t+140 s enip again (#438,#444,#452,#456)",
+   "t+170 s modbus again (#539,#543)"
+  ],
+  "notes": "Identities: snap7 fixed S7-315 identity; cpppo.cfg; modbus_server.py (see the single-protocol truths). MACs are synthetic (02:00:00:00:00:<last IP octet>): the Npcap loopback capture (link type 0) has no Ethernet header, so eval/sim/sim_lab.py convert rewrote each frame as Ethernet. Identity values come from the simulator config, not real hardware. Reproduce: eval/sim/RECORD.md."
+ },
+ "devices": [
+  {
+   "id": "127.0.0.1",
+   "ip": "127.0.0.1",
+   "mac": "02:00:00:00:00:01",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": "ews",
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "s7comm",
+    "enip",
+    "modbus"
+   ],
+   "source": {
+    "vendor": "client scripts eval/sim/*_query.py on the same PC; no identity"
+   }
+  },
+  {
+   "id": "127.0.0.2",
+   "ip": "127.0.0.2",
+   "mac": "02:00:00:00:00:02",
+   "vendor": "Siemens",
+   "model": "6ES7 315-2EH14-0AB0",
+   "firmware": "3.2.6",
+   "serial": "S C-C2UR28922012",
+   "role": "plc",
+   "hostname": "CPU 315-2 PN/DP",
+   "identifiable": true,
+   "protocols": [
+    "s7comm"
+   ],
+   "vendor_aliases": [
+    "Siemens AG"
+   ],
+   "model_aliases": [
+    "CPU 315-2 PN/DP"
+   ],
+   "firmware_aliases": [
+    "V3.2.6"
+   ],
+   "hostname_aliases": [
+    "SNAP7-SERVER"
+   ],
+   "source": {
+    "vendor": "implied by S7comm + 6ES7 order number (SZL carries no vendor string)",
+    "model": "SZL 0x0011 reply frame #52 order_number",
+    "firmware": "SZL 0x0011 reply frame #52 firmware=V3.2.6",
+    "serial": "SZL 0x001C reply frame #56 serial",
+    "hostname": "SZL 0x001C reply frame #56 module_name=CPU 315-2 PN/DP (as_name=SNAP7-SERVER); fixed in the native snap7 library, not configurable"
+   }
+  },
+  {
+   "id": "127.0.0.3",
+   "ip": "127.0.0.3",
+   "mac": "02:00:00:00:00:03",
+   "vendor": "Rockwell Automation",
+   "model": "5069-L320ER",
+   "firmware": "33.011",
+   "serial": "60E1F4A2",
+   "role": "plc",
+   "hostname": null,
+   "identifiable": true,
+   "protocols": [
+    "enip"
+   ],
+   "alt_ids": [
+    "127.0.0.3/slot0"
+   ],
+   "vendor_aliases": [
+    "Allen-Bradley",
+    "Rockwell Automation/Allen-Bradley",
+    "Rockwell"
+   ],
+   "model_aliases": [
+    "5069-L320ER/A LOGIX5320ER"
+   ],
+   "source": {
+    "vendor": "ListIdentity vendor id 1 (frames 135, 141, 438, 444)",
+    "model": "ListIdentity product_name frames 135, 141, 438, 444; CIP GAA frames 149, 153, 452, 456",
+    "firmware": "rev 33.011 in the same frames (cpppo.cfg Product Revision 2849)",
+    "serial": "60E1F4A2 in the same frames (cpppo.cfg Serial Number 1625420962)",
+    "alt_ids": "cpppo ignores the CIP route path, so the GAA routed to backplane slot 0 is answered by the same simulated controller; slot0 is not a separate module"
+   }
+  },
+  {
+   "id": "127.0.0.4",
+   "ip": "127.0.0.4",
+   "mac": "02:00:00:00:00:04",
+   "vendor": "Schneider Electric",
+   "model": "TM221CE16R",
+   "firmware": "1.6.2.0",
+   "serial": null,
+   "role": "plc",
+   "hostname": null,
+   "identifiable": true,
+   "protocols": [
+    "modbus"
+   ],
+   "vendor_aliases": [
+    "Schneider Automation",
+    "Schneider"
+   ],
+   "model_aliases": [
+    "Modicon M221"
+   ],
+   "firmware_aliases": [
+    "V1.6.2.0"
+   ],
+   "source": {
+    "vendor": "FC43 object 0x00 frames 236, 240, 539, 543",
+    "model": "FC43 object 0x01 frames 236, 240, 539, 543",
+    "firmware": "FC43 object 0x02=V1.6.2.0 frames 236, 240, 539, 543",
+    "serial": "FC43 has no serial",
+    "unit": "unit 1 only (also FC3 polling unit 1)"
+   },
+   "alt_ids": [
+    "127.0.0.4/u1"
+   ]
+  }
+ ],
+ "not_devices": [],
+ "expect": {},
+ "lab": {}
+}

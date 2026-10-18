@@ -1,0 +1,84 @@
+{
+ "scenario": "s7_identity",
+ "description": "SIMULATED. Native snap7 server (python-snap7 1.4.1) on 127.0.0.2:102; eval/sim/s7_identity_query.py from 127.0.0.1 reads SZL 0x0011 and 0x001C twice (rack 0 slot 2).",
+ "files": [
+  "20261017_sim_s7_identity.pcap"
+ ],
+ "device_count": 2,
+ "simulated": true,
+ "site_data": "none",
+ "capture": {
+  "captured_by": "Yashash (agent, simulator fallback W4)",
+  "date": "2026-10-17",
+  "location": "single Windows 11 PC, loopback only (127.0.0.x)",
+  "method": "Npcap loopback capture via eval/sim/capture_lo.py, converted to Ethernet by eval/sim/sim_lab.py convert",
+  "capture_point": "Npcap Loopback adapter",
+  "tools_used": [
+   "Npcap (wpcap.dll via ctypes)",
+   "Python 3.11.14",
+   "python-snap7 1.4.1 (native snap7 server + client)"
+  ],
+  "actions_performed": [
+   "s7_identity_query.py 127.0.0.2 102 0 2 (SZL req #12/#16, replies #14/#18)",
+   "repeat 2 s later (req #35/#39, replies #37/#41)"
+  ],
+  "notes": "Snap7 server identity is FIXED in the native library (not configurable): order 6ES7 315-2EH14-0AB0, firmware V3.2.6, serial S C-C2UR28922012, module_name/module_type 'CPU 315-2 PN/DP', as_name 'SNAP7-SERVER', mmc_serial 'MMC 267FF11F' (frames 14, 18, 37, 41). MACs are synthetic (02:00:00:00:00:<last IP octet>): the Npcap loopback capture (link type 0) has no Ethernet header, so eval/sim/sim_lab.py convert rewrote each frame as Ethernet. Identity values come from the simulator config, not real hardware. Reproduce: eval/sim/RECORD.md."
+ },
+ "devices": [
+  {
+   "id": "127.0.0.1",
+   "ip": "127.0.0.1",
+   "mac": "02:00:00:00:00:01",
+   "vendor": null,
+   "model": null,
+   "firmware": null,
+   "serial": null,
+   "role": "ews",
+   "hostname": null,
+   "identifiable": false,
+   "protocols": [
+    "s7comm"
+   ],
+   "source": {
+    "vendor": "client scripts eval/sim/*_query.py on the same PC; no identity"
+   }
+  },
+  {
+   "id": "127.0.0.2",
+   "ip": "127.0.0.2",
+   "mac": "02:00:00:00:00:02",
+   "vendor": "Siemens",
+   "model": "6ES7 315-2EH14-0AB0",
+   "firmware": "3.2.6",
+   "serial": "S C-C2UR28922012",
+   "role": "plc",
+   "hostname": "CPU 315-2 PN/DP",
+   "identifiable": true,
+   "protocols": [
+    "s7comm"
+   ],
+   "vendor_aliases": [
+    "Siemens AG"
+   ],
+   "model_aliases": [
+    "CPU 315-2 PN/DP"
+   ],
+   "firmware_aliases": [
+    "V3.2.6"
+   ],
+   "hostname_aliases": [
+    "SNAP7-SERVER"
+   ],
+   "source": {
+    "vendor": "implied by S7comm + 6ES7 order number (SZL carries no vendor string)",
+    "model": "SZL 0x0011 reply frame #14 order_number",
+    "firmware": "SZL 0x0011 reply frame #14 firmware=V3.2.6",
+    "serial": "SZL 0x001C reply frame #18 serial",
+    "hostname": "SZL 0x001C reply frame #18 module_name=CPU 315-2 PN/DP (as_name=SNAP7-SERVER); fixed in the native snap7 library, not configurable"
+   }
+  }
+ ],
+ "not_devices": [],
+ "expect": {},
+ "lab": {}
+}
