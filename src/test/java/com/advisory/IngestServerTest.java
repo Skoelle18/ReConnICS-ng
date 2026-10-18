@@ -79,10 +79,10 @@ class IngestServerTest {
     }
 
     @Test
-    void oversizedBodyRejectedFromContentLength() throws Exception {
-        byte[] body = new byte[IngestServer.MAX_BODY + 1];
-        Res r = raw("POST", "/api/v1/assets", "127.0.0.1",
-                "application/json", body, (long) body.length);
+    void oversizedBodyRejectedFromContentLengthWithoutReading() throws Exception {
+        Res r = raw("POST", "/api/v1/assets", "127.0.0.1", "application/json", null, (long) IngestServer.MAX_BODY + 1);
+        assertEquals(413, r.code());
+        r = raw("POST", "/api/v1/assets", "127.0.0.1", "application/json", new byte[0], 99_999_999_999_999L);
         assertEquals(413, r.code());
     }
 
