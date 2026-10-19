@@ -74,3 +74,6 @@ __pycache__/
 .env
 .env.*
 venv/
+
+### UI unit tests (src/test/ui) ###
+node_modules/

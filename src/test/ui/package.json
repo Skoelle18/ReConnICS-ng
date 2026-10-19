@@ -1,0 +1,11 @@
+{
+  "name": "reconics-ui-tests",
+  "private": true,
+  "description": "Unit tests for the site console UI (src/main/resources/ui). Test-only tooling: the UI itself still ships with no Node and no build step.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
+}

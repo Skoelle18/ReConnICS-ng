@@ -15,6 +15,9 @@ const ROLE_COLOR = { PLC: '#0F766E', Drive: '#5EB8AE', 'Comms adapter': '#1D4ED8
 const PURDUE = [['3', 'Level 3', 'Site operations'], ['2', 'Level 2', 'Supervisory: HMI, EWS'], ['1', 'Level 1', 'Basic control: PLCs, adapters'],
   ['0', 'Level 0', 'Process: drives, I/O'], ['', 'Unplaced', 'Not enough identity yet']];
 const LIFECYCLE = ['Acquisition', 'Deployment', 'Commissioning', 'In service', 'Maintenance', 'Decommissioned'];
+// What a site field shows before anyone has set it. The edit form must compare against the same value,
+// or saving an untouched form would log a change nobody made.
+const SITE_DEFAULTS = { lifecycle: 'In service' };
 
 const S = { inv: null, rank: [], site: {}, caps: [], changes: [], index: null, search: '', level: 'ALL', kevOnly: false, unvalOnly: false,
   openCap: null, openAdv: null, tab: 'attrs', editing: false, staged: null };
@@ -360,7 +363,7 @@ function editForm(a, site) {
     e.preventDefault();
     const body = {};
     for (const [k, el] of Object.entries(inputs)) {
-      const before = ['criticality', 'asset_number', 'location', 'logging', 'user_accounts'].includes(k) ? human(k) : (site[k] || '');
+      const before = ['criticality', 'asset_number', 'location', 'logging', 'user_accounts'].includes(k) ? human(k) : (site[k] || SITE_DEFAULTS[k] || '');
       if (el.value.trim() !== before) body[k] = el.value.trim();
     }
     S.editing = false;
@@ -375,7 +378,7 @@ function editForm(a, site) {
     text('zone', 'Zone', 'e.g. Cell 1 control', site.zone),
     select('purdue', 'Purdue level', [['', 'Suggest from role'], ['3.5', 'Level 3.5 (DMZ)'], ['3', 'Level 3'], ['2', 'Level 2'], ['1', 'Level 1'], ['0', 'Level 0']], site.purdue),
     text('owner', 'Owner', 'who validates this record', site.owner),
-    select('lifecycle', 'Lifecycle stage', LIFECYCLE.map((x) => [x, x]), site.lifecycle || 'In service')),
+    select('lifecycle', 'Lifecycle stage', LIFECYCLE.map((x) => [x, x]), site.lifecycle || SITE_DEFAULTS.lifecycle)),
   h('div', { class: 'card-b row' }, h('button', { class: 'btn pri', type: 'submit' }, 'Save changes'),
     h('button', { class: 'btn', type: 'button', onclick: () => { S.editing = false; render(); } }, 'Cancel'),
     h('span', { class: 'muted small' }, 'Saved values are logged under your name and count toward completeness.')));
