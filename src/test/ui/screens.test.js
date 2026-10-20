@@ -128,4 +128,16 @@ test('other screens', async (t) => {
       assert.match(app.text(), /editcap -F pcap/);
     } finally { app.close(); }
   });
+
+  await t.test('a posted-via-API capture shows its source instead of frame counts', async () => {
+    const captures = [{ id: 'c1', file: 'posted via API', kind: 'posted', size: 900, at: '2026-10-18T10:00:00Z', by: 'Probe', state: 'done',
+      sha256: 'b'.repeat(64), summary: { frames: 0, malformed: 0, protocols: {}, identityFields: 0, devices: 3 }, diff: { new: 3, changed: 0, notSeen: 0 } }];
+    const app = await loadApp({ routes: defaultRoutes({ captures }), hash: '#/captures' });
+    try {
+      app.$$('#main button').find((b) => b.textContent === 'Details').click();
+      await settle();
+      assert.match(app.text(), /posted to the ingest API/);
+      assert.doesNotMatch(app.text(), /Frames processed/);
+    } finally { app.close(); }
+  });
 });

@@ -226,9 +226,10 @@ function captures() {
             x.state === 'done' || x.state === 'failed' ? h('button', { class: 'btn sm', onclick: () => { S.openCap = x.id; render(); } }, 'Details') : null))))),
     c ? h('div', { class: 'card' }, h('div', { class: 'card-h' }, c.file, h('span', { class: 'badge st-' + c.state }, stateTxt[c.state])),
       c.state === 'done' && c.summary ? h('div', { class: 'card-b facts' },
-        fact('Frames processed', c.summary.frames.toLocaleString()), fact('Malformed / skipped', c.summary.malformed.toLocaleString()),
-        fact('Protocol candidates', Object.entries(c.summary.protocols || {}).map(([k, v]) => k + ' ' + v).join(', ') || 'none', true),
-        fact('Identity fields decoded', c.summary.identityFields), fact('Devices in capture', c.summary.devices),
+        c.kind === 'posted' ? fact('Source', 'Assets posted to the ingest API (no capture to re-read)', true) : [
+          fact('Frames processed', c.summary.frames.toLocaleString()), fact('Malformed / skipped', c.summary.malformed.toLocaleString()),
+          fact('Protocol candidates', Object.entries(c.summary.protocols || {}).map(([k, v]) => k + ' ' + v).join(', ') || 'none', true),
+          fact('Identity fields decoded', c.summary.identityFields)], fact('Devices in capture', c.summary.devices),
         h('div', {}, h('div', { class: 'muted small' }, 'Change to inventory'), h('div', { class: 'row' },
           h('span', { class: 'badge ok' }, '+' + c.diff.new + ' new'), h('span', { class: 'badge warn' }, c.diff.changed + ' changed'), h('span', { class: 'badge lv-NONE' }, c.diff.notSeen + ' not seen'))))
         : c.state === 'failed' ? h('div', { class: 'card-b stack' }, h('div', {}, h('strong', {}, 'Exit ' + c.exit + '. '), c.error),

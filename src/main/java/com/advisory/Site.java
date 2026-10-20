@@ -167,26 +167,61 @@ final class Site {
             summary.put("protocols", new TreeMap<>(r.protocolCandidates()));
             summary.put("identityFields", (double) r.identityFieldsDecoded());
             summary.put("devices", (double) r.assets().size());
-            synchronized (this) {
-                Map<String, String> before = fingerprints(inventory());
-                Files.writeString(captureDir.resolve(id + ".obs.json"), obs);
-                c.put("state", "done");
-                Map<String, String> after = fingerprints(inventory());
-                Set<String> seen = idsIn(obs);
-                Map<String, Object> diff = new LinkedHashMap<>();
-                diff.put("new", (double) after.keySet().stream().filter(k -> !before.containsKey(k)).count());
-                diff.put("changed", (double) after.keySet().stream().filter(k -> before.containsKey(k) && !before.get(k).equals(after.get(k))).count());
-                diff.put("notSeen", (double) before.keySet().stream().filter(k -> !seen.contains(k.split("/")[0])).count());
-                c.put("summary", summary);
-                c.put("diff", diff);
-                save(c);
-                log(String.valueOf(c.get("by")), "(site)", "capture", "", c.get("file") + " merged: " + Json.write(diff), "capture " + id);
-            }
+            synchronized (this) { merged(c, id, obs, summary); }
         } catch (PcapException e) {
             fail(c, 4, e.getMessage());
         } catch (Exception | StackOverflowError e) {
             fail(c, 5, "analysis failed: " + e.getClass().getSimpleName());
         }
+    }
+
+    /** Writes the observations, marks the entry done and logs what the merge changed. Caller holds the lock. */
+    private void merged(Map<String, Object> c, String id, String obs, Map<String, Object> summary) throws IOException {
+        Map<String, String> before = fingerprints(inventory());
+        Files.writeString(captureDir.resolve(id + ".obs.json"), obs);
+        c.put("state", "done");
+        Map<String, String> after = fingerprints(inventory());
+        Set<String> seen = idsIn(obs);
+        Map<String, Object> diff = new LinkedHashMap<>();
+        diff.put("new", (double) after.keySet().stream().filter(k -> !before.containsKey(k)).count());
+        diff.put("changed", (double) after.keySet().stream().filter(k -> before.containsKey(k) && !before.get(k).equals(after.get(k))).count());
+        diff.put("notSeen", (double) before.keySet().stream().filter(k -> !seen.contains(k.split("/")[0])).count());
+        c.put("summary", summary);
+        c.put("diff", diff);
+        save(c);
+        log(String.valueOf(c.get("by")), "(site)", "capture", "", c.get("file") + " merged: " + Json.write(diff), "capture " + id);
+    }
+
+    /**
+     * Assets POSTed to /api/v1/assets (analyzer --post): stored as a finished queue entry whose observations are the
+     * posted list as-is, so they merge into the inventory like an analyzed capture. There is no PCAP and nothing to
+     * re-analyze. The same payload twice is a no-op; returns the entry, or null for a repeat.
+     */
+    synchronized Map<String, Object> addPosted(List<Object> assets, String actor) throws IOException {
+        String obs = Json.write(Map.of("assets", assets));
+        byte[] bytes = obs.getBytes(StandardCharsets.UTF_8);
+        String hex;
+        try { hex = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)); }
+        catch (NoSuchAlgorithmException e) { throw new IllegalStateException(e); }
+        for (var c : captures) if (hex.equals(c.get("sha256"))) return null;
+        String id = String.format("c%04d", ++seq);
+        Map<String, Object> c = new LinkedHashMap<>();
+        c.put("id", id);
+        c.put("file", "posted via API");
+        c.put("kind", "posted");
+        c.put("size", (double) bytes.length);
+        c.put("sha256", hex);
+        c.put("by", actor);
+        c.put("at", Instant.now().toString());
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("frames", 0.0);
+        summary.put("malformed", 0.0);
+        summary.put("protocols", new TreeMap<String, Object>());
+        summary.put("identityFields", 0.0);
+        summary.put("devices", (double) assets.size());
+        captures.add(c);
+        merged(c, id, obs, summary);
+        return new LinkedHashMap<>(c);
     }
 
     private synchronized void fail(Map<String, Object> c, int exit, String msg) {

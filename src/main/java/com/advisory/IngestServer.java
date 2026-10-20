@@ -111,14 +111,18 @@ final class IngestServer {
 
     private static final java.util.regex.Pattern ACTOR_BAD = java.util.regex.Pattern.compile("[^\\p{L}\\p{N} ._'-]");
 
+    private static String actor(HttpExchange ex) {
+        String a = ACTOR_BAD.matcher(Inventory.clean(Objects.toString(ex.getRequestHeaders().getFirst("X-Actor"), ""), 64)).replaceAll("").strip();
+        return a.isEmpty() ? "unknown" : a;
+    }
+
     /**
      * Routes backed by Site. Every write needs a Content-Type a browser cannot send cross-origin without a preflight
      * (application/json or application/octet-stream), or a non-simple method; the server answers no preflight, so another
      * web page cannot reach these. Returns false when the route is not a UI route.
      */
     private boolean siteRoute(HttpExchange ex, String method, String path) throws IOException {
-        String actor = ACTOR_BAD.matcher(Inventory.clean(Objects.toString(ex.getRequestHeaders().getFirst("X-Actor"), ""), 64)).replaceAll("").strip();
-        if (actor.isEmpty()) actor = "unknown";
+        String actor = actor(ex);
         String role = Objects.toString(ex.getRequestHeaders().getFirst("X-Role"), "");
         try {
             if (method.equals("GET") && path.equals("/api/v1/captures")) send(ex, 200, Json.write(site.captures()));
@@ -237,7 +241,7 @@ final class IngestServer {
             error(ex, 400, "body must be an array or an object with an \"assets\" array"); return;
         }
         List<Object> list = doc instanceof List ? Json.arr(doc) : Json.arr(Json.obj(doc).get("assets"));
-        List<Object> rejected = new ArrayList<>();
+        List<Object> rejected = new ArrayList<>(), ok = new ArrayList<>();
         int accepted = 0;
         for (int i = 0; i < list.size(); i++) {
             String reason;
@@ -245,11 +249,12 @@ final class IngestServer {
                 Asset a = Asset.from(list.get(i));
                 synchronized (assets) {
                     if (assets.size() >= MAX_ASSETS && !assets.containsKey(a.id())) reason = "asset store full";
-                    else { assets.put(a.id(), a); accepted++; continue; }
+                    else { assets.put(a.id(), a); ok.add(list.get(i)); accepted++; continue; }
                 }
             } catch (IllegalArgumentException e) { reason = e.getMessage(); }   // Asset.from messages are fixed text (field names only)
             if (rejected.size() < 1000) rejected.add(Map.of("index", (double) i, "reason", reason));
         }
+        if (site != null && !ok.isEmpty()) site.addPosted(ok, actor(ex));   // the UI reads only the Site inventory
         send(ex, rejected.isEmpty() ? 200 : 207, Json.write(Map.of("accepted", (double) accepted, "rejected", rejected)));
     }
 

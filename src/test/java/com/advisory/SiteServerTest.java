@@ -141,6 +141,29 @@ class SiteServerTest {
         assertEquals(404, get("/api/v1/export/secrets.txt").statusCode());
     }
 
+    // `analyze --post .../api/v1/assets` (live mode) must reach the inventory the UI reads
+    @Test
+    void postedAssetsAppearInSiteInventoryAndCaptureQueue() throws Exception {
+        byte[] body = ("{\"assets\":[{\"id\":\"10.10.1.31\",\"ip\":\"10.10.1.31\",\"protocols\":[\"modbus\"],"
+                + "\"vendor\":\"Acme\",\"model\":\"X100\",\"firmware\":\"1.9\"}]}").getBytes(StandardCharsets.UTF_8);
+        var post = send("POST", "/api/v1/assets", "application/json", body, "X-Actor", "Live Probe");
+        assertEquals(200, post.statusCode(), post.body());
+        var asset = asset(Json.obj(Json.parse(get("/api/v1/inventory").body())), "10.10.1.31");
+        assertEquals("EXACT", Json.obj(asset.get("match")).get("level"));
+
+        var caps = Json.arr(Json.parse(get("/api/v1/captures").body()));
+        assertEquals(1, caps.size());
+        var c = Json.obj(caps.get(0));
+        assertEquals("done", c.get("state"));
+        assertEquals("posted", c.get("kind"));
+        assertEquals("Live Probe", c.get("by"));
+        assertEquals(1.0, Json.obj(c.get("diff")).get("new"));
+
+        assertEquals(200, send("POST", "/api/v1/assets", "application/json", body).statusCode());
+        assertEquals(1, Json.arr(Json.parse(get("/api/v1/captures").body())).size(), "same payload again is not a second entry");
+        assertEquals(1, Json.arr(Json.parse(get("/api/v1/changes").body())).size());
+    }
+
     private static Map<String, Object> asset(Map<String, Object> inv, String id) {
         return Json.arr(Json.obj(inv.get("inventory")).get("assets")).stream().map(Json::obj).filter(a -> id.equals(a.get("id"))).findFirst().orElseThrow();
     }
