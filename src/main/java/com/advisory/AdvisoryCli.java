@@ -18,6 +18,7 @@ public final class AdvisoryCli {
                           mirror CSAF OT advisories into --cache, build index (--offline: cache only)
 
             Offline side (air-gapped analyst laptop):
+              verify --index FILE --pubkey FILE                 exit 0 only if the signature is valid
               match --index FILE (--pubkey FILE | --insecure-no-verify) [--format json|csv|html] [--out FILE] ASSETS.json
               serve --index FILE (--pubkey FILE | --insecure-no-verify) [--port 8088] [--data data/site]
                           local web UI + ingest API on 127.0.0.1; captures, edits and change log kept under --data
@@ -25,7 +26,7 @@ public final class AdvisoryCli {
               An index is refused unless its signature verifies (--pubkey); --insecure-no-verify accepts it unverified.
             """;
 
-    public static final java.util.Set<String> COMMANDS = java.util.Set.of("keygen", "build-index", "match", "serve", "inventory");
+    public static final java.util.Set<String> COMMANDS = java.util.Set.of("keygen", "build-index", "match", "serve", "inventory", "verify");
 
     public static void main(String[] argv) throws Exception {
         if (argv.length == 0) { System.err.print(USAGE); System.exit(2); }
@@ -78,6 +79,16 @@ public final class AdvisoryCli {
                         o.containsKey("pubkey") ? Path.of(o.get("pubkey")) : null, o.containsKey("insecure-no-verify"));
                 new IngestServer(site).start(port);
                 System.err.println("UI on http://127.0.0.1:" + port + "/  (ingest API under /api/v1/, site data in " + site.dir + ")");
+            }
+            case "verify" -> {
+                if (!o.containsKey("pubkey")) die("verify needs --pubkey");
+                try {
+                    var idx = loadIndex(o);
+                    System.err.printf("verify: OK, generated %s, %d rows%n", idx.meta.get("generated"), idx.rows.size());
+                } catch (Exception e) {
+                    System.err.println("verify: " + e.getMessage());
+                    System.exit(1);
+                }
             }
             default -> { System.err.print(USAGE); System.exit(2); }
         }

@@ -46,6 +46,10 @@ pinned eval requirements.
 - **Holder:** TBD at the 16 Oct team call. Record the name and date here.
 - **Storage:** the private key (`keys/index-signing.key`) stays offline and encrypted (e.g. on an encrypted USB or in a
   password-manager attachment). It is never in CI, never in git (`keys/` is in `.gitignore`).
+  **Open decision:** `.github/workflows/advisory-index.yml` (see [`deployment.md`](deployment.md)) signs in CI with the key
+  as an Actions secret, which contradicts "never in CI". Its cron is disabled until the team picks one. The public key
+  `keys/index-signing.pub` is committed for that workflow (SHA-256
+  `8feb23a7f9d091e8ddd1c2a766718471b9f8d9c83e8a999ef1b484b055515527`; no holder confirmed yet).
 - **Fingerprint:** SHA-256 of the public key file (`sha256sum keys/index-signing.pub`), published in README.md
   ("Verifying the index"). Offline sites compare it before trusting a copied pubkey.
 - **Rotation:** generate a new pair (`keygen`), re-sign the index (`build-index --sign-key`), publish the new
