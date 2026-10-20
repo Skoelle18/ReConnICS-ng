@@ -72,12 +72,7 @@ test('edit form', async (t) => {
   }
   const input = (app, label) => app.$$('#main form label').find((l) => l.textContent.startsWith(label)).querySelector('input, select');
 
-  // KNOWN BUG (found by these tests): editForm() shows Lifecycle as 'In service' when the site has no value,
-  // but compares against '' — so every save also sends lifecycle:'In service' and logs a change nobody made.
-  // Remove the `todo` options below once app.js is fixed.
-  const LIFECYCLE_BUG = { todo: 'BUG: unchanged Lifecycle is sent as "In service" on every save' };
-
-  await t.test('only changed fields are sent', LIFECYCLE_BUG, async () => {
+  await t.test('only changed fields are sent', async () => {
     const routes = defaultRoutes();
     let sent = null;
     routes['PATCH assets/10.0.1.40'] = (req) => { sent = JSON.parse(req.body); return { changes: [{}] }; };
@@ -91,12 +86,32 @@ test('edit form', async (t) => {
     } finally { app.close(); }
   });
 
-  await t.test('saving with no changes sends nothing', LIFECYCLE_BUG, async () => {
+  await t.test('saving with no changes sends nothing', async () => {
     const app = await openForm(defaultRoutes());
     try {
       app.$$('#main button').find((b) => b.textContent === 'Save changes').click();
       await settle();
       assert.equal(app.calls.filter((c) => c.method === 'PATCH').length, 0);
+    } finally { app.close(); }
+  });
+
+  await t.test('lifecycle is sent only when the user picks a different stage', async () => {
+    const routes = defaultRoutes({ site: { '10.0.1.40': { lifecycle: 'Maintenance' } } });
+    const sent = [];
+    routes['PATCH assets/10.0.1.40'] = (req) => { sent.push(JSON.parse(req.body)); return { changes: [{}] }; };
+    let app = await openForm(routes);
+    try {
+      assert.equal(input(app, 'Lifecycle').value, 'Maintenance', 'a stored value is shown, not the default');
+      app.$$('#main button').find((b) => b.textContent === 'Save changes').click();
+      await settle();
+      assert.deepEqual(sent, [], 'unchanged stored lifecycle sends nothing');
+    } finally { app.close(); }
+    app = await openForm(routes);
+    try {
+      input(app, 'Lifecycle').value = 'Decommissioned';
+      app.$$('#main button').find((b) => b.textContent === 'Save changes').click();
+      await settle();
+      assert.deepEqual(sent, [{ lifecycle: 'Decommissioned' }]);
     } finally { app.close(); }
   });
 

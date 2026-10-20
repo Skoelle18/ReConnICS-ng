@@ -4,7 +4,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loadApp, settle } = require('./support/load-app');
-const { defaultRoutes, exampleInventory } = require('./support/fixtures');
+const { defaultRoutes, exampleInventory, field } = require('./support/fixtures');
 
 /** Inventory table rows, without the header row. */
 const rows = (app) => app.$$('#main .trow.g-inv:not(.thead)');
@@ -138,6 +138,38 @@ test('other screens', async (t) => {
       await settle();
       assert.match(app.text(), /posted to the ingest API/);
       assert.doesNotMatch(app.text(), /Frames processed/);
+    } finally { app.close(); }
+  });
+});
+
+test('identity rows on the asset screen', async (t) => {
+  const row = (app, label) => app.$$('#main .g-attr').find((r) => r.textContent.startsWith(label));
+
+  await t.test('serial number and device type have their own rows', async () => {
+    const app = await loadApp({ routes: defaultRoutes(), hash: '#/asset/10.0.1.10%2Fslot0' });
+    try {
+      assert.match(row(app, 'Serial number').textContent, /\S/);
+      assert.doesNotMatch(row(app, 'Serial number').textContent, /Not filled|No identity message/);
+      assert.match(row(app, 'Device type').textContent, /cip:0x/);
+    } finally { app.close(); }
+  });
+
+  await t.test('an asset with no identity attributes says what would fill them, not a bare "Not filled"', async () => {
+    const app = await loadApp({ routes: defaultRoutes(), hash: '#/asset/10.0.1.60' });
+    try {
+      for (const l of ['Manufacturer', 'Model', 'OS / firmware', 'Serial number', 'Device type'])
+        assert.match(row(app, l).textContent, /No identity message observed \(needs Modbus FC43 \/ ENIP ListIdentity \/ S7 SZL\)/, l);
+      assert.match(row(app, 'Physical location').textContent, /Not filled/, 'human fields keep the plain wording');
+    } finally { app.close(); }
+  });
+
+  await t.test('a MAC-derived vendor is shown but does not count as an identity message', async () => {
+    const inventory = exampleInventory();
+    inventory.assets.find((a) => a.id === '10.0.1.60').vendor_oui = field('Siemens AG', 'LOW', 'MAC OUI 00:1b:1b (IEEE MA-L); NIC maker, may differ from device maker');
+    const app = await loadApp({ routes: defaultRoutes({ inventory }), hash: '#/asset/10.0.1.60' });
+    try {
+      assert.match(row(app, 'Manufacturer').textContent, /Siemens AG.*LOW.*MAC OUI/);
+      assert.match(row(app, 'Model').textContent, /No identity message observed/);
     } finally { app.close(); }
   });
 });
