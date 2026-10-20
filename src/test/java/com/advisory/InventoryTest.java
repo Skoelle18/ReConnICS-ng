@@ -155,6 +155,15 @@ class InventoryTest {
         assertEquals(List.of("10.0.6.1"), ids(i));
     }
 
+    // parser writes the direction hint as attributes.role; it must reach the role handler
+    @Test void roleFromAttributes() {
+        var i = inv("[{\"ip\":\"10.0.0.1\",\"attributes\":{\"role\":\"server\"}},{\"ip\":\"10.0.0.2\",\"attributes\":{\"role\":\"client\"}},"
+                + "{\"ip\":\"10.0.0.3\",\"role\":\"Historian\",\"attributes\":{\"role\":\"server\"}}]");
+        assertEquals("ICS server/responder (inferred)", v(rec(i, "10.0.0.1"), "role"));
+        assertEquals("ICS client/initiator (inferred)", v(rec(i, "10.0.0.2"), "role"));
+        assertEquals("Historian", v(rec(i, "10.0.0.3"), "role"));
+    }
+
     // 7. OUI never feeds matching; role from device type / direction
     @Test void ouiAndRole() {
         var oui = Inventory.loadOui("Registry,Assignment,Organization Name,Organization Address\r\n"
