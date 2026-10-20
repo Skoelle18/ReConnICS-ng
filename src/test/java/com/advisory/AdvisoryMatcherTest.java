@@ -21,6 +21,31 @@ class AdvisoryMatcherTest {
         return m.match(new Asset("t", null, null, vendor, model, fw, Map.of()));
     }
 
+    // ---- catalog variant of a named family: PROBABLE, never EXACT
+
+    @Test
+    void powerFlexCatalogModelMatchesItsFamilyRowAtProbable() {
+        var m = matcher(row("ICSA-19-087-01", "Rockwell Automation", "PowerFlex 525 AC Drives with embedded EtherNet/IP and Safety", null, "<= 5.001"));
+        String model = "PowerFlex 525 1P 240V 2.2kW";
+        var ms = match(m, "Rockwell Automation", model, "5.001");
+        assertEquals(PROBABLE, AdvisoryMatcher.level(ms), "family-prefix match, even with the firmware in range");
+        assertEquals(PROBABLE, AdvisoryMatcher.level(match(m, "Rockwell Automation", model, null)));
+        assertTrue(match(m, "Rockwell Automation", model, "6.001").isEmpty(), "firmware above the range is still excluded");
+        assertTrue(match(m, "Rockwell Automation", "PowerFlex 755 1P 240V 2.2kW", "5.001").isEmpty(), "another family");
+        assertTrue(match(m, "Rockwell Automation", "PowerFlex 525 Keypad", "5.001").isEmpty(), "words after the family that are not ratings");
+        // the plain family name still matches exactly
+        assertEquals(EXACT, AdvisoryMatcher.level(match(m, "Rockwell Automation", "PowerFlex 525 AC Drives", "5.001")));
+    }
+
+    @Test
+    void reportRunRetriesAnMlfbUnderItsFamilyLikeInventory() {
+        var m = matcher(row("S7-1500", "Siemens", "SIMATIC S7-1500 CPU family", null, "vers:all/*"));
+        var a = new Asset("p", null, null, "Siemens", "6ES7 515-2AM01-0AB0", "V2.9", Map.of());
+        assertTrue(m.match(a).isEmpty(), "the matcher alone does not know order numbers");
+        var r = Report.run(m, List.of(a));
+        assertEquals(EXACT, AdvisoryMatcher.level(r.get(a)), "both name only the line");
+    }
+
     // ---- A7: vers:all and disjoint VERS ranges
 
     @Test

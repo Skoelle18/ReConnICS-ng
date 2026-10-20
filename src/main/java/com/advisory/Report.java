@@ -7,8 +7,19 @@ final class Report {
 
     static Map<Asset, List<AdvisoryMatcher.Match>> run(AdvisoryMatcher m, Collection<Asset> assets) {
         Map<Asset, List<AdvisoryMatcher.Match>> out = new LinkedHashMap<>();
-        for (Asset a : assets) out.put(a, m.match(a));
+        for (Asset a : assets) out.put(a, matchOne(m, a));
         return out;
+    }
+
+    /**
+     * Same Siemens order-number handling as Inventory.match: an MLFB ("6ES7 515-...") the index rows do not spell out is
+     * retried under its family name ("SIMATIC S7-1500"). The model as reported is tried first, so a row that names the
+     * exact order number still wins.
+     */
+    static List<AdvisoryMatcher.Match> matchOne(AdvisoryMatcher m, Asset a) {
+        List<AdvisoryMatcher.Match> ms = m.match(a);
+        String family = Inventory.modelFamily(a.vendor(), a.model());
+        return ms.isEmpty() && family != null ? m.match(new Asset(a.id(), a.ip(), a.mac(), a.vendor(), family, a.firmware(), a.raw())) : ms;
     }
 
     static final String UNVERIFIED = "advisory index UNVERIFIED (--insecure-no-verify): an altered index can hide vulnerable devices";
