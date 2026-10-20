@@ -33,6 +33,20 @@ final class Site {
     static final Set<String> CRITICALITY = Set.of("critical", "high", "medium", "low");
     static final Set<String> LIFECYCLE = Set.of("Acquisition", "Deployment", "Commissioning", "In service", "Maintenance", "Decommissioned");
     static final Set<String> PURDUE = Set.of("0", "1", "2", "3", "3.5");
+    /**
+     * MAC-derived NIC maker for the ICS vendors only (src/main/resources/oui-ics.csv, a subset of the IEEE MA-L registry).
+     * It fills vendor_oui (LOW) and never feeds advisory matching.
+     */
+    static final Map<String, String> OUI = loadBundledOui();
+
+    private static Map<String, String> loadBundledOui() {
+        try (InputStream in = Site.class.getResourceAsStream("/oui-ics.csv")) {
+            return in == null ? null : Inventory.loadOui(AdvisoryIndex.utf8(in.readAllBytes()));
+        } catch (IOException e) {
+            return null;                                     // no OUI fallback; everything else still works
+        }
+    }
+
     static final long MAX_PCAP = 4L << 30;
     static final int MAX_CHANGES = 2000;
 
@@ -282,7 +296,7 @@ final class Site {
             });
             if (e.size() > (slash >= 0 ? 2 : 1)) all.add(e);
         });
-        Inventory inv = Inventory.build(Json.write(Map.of("assets", all)), null);
+        Inventory inv = Inventory.build(Json.write(Map.of("assets", all)), OUI);
         AdvisoryIndex idx = index;
         if (matcherFor != idx) { matcher = new AdvisoryMatcher(Inventory.sanitize(idx)); matcherFor = idx; }
         inv.match(idx.meta, matcher, verified);
