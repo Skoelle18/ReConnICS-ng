@@ -51,6 +51,10 @@ final class Site {
     private volatile AdvisoryIndex index;
     private volatile boolean verified;
     private int seq;
+    /** Built inventory; null = stale. Cleared whenever a capture is merged or removed, an edit is saved or the index changes. */
+    private Inventory cached;
+    private AdvisoryMatcher matcher;                 // for matcherFor; the index is immutable once loaded
+    private AdvisoryIndex matcherFor;
 
     /** index: already loaded from indexPath by the CLI (which enforces --pubkey or --insecure-no-verify). */
     Site(Path dir, AdvisoryIndex index, Path indexPath, Path pubkey, boolean insecure) throws IOException {
@@ -136,6 +140,7 @@ final class Site {
         var c = find(id);
         if (!Set.of("queued", "failed").contains(c.get("state"))) throw new Conflict("only queued or failed captures can be removed");
         captures.remove(c);
+        cached = null;
         for (String ext : List.of(".pcap", ".json", ".obs.json")) Files.deleteIfExists(captureDir.resolve(id + ext));
     }
 
@@ -180,6 +185,7 @@ final class Site {
         Map<String, String> before = fingerprints(inventory());
         Files.writeString(captureDir.resolve(id + ".obs.json"), obs);
         c.put("state", "done");
+        cached = null;
         Map<String, String> after = fingerprints(inventory());
         Set<String> seen = idsIn(obs);
         Map<String, Object> diff = new LinkedHashMap<>();
@@ -253,8 +259,9 @@ final class Site {
     // ------------------------------------------------------------------ inventory
 
     /** Every merged capture in queue order, then human edits last so they win ties. */
-    // ponytail: rebuilt from disk on every call; cache it if a site grows past a few thousand assets
+    // ponytail: one cached inventory, rebuilt in full after any change; make it incremental if a rebuild gets slow
     synchronized Inventory inventory() throws IOException {
+        if (cached != null) return cached;
         List<Object> all = new ArrayList<>();
         for (var c : captures) {
             if (!"done".equals(c.get("state"))) continue;
@@ -276,8 +283,10 @@ final class Site {
             if (e.size() > (slash >= 0 ? 2 : 1)) all.add(e);
         });
         Inventory inv = Inventory.build(Json.write(Map.of("assets", all)), null);
-        inv.match(index, verified);
-        return inv;
+        AdvisoryIndex idx = index;
+        if (matcherFor != idx) { matcher = new AdvisoryMatcher(Inventory.sanitize(idx)); matcherFor = idx; }
+        inv.match(idx.meta, matcher, verified);
+        return cached = inv;
     }
 
     synchronized Map<String, Object> inventoryJson() throws IOException {
@@ -329,6 +338,7 @@ final class Site {
         });
         if (fields.isEmpty()) edits.remove(id);
         writeAtomic(dir.resolve("edits.json"), Json.write(edits));
+        cached = null;
         return out;
     }
 
@@ -403,6 +413,7 @@ final class Site {
             Files.move(staged, indexPath, StandardCopyOption.REPLACE_EXISTING);
             index = idx;
             verified = idx.verified;
+            cached = null;
             log(actor, "(site)", "advisory index", old, String.valueOf(idx.meta.get("generated")) + (verified ? " (verified)" : " (UNVERIFIED)"), "import");
         }
         return m;

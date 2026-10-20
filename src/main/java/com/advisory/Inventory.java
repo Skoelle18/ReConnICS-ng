@@ -633,13 +633,16 @@ final class Inventory {
     }
 
     void match(AdvisoryIndex raw, boolean verified) {
-        AdvisoryIndex idx = sanitize(raw);
+        match(raw.meta, new AdvisoryMatcher(sanitize(raw)), verified);
+    }
+
+    /** For a caller that keeps one matcher per index (building it costs seconds on the full index). */
+    void match(Map<String, Object> meta, AdvisoryMatcher matcher, boolean verified) {
         matched = true;
         this.verified = verified;
         indexMeta.clear();
         for (String k : List.of("generated", "kevCatalogVersion"))
-            if (raw.meta.get(k) instanceof String s) indexMeta.put(k, clean(s, 64));
-        var matcher = new AdvisoryMatcher(idx);
+            if (meta.get(k) instanceof String s) indexMeta.put(k, clean(s, 64));
         for (Rec r : records) {
             Map<String, Object> a = new LinkedHashMap<>();
             a.put("id", r.id);
