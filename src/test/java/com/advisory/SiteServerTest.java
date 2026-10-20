@@ -91,6 +91,13 @@ class SiteServerTest {
     }
 
     @Test
+    void encodedAmpersandInCaptureNameSurvives() throws Exception {
+        var up = send("POST", "/api/v1/captures?name=Hall%20B%20%26%20C.pcap", "application/octet-stream", acmePcap("1.9"));
+        assertEquals(202, up.statusCode(), up.body());
+        assertEquals("Hall B & C.pcap", Json.obj(Json.parse(up.body())).get("file"));
+    }
+
+    @Test
     void captureIsQueuedMergedMatchedEditedAndExported() throws Exception {
         var up = send("POST", "/api/v1/captures?name=cell1.pcap", "application/octet-stream", acmePcap("1.9"), "X-Actor", "R. Analyst");
         assertEquals(202, up.statusCode(), up.body());

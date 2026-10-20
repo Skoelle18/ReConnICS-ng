@@ -37,7 +37,7 @@ final class IngestServer {
 
     /** Site state behind the UI routes; null for a bare ingest API (tests, legacy use). */
     private final Site site;
-    private AdvisoryIndex index;
+    private volatile AdvisoryIndex index;
     private AdvisoryMatcher matcher;
     private final Map<String, Asset> assets = new ConcurrentHashMap<>();
     /** One GET /matches at a time: each is CPU- and memory-heavy (see class comment). */
@@ -180,9 +180,9 @@ final class IngestServer {
     }
 
     private static String query(HttpExchange ex, String key) {
-        String q = ex.getRequestURI().getQuery();
+        String q = ex.getRequestURI().getRawQuery();     // split before decoding, so an encoded & in a file name stays in the value
         if (q == null) return null;
-        for (String kv : q.split("&")) if (kv.startsWith(key + "=")) return kv.substring(key.length() + 1);
+        for (String kv : q.split("&")) if (kv.startsWith(key + "=")) return java.net.URLDecoder.decode(kv.substring(key.length() + 1), StandardCharsets.UTF_8);
         return null;
     }
 

@@ -136,7 +136,7 @@ final class Site {
         var c = find(id);
         if (!Set.of("queued", "failed").contains(c.get("state"))) throw new Conflict("only queued or failed captures can be removed");
         captures.remove(c);
-        for (String ext : List.of(".pcap", ".json")) Files.deleteIfExists(captureDir.resolve(id + ext));
+        for (String ext : List.of(".pcap", ".json", ".obs.json")) Files.deleteIfExists(captureDir.resolve(id + ext));
     }
 
     private Map<String, Object> find(String id) {
