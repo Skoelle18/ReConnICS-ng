@@ -78,3 +78,4 @@ venv/
 
 ### UI unit tests (src/test/ui) ###
 node_modules/
+/report.html
