@@ -46,6 +46,13 @@ The revision form is the Rockwell convention (RSLinx, Studio 5000 and Rockwell s
 `20.011`); Wireshark shows the same value as `20.11` (`%d.%02d`). The serial form matches the serial printed on
 the module label and in RSLinx. The raw values remain in the evidence string.
 
+## Ports
+
+`ports` is a top-level array of `<port>/tcp|udp` strings (for example `["502/tcp"]`, `["44818/tcp","44818/udp"]`). It lists the
+ports a host was observed answering on (the responder side of a decoded Modbus, S7comm or EtherNet/IP exchange); a host seen
+only as a client has no `ports`. Port-only heuristic observations are not listed. The inventory stage reads it as the CISA
+"Ports / services" attribute.
+
 ## Sub-devices
 
 `subaddr` is a top-level string on assets that sit behind the responding IP and have no MAC of their own:
@@ -79,5 +86,5 @@ Evidence strings include protocol, message type, field/object id, frame number, 
 - `mergeNotes`
 - `identityConflicts`
 - `serialNumbers` (EtherNet/IP)
-- `role` (`server` if the device ever answered on an ICS port, else `client`) and `roles` when both
+- `role` (`server` if the device ever answered on an ICS port, else `client`; the server side is the well-known-port side for Modbus, S7comm and EtherNet/IP) and `roles` when both
 - `source.tcpReassembly` (document level): reassembly counters, including flows dropped by the caps

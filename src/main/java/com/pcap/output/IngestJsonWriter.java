@@ -104,6 +104,9 @@ public final class IngestJsonWriter {
             a.id = ip != null ? ip : mac;
         }
         a.protocols = new ArrayList<>(ra.device().protocols());
+        if (!ra.device().services().isEmpty()) {
+            a.ports = new ArrayList<>(ra.device().services());
+        }
         a.vendor = field(ra.identity().vendor());
         a.model = field(ra.identity().model());
         a.firmware = field(ra.identity().firmware());

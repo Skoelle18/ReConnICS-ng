@@ -215,12 +215,13 @@ public final class ProtocolDetector {
     }
 
     private static DeviceObservation toObs(ParsedPacket packet, ProtocolMessage msg) {
-        return msg.toObservation(
+        DeviceObservation o = msg.toObservation(
                 packet.frameNumber(),
                 packet.srcIp().orElse(null),
                 packet.dstIp().orElse(null),
                 packet.srcMac().orElse(null),
                 packet.dstMac().orElse(null));
+        return o.withService((msg.serverOnSrc() ? packet.srcPort() : packet.dstPort()) + (packet.hasUdp() ? "/udp" : "/tcp"));
     }
 
     private static DeviceObservation portOnly(ParsedPacket packet, ProtocolType type, boolean serverIsDst) {

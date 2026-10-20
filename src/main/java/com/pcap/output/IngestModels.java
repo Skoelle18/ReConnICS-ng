@@ -28,6 +28,8 @@ public final class IngestModels {
         /** Sub-device behind {@code ip}: {@code u<unit>} (Modbus gateway) or {@code slot<n>} (CIP backplane). */
         public String subaddr;
         public List<String> protocols;
+        /** Ports the device answered on, {@code <port>/tcp|udp}; only for hosts observed as responders. */
+        public List<String> ports;
         public Object vendor;
         public Object model;
         public Object firmware;

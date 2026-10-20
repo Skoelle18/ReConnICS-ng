@@ -213,7 +213,7 @@ final class Inventory {
         return o;
     }
 
-    private static final Set<String> HEADER_KEYS = Set.of("ip", "mac", "protocols");
+    private static final Set<String> HEADER_KEYS = Set.of("ip", "mac", "protocols", "ports");
 
     /**
      * reconnics-ng (Nikhil's parser, docs/data-contract.md) sends ip/mac/protocols as plain values and puts their

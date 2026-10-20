@@ -22,6 +22,7 @@ public final class DeviceObservation {
     private final List<IdentityField> identityFields;
     private final String note;
     private final String subaddr;
+    private final String service;
 
     public DeviceObservation(
             long frameNumber,
@@ -45,6 +46,21 @@ public final class DeviceObservation {
             List<IdentityField> identityFields,
             String note,
             String subaddr) {
+        this(frameNumber, ip, mac, protocol, detectionBasis, role, identityFields, note, subaddr, null);
+    }
+
+    private DeviceObservation(
+            long frameNumber,
+            IpAddress ip,
+            MacAddress mac,
+            ProtocolType protocol,
+            DetectionBasis detectionBasis,
+            String role,
+            List<IdentityField> identityFields,
+            String note,
+            String subaddr,
+            String service) {
+        this.service = service;
         this.subaddr = subaddr;
         this.frameNumber = frameNumber;
         this.ip = ip;
@@ -89,6 +105,16 @@ public final class DeviceObservation {
     /** Sub-device address behind {@link #ip()} ({@code u<unit>} / {@code slot<n>}), if any. */
     public Optional<String> subaddr() {
         return Optional.ofNullable(subaddr);
+    }
+
+    /** Same observation, marked as a service the device answered on, e.g. {@code 502/tcp}. */
+    public DeviceObservation withService(String service) {
+        return new DeviceObservation(frameNumber, ip, mac, protocol, detectionBasis, role, identityFields, note, subaddr, service);
+    }
+
+    /** Port/transport the responder side was reached on ({@code 502/tcp}), or null when unknown or not a responder. */
+    public Optional<String> service() {
+        return Optional.ofNullable(service);
     }
 
     public String note() {
