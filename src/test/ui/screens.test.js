@@ -173,3 +173,22 @@ test('identity rows on the asset screen', async (t) => {
     } finally { app.close(); }
   });
 });
+
+test('asset history', async (t) => {
+  await t.test('lists capture-driven field changes next to human edits', async () => {
+    const changes = [
+      { at: '2026-10-19T10:00:00Z', actor: 'R. Analyst', asset: '10.0.1.40', field: 'firmware', from: '20.011', to: '24.011', source: 'capture c0002' },
+      { at: '2026-10-19T09:00:00Z', actor: 'S. Owner', asset: '10.0.1.40', field: 'criticality', from: '', to: 'high', source: 'human' },
+      { at: '2026-10-19T10:00:00Z', actor: 'R. Analyst', asset: '10.0.1.10', field: 'firmware', from: '1', to: '2', source: 'capture c0002' }];
+    const app = await loadApp({ routes: defaultRoutes({ changes }), hash: '#/asset/10.0.1.40' });
+    try {
+      assert.match(app.text(), /History \(2\)/);
+      app.$$('#main button.tab').find((b) => /^History/.test(b.textContent)).click();
+      await settle();
+      assert.match(app.text(), /firmware: 20\.011 → 24\.011/);
+      assert.match(app.text(), /capture c0002/);
+      assert.match(app.text(), /criticality: ∅ → high/);
+      assert.doesNotMatch(app.text(), /firmware: 1 → 2/, 'a change to another asset is not shown');
+    } finally { app.close(); }
+  });
+});

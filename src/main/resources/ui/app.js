@@ -323,8 +323,8 @@ function asset(id) {
         : h('div', { class: 'card-b' }, h('strong', {}, a.match ? 'No matching advisory in index (generated ' + fmtTime(S.index.generated) + '). ' : 'Matcher not run. '),
           h('span', { class: 'muted' }, 'This is not a clean bill of health: with match ceiling ' + c.matchCeiling + ' the matcher could not check this device against version ranges.')))
       : h('div', { class: 'card' }, hist.length ? hist.map((x) => h('div', { class: 'card-b row', style: { borderBottom: '1px solid var(--line2)' } },
-        h('span', { class: 'mono small muted' }, fmtTime(x.at)), h('span', { class: 'strong' }, x.actor), h('span', {}, x.field + ': ', h('span', { class: 'muted' }, x.from || '∅'), ' → ', x.to || '∅')))
-        : h('div', { class: 'empty' }, 'No human changes yet. Capture merges are in the change log.')),
+        h('span', { class: 'mono small muted' }, fmtTime(x.at)), h('span', { class: 'strong' }, x.actor), h('span', {}, x.field + ': ', h('span', { class: 'muted' }, x.from || '∅'), ' → ', x.to || '∅'), h('span', { class: 'small muted' }, x.source === 'human' ? '' : x.source)))
+        : h('div', { class: 'empty' }, 'No changes yet. Human edits and the field changes a capture merge made to this asset appear here.')),
   ];
 }
 

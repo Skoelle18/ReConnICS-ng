@@ -196,20 +196,45 @@ final class Site {
 
     /** Writes the observations, marks the entry done and logs what the merge changed. Caller holds the lock. */
     private void merged(Map<String, Object> c, String id, String obs, Map<String, Object> summary) throws IOException {
-        Map<String, String> before = fingerprints(inventory());
+        Map<String, Map<String, String>> before = fingerprints(inventory());
         Files.writeString(captureDir.resolve(id + ".obs.json"), obs);
         c.put("state", "done");
         cached = null;
-        Map<String, String> after = fingerprints(inventory());
+        Map<String, Map<String, String>> after = fingerprints(inventory());
         Set<String> seen = idsIn(obs);
+        List<String> added = after.keySet().stream().filter(k -> !before.containsKey(k)).toList();
+        List<String> changed = after.keySet().stream().filter(k -> before.containsKey(k) && !before.get(k).equals(after.get(k))).toList();
+        List<String> notSeen = before.keySet().stream().filter(k -> !seen.contains(k.split("/")[0])).toList();
         Map<String, Object> diff = new LinkedHashMap<>();
-        diff.put("new", (double) after.keySet().stream().filter(k -> !before.containsKey(k)).count());
-        diff.put("changed", (double) after.keySet().stream().filter(k -> before.containsKey(k) && !before.get(k).equals(after.get(k))).count());
-        diff.put("notSeen", (double) before.keySet().stream().filter(k -> !seen.contains(k.split("/")[0])).count());
+        diff.put("new", (double) added.size());
+        diff.put("changed", (double) changed.size());
+        diff.put("notSeen", (double) notSeen.size());
         c.put("summary", summary);
         c.put("diff", diff);
         save(c);
-        log(String.valueOf(c.get("by")), "(site)", "capture", "", c.get("file") + " merged: " + Json.write(diff), "capture " + id);
+        // One entry per asset or field, so an asset's History shows what a capture did to it. Details first, so the
+        // newest-first log lists the summary line on top.
+        String by = String.valueOf(c.get("by")), src = "capture " + id;
+        int budget = MAX_MERGE_LOG;
+        for (String k : added) if (budget-- > 0) log(by, k, "(asset)", "", "new in " + c.get("file"), src);
+        for (String k : changed) {
+            var b = before.get(k);
+            var a = after.get(k);
+            for (String f : new TreeSet<>(union(a.keySet(), b.keySet())))
+                if (!Objects.equals(a.get(f), b.get(f)) && budget-- > 0) log(by, k, f, b.getOrDefault(f, ""), a.getOrDefault(f, ""), src);
+        }
+        for (String k : notSeen) if (budget-- > 0) log(by, k, "(asset)", "", "not seen in " + c.get("file"), src);
+        if (budget < 0) log(by, "(site)", "capture", "", (-budget) + " more changes not listed; see the inventory", src);
+        log(by, "(site)", "capture", "", c.get("file") + " merged: " + Json.write(diff), src);
+    }
+
+    /** Most per-asset entries one merge writes; a first capture of a big plant lists its assets up to this, then stops. */
+    static final int MAX_MERGE_LOG = 1000;
+
+    private static <T> Set<T> union(Set<T> a, Set<T> b) {
+        Set<T> u = new HashSet<>(a);
+        u.addAll(b);
+        return u;
     }
 
     /**
@@ -252,12 +277,12 @@ final class Site {
     }
 
     /** One string per record id, so a merge can be diffed without caring how fields are laid out. */
-    private static Map<String, String> fingerprints(Inventory inv) {
-        Map<String, String> m = new HashMap<>();
+    private static Map<String, Map<String, String>> fingerprints(Inventory inv) {
+        Map<String, Map<String, String>> m = new HashMap<>();
         for (var r : inv.records) {
-            StringBuilder b = new StringBuilder();
-            r.f.forEach((k, f) -> b.append(k).append('=').append(f.value()).append(';'));
-            m.put(r.id, b.toString());
+            Map<String, String> fields = new TreeMap<>();
+            r.f.forEach((k, f) -> fields.put(k, Inventory.cap(f.value() instanceof List<?> l ? String.join(", ", l.stream().map(String::valueOf).toList()) : String.valueOf(f.value()), Inventory.MAX_EVIDENCE)));
+            m.put(r.id, fields);
         }
         return m;
     }
