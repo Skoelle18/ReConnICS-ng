@@ -22,6 +22,7 @@
 | EtherNet/IP | `ListIdentity` (cmd `0x0063`, TCP and UDP 44818) and CIP Identity `Get_Attributes_All` in `SendRRData`, direct or via `Unconnected_Send` to a backplane slot (`subaddr` `slot<n>`): vendor, device type, product name, revision (`major.mmm`), serial (`%08X`) |
 | EtherNet/IP I/O | UDP 2222 class-1 traffic recorded as `enip-io` presence (no identity) |
 | SNMP | v1/v2c GetResponse from UDP 161: `sysDescr.0` in the Siemens SIMATIC S7 format (vendor, order number as model, serial, firmware) and `sysName.0` as hostname. Other vendors' `sysDescr` strings are recognised as SNMP but give no identity fields |
+| DNP3 | **Presence only**: TCP/UDP link header (start bytes, length, control byte, header CRC and first data-block CRC), application function code of the first fragment, master/outstation from the DIR bit. No identity (DNP3 carries none); labels such as `DNP3 FC1 READ` feed the flows. Details in the Zeek section below |
 | S7comm | TPKT/COTP validation; SZL replies in Userdata (ROSCTR 7), including replies split over several PDUs; **0x0011/0x0111** (order number, firmware) and **0x001C/0x011C** (AS name, module name, plant ID, serial, module type → `deviceType`) |
 
 ## Protocols — not implemented / partial
@@ -32,7 +33,7 @@
 - S7 SZL IDs other than `0x0011`/`0x0111` / `0x001C`/`0x011C`; S7comm-plus (S7-1200/1500 TIA symbolic) not decoded
 - Full COTP connection setup parsing for identity (DT TPDUs with S7 payload only)
 - UDP/IO EtherNet/IP implicit traffic identity (presence only)
-- DNP3, BACnet, OPC UA, Profinet, etc.
+- DNP3 objects, values and transport reassembly (native; `--engine zeek` covers them), BACnet, OPC UA, Profinet, etc.
 
 ## Aggregation
 

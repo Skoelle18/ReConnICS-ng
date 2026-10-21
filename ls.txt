@@ -5,6 +5,7 @@ args.txt
 assets
 conn.log
 cwd.txt
+data
 docker
 docs
 eval
