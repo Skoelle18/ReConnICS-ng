@@ -196,7 +196,6 @@ function chrome(route) {
   document.querySelectorAll('[data-nav]').forEach((n) => n.classList.toggle('on', n.dataset.nav === route || ((route === 'asset' || route === 'edge') && n.dataset.nav === 'graph')));
   const active = S.caps.filter((c) => c.state === 'queued' || c.state === 'running').length;
   $('n-queue').textContent = active || '';
-  $('n-assets').textContent = assets().length || '';
   $('n-review').textContent = reviewCount() || '';
   $('n-adv').textContent = advisoryRows().length || '';
   $('tb-queue').textContent = active || '';
@@ -214,7 +213,7 @@ function chrome(route) {
   else if (ix.warning) banner.append(h('div', { class: 'banner warn' }, ix.warning));
 }
 
-/** Filter button: the match-level / KEV / validation filters (shared with the inventory table) and how the graph is drawn. */
+/** Filter button: the match-level / KEV / validation filters and how the graph is drawn. */
 function filterPanel() {
   const p = $('pop-filter');
   const had = [...p.querySelectorAll('button')].indexOf(document.activeElement);   // keep keyboard focus on the same chip after the rebuild
@@ -230,7 +229,7 @@ function filterPanel() {
     group('Colour nodes by', on('Role', S.color === 'role', () => { S.color = 'role'; }), on('Advisory risk', S.color === 'risk', () => { S.color = 'risk'; })),
     group('Advisories on the graph', on(S.showAdv ? 'Shown (EXACT, PROBABLE)' : 'Hidden', S.showAdv, () => { S.showAdv = !S.showAdv; })),
     group('Layout', on('Force', S.layout === 'force', () => { S.layout = 'force'; relayoutSoon(); }), on('Purdue levels', S.layout === 'purdue', () => { S.layout = 'purdue'; relayoutSoon(); })),
-    h('div', { class: 'muted small' }, 'Filters dim the non-matching assets on the graph and hide them in the inventory table.'));
+    h('div', { class: 'muted small' }, 'Filters dim the non-matching assets and conversations on the graph.'));
   if (had >= 0) p.querySelectorAll('button')[had].focus();
 }
 const relayoutSoon = () => { GR.pos.clear(); GR.sig = ''; GR.fitted = false; };
@@ -288,7 +287,7 @@ function overview() {
           h('div', { class: 'card-b muted small row' }, ['EXACT', 'PROBABLE', 'NONE'].map((l) => h('span', { class: 'row' }, dot(LEVEL_COLOR[l]), l)))),
         h('div', { class: 'stack narrow' },
           h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Advisory match level'),
-            h('div', { class: 'card-b stack' }, LEVELS.map((l) => h('a', { href: '#/inventory', class: 'stack', style: { gap: '6px', textDecoration: 'none', color: 'inherit' }, onclick: () => { S.level = l; } },
+            h('div', { class: 'card-b stack' }, LEVELS.map((l) => h('a', { href: '#/graph', class: 'stack', title: 'Show only ' + l + ' on the graph', style: { gap: '6px', textDecoration: 'none', color: 'inherit' }, onclick: () => { S.level = l; } },
               h('span', { class: 'head' }, levelBadge(l), h('span', { class: 'muted small' }, lv[l] + ' assets')), bar(lv[l] / n * 100, LEVEL_COLOR[l]))),
               h('div', { class: 'muted small' }, 'NONE means no advisory in this index, not a clean device.'))),
           h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Assets by role'),
@@ -296,7 +295,7 @@ function overview() {
               h('div', { class: 'stacked' }, groups.map((x) => h('span', { style: { width: (x.n / n * 100) + '%', background: ROLE_COLOR[x.g] } }))),
               h('div', { class: 'row' }, groups.map((x) => h('span', { class: 'row' }, dot(ROLE_COLOR[x.g]), x.g, h('span', { class: 'muted small' }, x.n)))))))),
       h('div', { class: 'grid2' },
-        h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Fix-first ranking', h('a', { class: 'btn sm', href: '#/inventory' }, 'Full inventory')),
+        h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Fix-first ranking', h('a', { class: 'btn sm', href: '#/graph' }, 'Open the graph')),
           ranked.slice(0, 5).map((a, i) => h('a', { class: 'rv', href: '#/asset/' + encodeURIComponent(a.id) },
             h('span', { class: 'mono muted' }, i + 1), h('span', { style: { flex: '1', minWidth: '0' } }, h('span', { class: 'cell-name' }, nameOf(a)), h('span', { class: 'mono muted small' }, a.id)),
             a.match && a.match.kevAtModel ? h('span', { class: 'badge kev' }, 'KEV') : null, levelBadge(levelOf(a)),
@@ -366,49 +365,6 @@ async function removeCapture(c) {
   await refresh();
 }
 
-function inventory() {
-  const q = S.search.trim();
-  const rows = S.rank.map(byId).filter(Boolean).filter(matches);
-  return [
-    h('div', { class: 'head' },
-      h('div', {}, h('h1', {}, 'Asset inventory'), h('div', { class: 'muted' }, 'Ranked fix-first: KEV at model, match level, criticality, CVSS, then most work left.')),
-      h('div', { class: 'row' }, ['inventory.csv', 'inventory.json', 'report.html'].map((f) => h('a', { class: 'btn', href: '/api/v1/export/' + f, download: f }, f)))),
-    h('div', { class: 'row' },
-      ['ALL', ...LEVELS].map((l) => chip(l === 'ALL' ? 'All levels' : l, S.level === l, () => { S.level = l; })),
-      chip('KEV only', S.kevOnly, () => { S.kevOnly = !S.kevOnly; }), chip('Not validated', S.unvalOnly, () => { S.unvalOnly = !S.unvalOnly; }),
-      q ? chip('Search: ' + S.search + ' (clear)', true, () => { S.search = ''; $('q').value = ''; }) : null),
-    h('div', { class: 'card' }, h('div', { class: 'scroll' },
-      h('div', { class: 'trow thead g-inv' }, ['#', 'Asset', 'Role', 'Vendor / model', 'Firmware', 'Completeness', 'Advisory match', 'Validated'].map((t) => h('span', {}, t))),
-      rows.length === 0 ? h('div', { class: 'empty' }, assets().length ? 'No assets match these filters.' : 'No assets yet. Queue a capture.') :
-        rows.map((a) => h('button', { class: 'trow g-inv', onclick: () => { location.hash = '#/asset/' + encodeURIComponent(a.id); } },
-          h('span', { class: 'mono muted' }, S.rank.indexOf(a.id) + 1),
-          h('span', {}, h('span', { class: 'cell-name wrap' }, nameOf(a)), h('span', { class: 'mono small muted' }, a.id)),
-          h('span', {}, str(val(a, 'role')) || '—'),
-          h('span', {}, h('span', { class: 'cell-name', style: { fontWeight: '400' } }, str(val(a, 'vendor')) || '—'), h('span', { class: 'muted small' }, str(val(a, 'model')))),
-          h('span', { class: 'mono small' }, str(val(a, 'firmware')) || '—'),
-          h('span', { class: 'stack', style: { gap: '4px' } }, h('span', { class: 'small' }, a.completeness.filled + ' / 14'), bar(a.completeness.filled / 14 * 100)),
-          h('span', { class: 'row' }, levelBadge(levelOf(a)), a.match && a.match.kevAtModel ? h('span', { class: 'badge kev' }, 'KEV') : null,
-            h('span', { class: 'mono small muted' }, a.match && a.match.maxCvss ? a.match.maxCvss.toFixed(1) : '')),
-          h('span', {}, h('span', { class: 'badge ' + (isValidated(a) ? 'ok' : 'lv-NONE') }, isValidated(a) ? 'Validated' : 'Pending'))))),
-      h('div', { class: 'card-b head muted small' }, 'Showing ' + rows.length + ' of ' + assets().length + ' assets', 'Port-only observations are not counted as identified devices.')),
-    conversations(),
-  ];
-}
-
-/** The graph's edges as a table (the accessible twin of the graph): who talked to whom, with the message kinds seen. */
-function conversations() {
-  const keep = (id) => !filterActive() || matches(byId(id));
-  const flows = graphModel().edges.filter((e) => e.kind === 'flow' && (keep(e.from) || keep(e.to)));
-  const link = (id) => h('a', { href: '#/asset/' + encodeURIComponent(id) }, nameOf(byId(id)), ' ', h('span', { class: 'mono small muted' }, id));
-  return h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Conversations', h('span', { class: 'muted small' }, 'observed client → server; decoded Modbus, DNP3, EtherNet/IP, S7comm and SNMP, plus undecoded host pairs as "unknown"')),
-    h('div', { class: 'scroll' },
-      h('div', { class: 'trow thead g-flow' }, ['Client', 'Server', 'Protocol', 'Message kinds', 'Messages', 'Rate', ''].map((t) => h('span', {}, t))),
-      flows.length === 0 ? h('div', { class: 'empty' }, assets().length ? 'No conversations decoded yet.' : 'No assets yet. Queue a capture.')
-        : flows.slice(0, 500).map((e) => h('div', { class: 'trow g-flow' }, link(e.from), link(e.to), h('span', { class: 'mono small' }, e.f.protocol + ' ' + e.f.port),
-          h('span', { class: 'small wrap' }, Object.entries(e.f.labels || {}).map(([k, n]) => k + ' ×' + n).join(' · ')), h('span', { class: 'mono' }, e.n),
-          h('span', { class: 'mono small' }, fmtRate(flowRate(e.f))), h('a', { class: 'btn sm', href: '#/edge/' + encodeURIComponent(e.key) }, 'Details')))));
-}
-
 function asset(id) {
   const a = byId(id);
   if (!a) return [h('a', { class: 'btn sm', href: '#/graph' }, '‹ Graph'), h('div', { class: 'card empty' }, 'No asset ' + id + ' in the current inventory.')];
@@ -418,7 +374,7 @@ function asset(id) {
   const hist = S.changes.filter((x) => x.asset === a.id);
   const convs = convsOf(a);
   return [
-    h('div', { class: 'row' }, h('a', { class: 'btn sm', href: '#/graph' }, '‹ Graph'), h('a', { class: 'btn sm', href: '#/inventory' }, 'Inventory table')),
+    h('div', { class: 'row' }, h('a', { class: 'btn sm', href: '#/graph' }, '‹ Graph')),
     h('div', { class: 'card' },
       h('div', { class: 'card-b head', style: { alignItems: 'flex-start' } },
         h('div', { class: 'stack', style: { gap: '6px' } },
@@ -471,7 +427,7 @@ function edgePanel(key) {
     return a ? h('a', { href: '#/asset/' + encodeURIComponent(a.id) }, nameOf(a), ' ', h('span', { class: 'mono small muted' }, ip)) : h('span', { class: 'mono' }, ip); };
   const ops = f.operations || [], rate = flowRate(f), pk = protoKey(f.protocol);
   return [
-    h('div', { class: 'row' }, back, h('a', { class: 'btn sm', href: '#/inventory' }, 'Inventory table')),
+    h('div', { class: 'row' }, back),
     h('div', { class: 'card' },
       h('div', { class: 'card-b stack', style: { gap: '8px' } },
         h('h1', {}, end(f.client), ' → ', end(f.server)),
@@ -970,7 +926,7 @@ function initGraph() {
 
 function route() {
   const [, name, arg] = (location.hash || '#/graph').match(/^#\/([a-z]+)\/?(.*)$/) || [, 'graph', ''];
-  return { name, arg: decodeURIComponent(arg || '') };
+  return { name: name === 'inventory' ? 'graph' : name, arg: decodeURIComponent(arg || '') };   // the row table is gone; old bookmarks open the graph
 }
 
 let lastRoute = '';
@@ -979,7 +935,7 @@ function render() {
   if (!S.inv) return;
   if (r.name + r.arg !== lastRoute) { S.tab = 'attrs'; S.editing = false; lastRoute = r.name + r.arg; }
   chrome(r.name);
-  const screens = { overview, captures, inventory, review, advisories, index: indexScreen, log, asset: () => asset(r.arg), edge: () => edgePanel(r.arg) };
+  const screens = { overview, captures, review, advisories, index: indexScreen, log, asset: () => asset(r.arg), edge: () => edgePanel(r.arg) };
   const main = $('main'), open = r.name !== 'graph', side = r.name === 'asset' || r.name === 'edge';
   main.hidden = !open;
   main.className = side ? 'panel' : 'sheet';

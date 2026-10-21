@@ -11,10 +11,10 @@ test('device strings cannot inject HTML or script (XSS)', async () => {
   const inv = exampleInventory();
   inv.assets[0].hostname = field('<img src=x onerror="window.__pwned=1">');
   inv.assets[0].model = field('<script>window.__pwned=2</script>');
-  const app = await loadApp({ routes: defaultRoutes({ inventory: inv }), hash: '#/inventory' });
+  const app = await loadApp({ routes: defaultRoutes({ inventory: inv }), hash: '#/asset/' + encodeURIComponent(inv.assets[0].id) });
   try {
-    assert.equal(app.$$('#main img').length, 0, 'no <img> element was created');
-    assert.equal(app.$$('#main script').length, 0, 'no <script> element was created');
+    assert.equal(app.$$('#main img, #graph img').length, 0, 'no <img> element was created');
+    assert.equal(app.$$('#main script, #graph script').length, 0, 'no <script> element was created');
     assert.equal(app.window.__pwned, undefined, 'no injected code ran');
     assert.match(app.text(), /<img src=x onerror=/, 'the string is shown as plain text');
   } finally { app.close(); }
@@ -32,7 +32,7 @@ test('every request carries the analyst name for the change log', async () => {
 });
 
 test('all requests stay on the console API (nothing leaves the machine)', async () => {
-  const app = await loadApp({ routes: defaultRoutes(), hash: '#/inventory' });
+  const app = await loadApp({ routes: defaultRoutes(), hash: '#/graph' });
   try {
     for (const c of app.calls) assert.doesNotMatch(c.route, /^https?:\/\//, 'relative /api/v1/ paths only');
   } finally { app.close(); }

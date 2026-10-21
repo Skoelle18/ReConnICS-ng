@@ -6,54 +6,48 @@ const assert = require('node:assert/strict');
 const { loadApp, settle } = require('./support/load-app');
 const { defaultRoutes, exampleInventory, field } = require('./support/fixtures');
 
-/** Inventory table rows, without the header row. */
-const rows = (app) => app.$$('#main .trow.g-inv:not(.thead)');
+test('the graph replaces the row-based asset inventory', async (t) => {
+  await t.test('there is no inventory table: #/inventory opens the graph, and nothing offers a table view', async () => {
+    const app = await loadApp({ routes: defaultRoutes(), hash: '#/inventory' });
+    try {
+      assert.equal(app.get('route()').name, 'graph', 'an old bookmark lands on the graph');
+      assert.equal(app.$('#main').hidden, true);
+      assert.equal(app.$$('.trow.g-inv, .trow.g-flow').length, 0);
+      assert.equal(app.$('[data-nav="inventory"]'), null, 'no menu entry');
+      assert.equal(app.$('#tb-table'), null, 'no toolbar button');
+      assert.equal(app.$$('#graph .node').filter((n) => !n.classList.contains('adv')).length, 10, 'every asset is a node');
+      assert.doesNotMatch(app.document.body.innerHTML, /href="#\/inventory"/, 'no link anywhere points at the removed screen');
+    } finally { app.close(); }
+  });
 
-test('inventory screen', async (t) => {
-  await t.test('lists every asset in the server ranking order', async () => {
+  await t.test('the overview ranks assets fix-first in the server order and links to the graph', async () => {
     const inv = exampleInventory();
     const rank = inv.assets.map((a) => a.id).reverse();
-    const app = await loadApp({ routes: defaultRoutes({ inventory: inv, rank }), hash: '#/inventory' });
+    const app = await loadApp({ routes: defaultRoutes({ inventory: inv, rank }), hash: '#/overview' });
     try {
-      assert.equal(rows(app).length, 10);
-      assert.match(rows(app)[0].textContent, /10\.0\.2\.1/, 'first row follows rank[0]');
-      assert.match(app.text(), /Showing 10 of 10 assets/);
+      const first = app.$$('#main a.rv')[0];
+      assert.match(first.textContent, /10\.0\.2\.1/, 'first row follows rank[0]');
+      assert.equal(app.$$('#main a.btn').find((a) => a.textContent === 'Open the graph').getAttribute('href'), '#/graph');
     } finally { app.close(); }
   });
 
-  await t.test('search box filters by vendor', async () => {
-    const app = await loadApp({ routes: defaultRoutes(), hash: '#/inventory' });
+  await t.test('a match level chosen on the overview is applied to the graph', async () => {
+    const app = await loadApp({ routes: defaultRoutes(), hash: '#/overview' });
     try {
-      const q = app.$('#q');
-      q.value = 'siemens';
-      q.dispatchEvent(new app.window.Event('input'));
+      app.$$('#main a').find((a) => /EXACT/.test(a.textContent) && a.getAttribute('href') === '#/graph').click();
       await settle();
-      assert.equal(rows(app).length, 1);
-      assert.match(rows(app)[0].textContent, /6ES7 515/);
+      assert.equal(app.get('route()').name, 'graph');
+      assert.equal(app.get('S').level, 'EXACT');
+      assert.equal(app.$$('#graph .node').filter((n) => !n.classList.contains('dim') && !n.classList.contains('adv')).length, 1);
     } finally { app.close(); }
   });
 
-  await t.test('match-level and KEV chips filter the table', async () => {
-    const app = await loadApp({ routes: defaultRoutes(), hash: '#/inventory' });
-    try {
-      app.$$('#main button.chip').find((b) => b.textContent === 'EXACT').click();
-      await settle();
-      assert.equal(rows(app).length, 1);
-
-      app.$$('#main button.chip').find((b) => b.textContent === 'All levels').click();
-      app.$$('#main button.chip').find((b) => b.textContent === 'KEV only').click();
-      await settle();
-      assert.equal(rows(app).length, 1);
-      assert.match(rows(app)[0].textContent, /KEV/);
-    } finally { app.close(); }
-  });
-
-  await t.test('empty inventory tells the user to queue a capture', async () => {
+  await t.test('an empty site tells the user to queue a capture', async () => {
     const routes = defaultRoutes();
     routes['GET inventory'] = { inventory: { assets: [] }, rank: [], site: {} };
-    const app = await loadApp({ routes, hash: '#/inventory' });
+    const app = await loadApp({ routes, hash: '#/overview' });
     try {
-      assert.match(app.text(), /No assets yet\. Queue a capture\./);
+      assert.match(app.text(), /No assets yet\. Queue a capture/);
     } finally { app.close(); }
   });
 });

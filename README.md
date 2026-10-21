@@ -220,8 +220,8 @@ Tour:
 - **Asset graph** (the start page): a dark, full-bleed node-link view. Assets are round icon nodes coloured by role (or by advisory risk), observed
   conversations are labelled arrows (`Modbus FC43/14 request`, `ENIP ListIdentity`, `S7 SZL read request`), and EXACT/PROBABLE advisories hang off assets
   as triangles. Search panel top left (Start/Target node, shortest conversation path, filters), tool strip on the right (refresh, import PCAPs,
-  export, re-layout, table view, review queue, overview, settings, legend), zoom bottom right, filter query bar at the bottom (`level:exact kev proto:modbus`).
-  Click a node (or Tab to it and press Enter) for the side panel. The Inventory table lists the same assets and conversations.
+  export, re-layout, review queue, overview, settings, legend), zoom bottom right, filter query bar at the bottom (`level:exact kev proto:modbus`).
+  Click a node (or Tab to it and press Enter) for the asset panel, or click an edge for the conversation panel (protocol, rate, operations). There is no row-based inventory table: the graph is the inventory, and the filters (level, KEV, protocol, unknown/scan edges, `rate>N`) dim what does not match. `inventory.csv/json` and the report stay available from the export button.
 - **Capture queue**: upload a PCAP (or have another process `POST` one); each runs in turn and shows `new` / `changed` / `notSeen` counts.
 - **Inventory**: one row per device, fix-first. Click a device for tabs **Attributes** (value, confidence, evidence per field),
   **Advisories** (EXACT / PROBABLE / POSSIBLE matches) and **History**.

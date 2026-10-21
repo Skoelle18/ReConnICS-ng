@@ -86,15 +86,6 @@ test('graph', async (t) => {
     } finally { app.close(); }
   });
 
-  await t.test('the inventory table lists the same conversations (table fallback)', async () => {
-    const app = await loadApp({ routes: defaultRoutes(), hash: '#/inventory' });
-    try {
-      const rows = app.$$('#main .trow.g-flow:not(.thead)');
-      assert.equal(rows.length, 4);
-      assert.match(rows[0].textContent, /10\.0\.1\.50.*10\.0\.1\.40.*modbus 502\/tcp.*FC43\/14 request ×4/);
-    } finally { app.close(); }
-  });
-
   await t.test('filters dim the graph and the query box understands level:, kev and proto:', async () => {
     const app = await loadApp({ routes: defaultRoutes(), hash: '#/graph' });
     try {
@@ -200,7 +191,7 @@ test('graph', async (t) => {
     } finally { app.close(); }
   });
 
-  await t.test('the filter popover drives the same filters as the inventory chips', async () => {
+  await t.test('the filter popover drives the graph filters', async () => {
     const app = await loadApp({ routes: defaultRoutes(), hash: '#/graph' });
     try {
       app.$$('#pop-filter button').find((b) => b.textContent === 'KEV only').click();
