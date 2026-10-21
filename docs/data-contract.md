@@ -91,8 +91,11 @@ written before a key existed stay valid and old consumers ignore the keys they d
 - `access` is `read`, `write`, `control` (DNP3 select/operate/direct operate, restarts) or `other`.
 - `address` and `quantity` are non-negative integers and are omitted when the protocol has none. `object` (optional string) names a
   DNP3 object group/variation such as `g30v1`.
-- `count` is how often that exact (function, object, address, quantity) was seen. `sampleValues` holds at most 8 numbers or strings,
-  the first values seen.
+- `count` is how many **transactions** used that exact (function, object, address, quantity): a request with its response counts
+  once, a request that never got a response counts once (not once per repeated log line). `sampleValues` holds at most 8 numbers
+  or strings, the first values seen: the response values of a read, the request values of a write.
+- `address` is the zero-based address on the wire, as Zeek reports it (`FC3` at `address` 0 is holding register 40001 in the
+  1-based convention). `object` is the DNP3 object type name Zeek logs ("Single-bit Binary Input"), not a group/variation number.
 - **Caps:** at most 50 operations per flow (new rows stop at the cap, known rows keep counting) and 8 `sampleValues` per row, so a
   2M-frame capture cannot produce a giant JSON. Operations come from Zeek/ICSNPP; native mode records message kinds in `labels` only.
 
@@ -116,6 +119,25 @@ values are both kept as evidence, native decoded values win a conflict.
 The console treats a posted `flows` array as untrusted: strings are cleaned, counts clamped, sizes capped. Across merged
 captures it sums `messages`, `packets`, `bytes` and `scanAttempts`, widens `firstSeen`/`lastSeen`, and merges `operations` by key
 within the same caps.
+
+### Document-level `source` fields added for the engines
+
+`source` is free-form and only grows. When the analyzer ran with an engine other than the default:
+
+| Key | Meaning |
+|---|---|
+| `engine` | `native` or `zeek+native` (always present now) |
+| `scanAttempts` | scan attempts seen in the whole capture, drawn or not (the larger of the engines' counts) |
+| `zeek.run` | how Zeek was run: `zeek (/path)`, `docker image reconics-zeek`, or `logs from DIR` |
+| `zeek.version` | Zeek's own `--version` line, when it could be asked |
+| `zeek.logs.<name>` | `{rows, skipped}` per Zeek log read; `skipped` counts malformed or oversize lines and rows with a missing or invalid field |
+| `zeek.connections`, `zeek.hosts` | conn.log rows used, and hosts that became assets |
+| `zeek.scanAttemptsUncounted`, `zeek.flowsDroppedOverCap`, `zeek.hostsDroppedOverCap`, `zeek.modbusUnmatchedRequestsOverCap`, `zeek.observationsDroppedOverCap` | present only when a cap was hit |
+
+New `attributes` on assets: `software` (list of at most 8 server banners from Zeek's `software.log`, e.g.
+`"SSH::SERVER moxa moxa_1.0"`; spoofable text, never an identity field), and the detection bases `ZEEK_CONN`,
+`ZEEK_SOFTWARE`, `ZEEK_ICSNPP` in `detectionBases` (the plan calls them zeek-conn and zeek-software; they are written like the
+existing bases). Evidence strings from Zeek read `<protocol> <message> <field>, txn <uid>, zeek <log>.log` and carry no frame number.
 
 ## Ports
 
