@@ -62,7 +62,8 @@ public final class FlowTable {
     }
 
     public static final class Flow {
-        final String client, server, protocol, port, transport;
+        final String client, server, port, transport;
+        String protocol;
         long messages, packets, bytes, scanAttempts;
         long firstMicros = Long.MAX_VALUE, lastMicros = Long.MIN_VALUE;
         String source;
@@ -148,6 +149,29 @@ public final class FlowTable {
                 }
             }
             return this;
+        }
+
+        void absorb(Flow z, boolean into) {
+            messages = into ? Math.max(messages, z.messages) : messages + z.messages;
+            if (z.packets > 0) {
+                packets = z.packets;
+                bytes = z.bytes;
+            }
+            if (z.lastMicros >= z.firstMicros) {
+                seen(z.firstMicros).seen(z.lastMicros);
+            }
+            // the same traffic seen by both engines: the larger count per label, not the sum
+            z.labels.forEach((l, n) -> {
+                if (labels.size() < MAX_LABELS || labels.containsKey(l)) {
+                    labels.merge(l, n, into ? Math::max : Long::sum);
+                }
+            });
+            z.operations.values().forEach(o -> operation(o.function, o.access, o.object, o.address, o.quantity, o.count, o.samples));
+            scanAttempts = into ? Math.max(scanAttempts, z.scanAttempts) : scanAttempts + z.scanAttempts;
+        }
+
+        public long messageCount() {
+            return messages;
         }
 
         /** Completed exchanges exist; a flow without any is scan noise. */
@@ -242,6 +266,43 @@ public final class FlowTable {
 
     public int size() {
         return flows.size();
+    }
+
+    private static String keyOf(Flow f) {
+        return f.client + '>' + f.server + '>' + f.protocol + '>' + f.port;
+    }
+
+    /**
+     * Folds the flows of {@code other} (the Zeek engine's) into this table (the native one's). A conversation is the same
+     * when the host pair and server port match, whichever direction the two engines called client. Then:
+     * <ul>
+     *   <li>the native direction and a native protocol name win; a native {@code unknown} takes Zeek's service name</li>
+     *   <li>messages and scan attempts take the larger count (the engines count the same traffic differently, so adding
+     *       them would double it); packets and bytes take Zeek's, which cover the whole connection</li>
+     *   <li>first/last seen widen, labels union (capped), operations come from Zeek, {@code source} becomes
+     *       {@code zeek+native}</li>
+     * </ul>
+     * A conversation only Zeek saw is added as it is (source {@code zeek}).
+     */
+    public void mergeFrom(FlowTable other) {
+        for (Flow z : other.flows.values()) {
+            Flow n = match(z.client, z.server, z.port);
+            if (n == null) {
+                Flow f = flow(z.client, z.server, z.protocol, z.port);
+                if (f != null) {
+                    f.absorb(z, false);
+                    f.source = "zeek";
+                }
+                continue;
+            }
+            if ("unknown".equals(n.protocol) && !"unknown".equals(z.protocol)) {
+                flows.remove(keyOf(n));
+                n.protocol = z.protocol;
+                flows.put(keyOf(n), n);
+            }
+            n.absorb(z, true);
+            n.source = "zeek+native";
+        }
     }
 
     public void add(String client, String server, String protocol, String port, String detail) {

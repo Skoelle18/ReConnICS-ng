@@ -55,6 +55,9 @@ public final class CliCommand {
         String post = null;
         boolean icsOnly = false;
         boolean keepScans = false;
+        AnalysisOptions.Engine engine = null;
+        Path zeekLogs = null;
+        java.time.Duration zeekTimeout = null;
 
         for (int i = 0; i < tokens.size(); i++) {
             String t = tokens.get(i);
@@ -66,6 +69,38 @@ public final class CliCommand {
                 case "--force", "-f" -> force = true;
                 case "--ics-only" -> icsOnly = true;
                 case "--keep-scans" -> keepScans = true;
+                case "--engine" -> {
+                    if (i + 1 >= tokens.size()) {
+                        err.println("error: --engine requires native, zeek or auto");
+                        return ExitCode.USAGE;
+                    }
+                    try {
+                        engine = AnalysisOptions.Engine.valueOf(tokens.get(++i).toUpperCase(Locale.ROOT));
+                    } catch (IllegalArgumentException e) {
+                        err.println("error: --engine must be native, zeek or auto");
+                        return ExitCode.USAGE;
+                    }
+                }
+                case "--zeek-logs" -> {
+                    if (i + 1 >= tokens.size()) {
+                        err.println("error: --zeek-logs requires a directory");
+                        return ExitCode.USAGE;
+                    }
+                    zeekLogs = Path.of(tokens.get(++i));
+                }
+                case "--zeek-timeout" -> {
+                    long secs;
+                    try {
+                        secs = i + 1 < tokens.size() ? Long.parseLong(tokens.get(++i)) : 0;
+                    } catch (NumberFormatException e) {
+                        secs = 0;
+                    }
+                    if (secs < 1 || secs > 86_400) {
+                        err.println("error: --zeek-timeout requires a number of seconds between 1 and 86400");
+                        return ExitCode.USAGE;
+                    }
+                    zeekTimeout = java.time.Duration.ofSeconds(secs);
+                }
                 case "--verbose", "-v" -> verbose = true;
                 case "--output", "-o" -> {
                     if (i + 1 >= tokens.size()) {
@@ -106,7 +141,15 @@ public final class CliCommand {
                 }
             }
         }
-        return new AnalyzeCommand(input, output, force, verbose, formatJson, post, new AnalysisOptions(icsOnly, keepScans), out, err).run();
+        if (zeekLogs != null && engine == AnalysisOptions.Engine.NATIVE) {
+            err.println("error: --zeek-logs reads Zeek output, which --engine native never uses");
+            return ExitCode.USAGE;
+        }
+        if (zeekLogs != null && engine == null) {
+            engine = AnalysisOptions.Engine.ZEEK;                    // pointing at logs is asking for the Zeek engine
+        }
+        AnalysisOptions options = new AnalysisOptions(icsOnly, keepScans, engine, zeekLogs, zeekTimeout);
+        return new AnalyzeCommand(input, output, force, verbose, formatJson, post, options, out, err).run();
     }
 
     public static void printHelp(PrintStream ps) {
@@ -128,14 +171,19 @@ public final class CliCommand {
         ps.println("      --ics-only        Only decoded ICS protocols as edges; no unknown-protocol host pairs");
         ps.println("      --keep-scans      Also draw edges for conversations that only saw scan attempts");
         ps.println("                        (connections whose handshake never completed); default: counted only");
+        ps.println("      --engine <e>      native (default): the built-in decoders only, nothing to install");
+        ps.println("                        zeek: also run Zeek + ICSNPP and merge (error if Zeek is missing)");
+        ps.println("                        auto: Zeek when available, else native with a note on stderr");
+        ps.println("      --zeek-logs <dir> Read Zeek logs already produced for this capture; Zeek is not run");
+        ps.println("      --zeek-timeout <s> Stop a Zeek run after this many seconds (default 1800)");
         ps.println("  -v, --verbose         Diagnostic logging on stderr (includes stack traces)");
         ps.println();
         ps.println("Exit codes:");
         ps.println("  0 OK");
         ps.println("  2 usage error");
         ps.println("  3 input path error");
-        ps.println("  4 capture format/parse error");
-        ps.println("  5 analysis error");
+        ps.println("  4 capture format/parse error (also: Zeek cannot read the capture)");
+        ps.println("  5 analysis error (also: the Zeek engine is missing, fails or times out)");
         ps.println("  6 output error");
         ps.println("  7 schema validation failure");
         ps.println();

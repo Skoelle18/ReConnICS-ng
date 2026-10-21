@@ -33,6 +33,19 @@
     </dependencies>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <!-- the site script is kept next to the Dockerfile that bakes it into the image, and shipped in the jar for a native Zeek -->
+                <directory>docker/zeek</directory>
+                <includes>
+                    <include>reconics.zeek</include>
+                </includes>
+                <targetPath>zeek</targetPath>
+            </resource>
+        </resources>
         <finalName>reconnics-ng</finalName>
         <plugins>
             <plugin>

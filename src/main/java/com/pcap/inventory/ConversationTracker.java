@@ -3,7 +3,9 @@ package com.pcap.inventory;
 import com.pcap.capture.ParsedPacket;
 import com.pcap.util.IpAddress;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -149,7 +151,10 @@ public final class ConversationTracker {
         live.values().forEach(this::close);
         live.clear();
         if (!icsOnly) {
-            for (Agg a : done.values()) {
+            // busiest first: the flow table is capped, and the cap should drop the thin conversations, not the oldest
+            List<Agg> byTraffic = new ArrayList<>(done.values());
+            byTraffic.sort((x, y) -> Long.compare(y.packets, x.packets));
+            for (Agg a : byTraffic) {
                 if (table.match(a.client, a.server, a.port) != null) {
                     continue;
                 }

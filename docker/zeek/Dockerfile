@@ -1,0 +1,39 @@
+# ReConICS Zeek engine for machines without a native Zeek (the team's Windows laptops).
+#
+#   docker build -t reconics-zeek docker/zeek
+#
+# After the build it works offline: the ICSNPP packages are compiled into the image, and `docker run` is started with
+# --network none (see src/main/java/com/pcap/zeek/ZeekRunner.java). The analyzer finds the image by its name.
+#
+# Pinned to the versions this project was tested with: Zeek 8.0.9 and the ICSNPP commits below (the dnp3, enip and s7comm
+# packages publish no release tags, so they are pinned by commit). Bump them together and re-run the integration test
+# (ZeekIntegrationTest) and the benchmark in eval/README.md.
+FROM zeek/zeek:8.0.9
+
+ARG ICSNPP_MODBUS=v2.0.0
+ARG ICSNPP_DNP3=b31dbadeceb1cbcda16aef89c650559cd177dd7e
+ARG ICSNPP_ENIP=3fbd32e3d2838d5e2bcd6c9ed79f036d23a0642e
+ARG ICSNPP_S7COMM=5cf1e1ee397bef97ba1e1daa917703d447f6519f
+
+# The ICSNPP analyzers are Spicy parsers that zkg compiles at install time: they need a C++ toolchain, cmake and git.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git cmake make g++ libpcap-dev libssl-dev python3-git python3-semantic-version \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN zkg autoconfig --force \
+ && zkg install --force --skiptests --version "${ICSNPP_MODBUS}" icsnpp-modbus \
+ && zkg install --force --skiptests --version "${ICSNPP_DNP3}" icsnpp-dnp3 \
+ && zkg install --force --skiptests --version "${ICSNPP_ENIP}" icsnpp-enip \
+ && zkg install --force --skiptests --version "${ICSNPP_S7COMM}" icsnpp-s7comm
+
+# The toolchain is only needed to build the packages.
+RUN apt-get purge -y --auto-remove g++ cmake make git \
+ && rm -rf /var/lib/apt/lists/* /root/.zkg
+
+COPY reconics.zeek /opt/reconics/reconics.zeek
+COPY run.sh /usr/local/bin/reconics-run
+RUN chmod 0755 /usr/local/bin/reconics-run
+
+# /in is the capture's folder (mounted read-only), /out is where the JSON logs are written.
+WORKDIR /out
+ENTRYPOINT ["/usr/local/bin/reconics-run"]

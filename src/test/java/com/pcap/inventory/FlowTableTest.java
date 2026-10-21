@@ -92,4 +92,36 @@ class FlowTableTest {
         t.add("10.0.0.5", "10.0.0.9", "modbus", "1502/tcp", "Modbus FC=0x3");
         assertEquals(2, t.toList().size());
     }
+
+    @Test
+    void mergingZeekFlowsIntoNativeOnesDoesNotDoubleCount() {
+        FlowTable nat = new FlowTable();
+        nat.flow("10.0.0.5", "10.0.0.9", "unknown", "502/tcp").messages(4).traffic(8, 100).seen(2_000_000L).labelCount("Modbus FC3", 4).scanAttempts(2).source("native");
+        nat.flow("10.0.0.5", "10.0.0.7", "snmp", "161/udp").message("SNMP GetResponse").source("native");
+        FlowTable zk = new FlowTable();
+        // Zeek calls the same conversation the other way round, names the protocol, and has the whole connection's counters
+        zk.flow("10.0.0.9", "10.0.0.5", "modbus", "502/tcp").messages(6).traffic(40, 900).seen(1_000_000L).seen(9_000_000L)
+                .labelCount("Modbus FC3", 6).labelCount("Modbus FC16", 1).operation("FC3 read holding registers", "read", null, 0L, 10L, 6, List.of(1)).scanAttempts(1).source("zeek");
+        zk.flow("10.0.0.5", "10.0.0.11", "http", "80/tcp").messages(3).source("zeek");
+        nat.mergeFrom(zk);
+        var l = nat.toList(true);
+        assertEquals(3, l.size(), l.toString());
+        var mb = l.stream().filter(f -> "502/tcp".equals(f.get("port"))).findFirst().orElseThrow();
+        assertEquals("10.0.0.5", mb.get("client"), "the native direction stays");
+        assertEquals("modbus", mb.get("protocol"), "a native unknown takes Zeek's service name");
+        assertEquals(6L, mb.get("messages"), "the larger count, not 10");
+        assertEquals(40L, mb.get("packets"));
+        assertEquals(900L, mb.get("bytes"));
+        assertEquals(2L, mb.get("scanAttempts"), "the larger of 2 and 1");
+        assertEquals(6L, ((Map<?, ?>) mb.get("labels")).get("Modbus FC3"), "the larger per label, not the sum");
+        assertEquals(1L, ((Map<?, ?>) mb.get("labels")).get("Modbus FC16"));
+        assertEquals("1970-01-01T00:00:01Z", mb.get("firstSeen"));
+        assertEquals("1970-01-01T00:00:09Z", mb.get("lastSeen"));
+        assertEquals(1, ((List<?>) mb.get("operations")).size());
+        assertEquals("zeek+native", mb.get("source"));
+        assertEquals("native", l.stream().filter(f -> "snmp".equals(f.get("protocol"))).findFirst().orElseThrow().get("source"));
+        assertEquals("zeek", l.stream().filter(f -> "http".equals(f.get("protocol"))).findFirst().orElseThrow().get("source"));
+        // the renamed flow is still findable under its new protocol
+        assertSame(nat.flow("10.0.0.5", "10.0.0.9", "modbus", "502/tcp"), nat.match("10.0.0.9", "10.0.0.5", "502/tcp"));
+    }
 }

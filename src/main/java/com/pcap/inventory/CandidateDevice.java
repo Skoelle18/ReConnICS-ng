@@ -130,8 +130,18 @@ public final class CandidateDevice {
         if (basis != null) {
             detectionBases.add(basis);
         }
+        if (basis != null && basis.fromZeek()) {
+            return;                                  // Zeek has no frame numbers; firstFrame/lastFrame stay native
+        }
         firstFrame = Math.min(firstFrame, frame);
         lastFrame = Math.max(lastFrame, frame);
+    }
+
+    /** A protocol or service name that has no {@link ProtocolType}: the name is cleaned, and the set is capped like services. */
+    public void observeProtocolName(String name) {
+        if (name != null && !name.isBlank() && protocols.size() < MAX_SERVICES) {
+            protocols.add(name);
+        }
     }
 
     public void addField(IdentityField field) {

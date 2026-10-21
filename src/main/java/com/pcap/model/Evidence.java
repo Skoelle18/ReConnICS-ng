@@ -65,7 +65,9 @@ public final class Evidence {
         if (!fieldId.isEmpty()) {
             sb.append(' ').append(fieldId);
         }
-        sb.append(", frame ").append(frameNumber);
+        if (frameNumber > 0) {                      // evidence from an external engine (Zeek) has no frame number
+            sb.append(", frame ").append(frameNumber);
+        }
         if (!correlationId.isEmpty()) {
             sb.append(", txn ").append(correlationId);
         }

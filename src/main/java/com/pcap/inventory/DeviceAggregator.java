@@ -17,6 +17,7 @@ public final class DeviceAggregator {
     private int portOnlyCount;
     private int headerValidatedCount;
     private int messageDecodedCount;
+    private int zeekCount;
 
     public void accept(DeviceObservation obs) {
         if (obs == null) {
@@ -27,6 +28,7 @@ public final class DeviceAggregator {
             case PORT_HEURISTIC -> portOnlyCount++;
             case HEADER_VALIDATED -> headerValidatedCount++;
             case MESSAGE_DECODED -> messageDecodedCount++;
+            case ZEEK_CONN, ZEEK_SOFTWARE, ZEEK_ICSNPP -> zeekCount++;
         }
         CandidateDevice device = matcher.match(obs);
         if (device == null) {
@@ -44,6 +46,7 @@ public final class DeviceAggregator {
             obs.mac().ifPresent(device::markOwnMac);
         }
         device.observeProtocol(obs.protocol(), obs.detectionBasis(), obs.frameNumber());
+        obs.protocolName().ifPresent(device::observeProtocolName);
         for (IdentityField f : obs.identityFields()) {
             device.addField(f);
             identityFieldCount++;
@@ -90,6 +93,11 @@ public final class DeviceAggregator {
         return messageDecodedCount;
     }
 
+    /** Observations that came from the Zeek engine (conn hosts, banners, ICSNPP identity). */
+    public int zeekObservationCount() {
+        return zeekCount;
+    }
+
     public int candidateCount() {
         return matcher.candidates().size();
     }
@@ -98,6 +106,7 @@ public final class DeviceAggregator {
         public boolean hasStrongProtocolEvidence() {
             return device.detectionBases().contains(DetectionBasis.HEADER_VALIDATED)
                     || device.detectionBases().contains(DetectionBasis.MESSAGE_DECODED)
+                    || device.detectionBases().contains(DetectionBasis.ZEEK_ICSNPP)
                     || device.hasDecodedIdentity();
         }
     }

@@ -104,6 +104,9 @@ public final class IngestJsonWriter {
             a.id = ip != null ? ip : mac;
         }
         a.protocols = new ArrayList<>(ra.device().protocols());
+        if (a.protocols.size() > 1) {
+            a.protocols.remove("unknown");           // a host Zeek only saw talk is "unknown"; any real protocol replaces that
+        }
         if (!ra.device().services().isEmpty()) {
             a.ports = new ArrayList<>(ra.device().services());
         }
@@ -143,6 +146,16 @@ public final class IngestJsonWriter {
                 }
             });
             attrs.put("identityConflicts", conflicts);
+        }
+        // server banners Zeek's software log saw (spoofable text; never an identity field)
+        List<String> software = ra.device().fields().stream()
+                .filter(f -> f.kind() == com.pcap.model.IdentityField.Kind.OTHER && f.evidence().method() == com.pcap.model.DetectionBasis.ZEEK_SOFTWARE)
+                .map(com.pcap.model.IdentityField::value)
+                .distinct()
+                .limit(8)
+                .toList();
+        if (!software.isEmpty()) {
+            attrs.put("software", software);
         }
         // Retain serial / other fields
         List<String> serials = ra.device().fields().stream()

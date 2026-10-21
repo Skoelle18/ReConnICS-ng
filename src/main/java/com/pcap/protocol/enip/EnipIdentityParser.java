@@ -48,6 +48,11 @@ public final class EnipIdentityParser {
      * "Siemens"). Unmapped IDs are emitted as "CIP Vendor ID N" at MEDIUM confidence; the raw ID is always in
      * the evidence.
      */
+    /** The normalised company name for an ODVA CIP Vendor ID, or null when the ID is not in the curated table. */
+    public static String vendorName(int vendorId) {
+        return VENDOR_NAMES.get(vendorId);
+    }
+
     static final Map<Integer, String> VENDOR_NAMES = Map.ofEntries(
             Map.entry(1, "Rockwell Automation"),      // Rockwell Automation/Allen-Bradley
             Map.entry(3, "Honeywell"),                // Honeywell International Inc.

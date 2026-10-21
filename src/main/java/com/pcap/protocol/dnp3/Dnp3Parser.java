@@ -36,6 +36,37 @@ public final class Dnp3Parser {
     private static final String[] SECONDARY = {"ACK", "NACK", null, null, null, null, null, null, null, null, null, "LINK_STATUS",
             null, null, null, "NOT_SUPPORTED"};
 
+    /** Application function name for a code ("READ" for 1), or null when the code has no name here. */
+    public static String functionName(int fc) {
+        if (fc >= 0 && fc < APP_FC.length) {
+            return APP_FC[fc];
+        }
+        return switch (fc) {
+            case 129 -> "RESPONSE";
+            case 130 -> "UNSOLICITED_RESPONSE";
+            case 131 -> "AUTHENTICATE_RESP";
+            default -> null;
+        };
+    }
+
+    /** The code for an application function name as Zeek writes it ("READ", "DIRECT_OPERATE"), or -1. */
+    public static int functionCode(String name) {
+        if (name == null) {
+            return -1;
+        }
+        for (int i = 0; i < APP_FC.length; i++) {
+            if (name.equals(APP_FC[i])) {
+                return i;
+            }
+        }
+        return switch (name) {
+            case "RESPONSE" -> 129;
+            case "UNSOLICITED_RESPONSE" -> 130;
+            case "AUTHENTICATE_RESP" -> 131;
+            default -> -1;
+        };
+    }
+
     /** CRC-16/DNP: reflected polynomial 0x3D65 (0xA6BC), initial value 0, output complemented; sent low byte first. */
     public static int crc(byte[] b, int off, int len) {
         int crc = 0;

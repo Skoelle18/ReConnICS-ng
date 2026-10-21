@@ -95,6 +95,7 @@ public final class AnalyzeCommand {
         Runtime.getRuntime().addShutdownHook(shutdown);
         try {
             AnalysisService.AnalysisResult result = service.analyze(input, verbose, options);
+            result.notes().forEach(n -> err.println("note: " + n));
             IngestJsonWriter writer = service.jsonWriter();
 
             if (formatJson && output == null) {
@@ -115,6 +116,12 @@ public final class AnalyzeCommand {
                 return postDocument(postUri, writer, result);
             }
             return ExitCode.OK;
+        } catch (com.pcap.zeek.ZeekException e) {
+            err.println("error: " + e.getMessage());
+            if (verbose) {
+                e.printStackTrace(err);
+            }
+            return e.exitCode();
         } catch (PcapException e) {
             err.println("error: " + e.getMessage());
             if (verbose) {

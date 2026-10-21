@@ -14,6 +14,10 @@ import com.pcap.capture.PcapException;
 import com.pcap.capture.PcapReader;
 import com.pcap.capture.TcpReassembler;
 import com.pcap.protocol.ProtocolDetector;
+import com.pcap.zeek.ZeekData;
+import com.pcap.zeek.ZeekException;
+import com.pcap.zeek.ZeekLogReader;
+import com.pcap.zeek.ZeekRunner;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -23,6 +27,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -34,6 +40,7 @@ public final class AnalysisService {
     private final ProtocolDetector detector = new ProtocolDetector();
     private final IngestJsonWriter jsonWriter = new IngestJsonWriter();
     private final Clock clock;
+    private final String path;
     private final AtomicBoolean cancelled = new AtomicBoolean(false);
 
     public AnalysisService() {
@@ -41,7 +48,13 @@ public final class AnalysisService {
     }
 
     public AnalysisService(Clock clock) {
+        this(clock, System.getenv("PATH"));
+    }
+
+    /** {@code path} is where a Zeek executable is looked for; tests pass a temp directory instead of the real PATH. */
+    public AnalysisService(Clock clock, String path) {
         this.clock = clock;
+        this.path = path;
     }
 
     public void cancel() {
@@ -58,6 +71,48 @@ public final class AnalysisService {
 
     public AnalysisResult analyze(Path capturePath, boolean verbose, AnalysisOptions options) throws IOException, PcapException {
         cancelled.set(false);
+        List<String> notes = new ArrayList<>();
+        // Decide about Zeek before the long native pass, so a missing engine fails (or falls back) at once. Zeek then runs
+        // beside the native pass: it only reads the capture file, and the two are merged afterwards.
+        ZeekRunner runner = new ZeekRunner(path, "docker", options.zeekTimeout());
+        ZeekRunner.Engine zeekEngine = null;
+        boolean useZeek = options.engine() != AnalysisOptions.Engine.NATIVE;
+        if (useZeek && options.zeekLogs() == null) {
+            zeekEngine = runner.detect().orElse(null);
+            if (zeekEngine == null) {
+                if (options.engine() == AnalysisOptions.Engine.ZEEK) {
+                    throw new ZeekException(ZeekException.Kind.ENGINE, "--engine zeek: neither 'zeek' on PATH nor the "
+                            + ZeekRunner.IMAGE + " Docker image was found (see README, section Zeek engine). "
+                            + "Use --engine auto to fall back to the native decoders, or --zeek-logs DIR for logs you already have");
+                }
+                notes.add("--engine auto: Zeek not found (no 'zeek' on PATH, no " + ZeekRunner.IMAGE + " image); using the native decoders only");
+                useZeek = false;
+            }
+        }
+        CompletableFuture<ZeekRunner.Run> zeekRun = null;
+        if (useZeek && options.zeekLogs() == null) {
+            final ZeekRunner.Engine eng = zeekEngine;
+            zeekRun = CompletableFuture.supplyAsync(() -> {
+                try {
+                    return runner.run(eng, capturePath);
+                } catch (ZeekException e) {
+                    throw new CompletionException(e);
+                }
+            });
+        }
+        try {
+            return analyzeWith(capturePath, verbose, options, notes, useZeek, zeekEngine, zeekRun, runner);
+        } finally {
+            if (zeekRun != null) {
+                // whatever happened, the temp log directory must not outlive the call
+                zeekRun.thenAccept(r -> ZeekRunner.deleteTree(r.logDir()));
+            }
+        }
+    }
+
+    private AnalysisResult analyzeWith(Path capturePath, boolean verbose, AnalysisOptions options, List<String> notes, boolean useZeek,
+                                       ZeekRunner.Engine zeekEngine, CompletableFuture<ZeekRunner.Run> zeekRun, ZeekRunner runner)
+            throws IOException, PcapException {
         ConversationTracker conversations = new ConversationTracker();
         DeviceAggregator aggregator = new DeviceAggregator();
         TcpReassembler reassembler = new TcpReassembler();
@@ -149,6 +204,36 @@ public final class AnalysisService {
                 }
             }
 
+            conversations.mergeInto(detector.flows(), options.icsOnly(), options.keepScans());
+            ZeekData zeek = null;
+            String zeekVersion = "";
+            String zeekHow = "";
+            if (useZeek) {
+                Path logDir;
+                if (zeekRun != null) {
+                    ZeekRunner.Run run;
+                    try {
+                        run = zeekRun.join();
+                    } catch (CompletionException e) {
+                        if (e.getCause() instanceof ZeekException ze) {
+                            throw ze;
+                        }
+                        throw e;
+                    }
+                    logDir = run.logDir();
+                    zeekVersion = run.version();
+                    zeekHow = run.engine().describe();
+                } else {
+                    logDir = options.zeekLogs();
+                    zeekHow = "logs from " + logDir;
+                }
+                zeek = new ZeekLogReader(options.icsOnly(), options.keepScans()).read(logDir);
+                // Zeek's identity, banners and hosts join the native ones through the same aggregator (by IP and MAC); the
+                // resolver prefers a native decoded value over a Zeek one at equal confidence and keeps both as evidence
+                zeek.observations().forEach(aggregator::accept);
+                detector.flows().mergeFrom(zeek.flows());
+            }
+
             List<DeviceAggregator.ResolvedAsset> assets = aggregator.resolveAssets();
             int conflicts = assets.stream().mapToInt(a -> a.identity().conflictCount()).sum();
             Instant now = clock.instant();
@@ -180,12 +265,22 @@ public final class AnalysisService {
             if (captureError != null) {
                 doc.source.put("captureError", captureError);
             }
-            conversations.mergeInto(detector.flows(), options.icsOnly(), options.keepScans());
             var flows = detector.flows().toList(options.keepScans() && !options.icsOnly());
             doc.flows = flows.isEmpty() ? null : flows;
-            if (conversations.scanAttempts() > 0) {
-                // connections that never completed a handshake: edges only with --keep-scans, but the total is worth knowing
-                doc.source.put("scanAttempts", conversations.scanAttempts());
+            // connections that never completed a handshake: edges only with --keep-scans, but the total is worth knowing
+            long scanTotal = Math.max(conversations.scanAttempts(), zeek == null ? 0 : zeek.stats().scanAttempts());
+            if (scanTotal > 0) {
+                doc.source.put("scanAttempts", scanTotal);
+            }
+            doc.source.put("engine", zeek == null ? "native" : "zeek+native");
+            if (zeek != null) {
+                Map<String, Object> z = new java.util.LinkedHashMap<>();
+                z.put("run", zeekHow);
+                if (!zeekVersion.isEmpty()) {
+                    z.put("version", zeekVersion);
+                }
+                z.putAll(zeek.stats().toMap());
+                doc.source.put("zeek", z);
             }
             if (aggregator.droppedOverCap() > 0) {
                 doc.source.put("observationsDroppedOverAssetCap", aggregator.droppedOverCap());
@@ -211,10 +306,14 @@ public final class AnalysisService {
                     Instant.parse(draft.executedAtIso()),
                     true,
                     "");
-            return new AnalysisResult(report, doc);
+            return new AnalysisResult(report, doc, notes);
         }
     }
 
-    public record AnalysisResult(AnalysisReport report, IngestModels.Document document) {
+    /** {@code notes}: things the user should hear on stderr that are not errors (for example the --engine auto fallback). */
+    public record AnalysisResult(AnalysisReport report, IngestModels.Document document, List<String> notes) {
+        public AnalysisResult(AnalysisReport report, IngestModels.Document document) {
+            this(report, document, List.of());
+        }
     }
 }

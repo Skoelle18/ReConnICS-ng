@@ -35,6 +35,7 @@ public final class IdentityResolver {
         List<IdentityField> sorted = new ArrayList<>(device.fields());
         sorted.sort(Comparator
                 .comparingInt((IdentityField f) -> confidenceRank(f.confidence()))
+                .thenComparingInt(IdentityResolver::engineRank)
                 .thenComparingLong(f -> f.evidence().frameNumber()));
 
         Optional<ResolvedField> vendor = resolveKind(sorted, IdentityField.Kind.VENDOR);
@@ -88,7 +89,8 @@ public final class IdentityResolver {
             }
             if (primary == null
                     || confidenceRank(f.confidence()) < confidenceRank(primary.confidence())
-                    || (f.confidence() == primary.confidence()
+                    || (f.confidence() == primary.confidence() && engineRank(f) < engineRank(primary))
+                    || (f.confidence() == primary.confidence() && engineRank(f) == engineRank(primary)
                     && f.evidence().frameNumber() >= primary.evidence().frameNumber())) {
                 primary = f;
             }
@@ -110,6 +112,15 @@ public final class IdentityResolver {
         }
         return Optional.of(new ResolvedField(primary.value(), primary.confidence(),
                 primary.evidence().toIngestString(), new ArrayList<>(byValue.values())));
+    }
+
+    /**
+     * At equal confidence a value the native decoders read beats one Zeek reported, whatever the frame order; the Zeek
+     * value stays in the conflicts as evidence. (A Zeek banner is MEDIUM anyway, so a native HIGH value beats it on
+     * confidence alone.)
+     */
+    private static int engineRank(IdentityField f) {
+        return f.evidence().method().fromZeek() ? 1 : 0;
     }
 
     private static int confidenceRank(Confidence c) {

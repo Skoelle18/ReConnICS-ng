@@ -23,6 +23,7 @@ public final class DeviceObservation {
     private final String note;
     private final String subaddr;
     private final String service;
+    private final String protocolName;
 
     public DeviceObservation(
             long frameNumber,
@@ -46,7 +47,7 @@ public final class DeviceObservation {
             List<IdentityField> identityFields,
             String note,
             String subaddr) {
-        this(frameNumber, ip, mac, protocol, detectionBasis, role, identityFields, note, subaddr, null);
+        this(frameNumber, ip, mac, protocol, detectionBasis, role, identityFields, note, subaddr, null, null);
     }
 
     private DeviceObservation(
@@ -59,7 +60,9 @@ public final class DeviceObservation {
             List<IdentityField> identityFields,
             String note,
             String subaddr,
-            String service) {
+            String service,
+            String protocolName) {
+        this.protocolName = protocolName;
         this.service = service;
         this.subaddr = subaddr;
         this.frameNumber = frameNumber;
@@ -109,7 +112,17 @@ public final class DeviceObservation {
 
     /** Same observation, marked as a service the device answered on, e.g. {@code 502/tcp}. */
     public DeviceObservation withService(String service) {
-        return new DeviceObservation(frameNumber, ip, mac, protocol, detectionBasis, role, identityFields, note, subaddr, service);
+        return new DeviceObservation(frameNumber, ip, mac, protocol, detectionBasis, role, identityFields, note, subaddr, service, protocolName);
+    }
+
+    /** Same observation with a service name that has no {@link ProtocolType} (a Zeek service such as {@code http}). */
+    public DeviceObservation withProtocolName(String protocolName) {
+        return new DeviceObservation(frameNumber, ip, mac, protocol, detectionBasis, role, identityFields, note, subaddr, service, protocolName);
+    }
+
+    /** Free-form protocol or service name for hosts only an external engine saw, or null. */
+    public Optional<String> protocolName() {
+        return Optional.ofNullable(protocolName);
     }
 
     /** Port/transport the responder side was reached on ({@code 502/tcp}), or null when unknown or not a responder. */
