@@ -22,6 +22,7 @@ npm test
 |---|---|
 | `helpers.test.js` | Formatting and device-role helpers |
 | `screens.test.js` | What each screen shows: inventory, filters, index warnings, advisory wording, review queue, failed captures |
+| `graph.test.js` | The graph: nodes and labelled directed edges from fake assets and flows, side panel, path finding, filters, zoom, XSS safety |
 | `refresh.test.js` | Background polling: new captures appear on their own, paused in a hidden tab, no re-render when nothing changed or while editing |
 | `safety-and-edits.test.js` | XSS safety, request headers, validation rules, edit form behaviour |
 | `support/load-app.js` | Starts the console in jsdom with a fake API |

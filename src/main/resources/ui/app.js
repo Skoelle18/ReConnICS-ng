@@ -1,5 +1,7 @@
 // ReConICS site console. Plain JS, no build step, served by `serve` from the jar (docs/plans/2026-10-17-ui.md).
-// All DOM is built with h() and textContent: device-supplied strings never reach innerHTML.
+// All DOM is built with h() / sv() and textContent: device-supplied strings never reach innerHTML.
+// Layout: a full-bleed asset graph (assets = nodes, observed conversations = edges, advisories hang off assets) with the
+// other screens opening over it: #main is a side panel for one asset (#/asset/ID) and a sheet for everything else.
 'use strict';
 
 const ATTRS = [
@@ -15,8 +17,8 @@ const IDENTITY_KEYS = ['vendor', 'model', 'os', 'serial', 'deviceType'];
 const NO_IDENTITY = 'No identity message observed (needs Modbus FC43 / ENIP ListIdentity / S7 SZL)';
 const EXTRA_HINT = { serial: 'Modbus FC43 object, ENIP ListIdentity serial, S7 SZL 0x0011.', deviceType: 'ENIP ListIdentity device type or S7 SZL 0x001C module type.' };
 const LEVELS = ['EXACT', 'PROBABLE', 'POSSIBLE', 'NONE'];
-const LEVEL_COLOR = { EXACT: '#B42318', PROBABLE: '#E07B00', POSSIBLE: '#C9A400', NONE: '#9AA3B2', UNRUN: '#9AA3B2' };
-const ROLE_COLOR = { PLC: '#0F766E', Drive: '#5EB8AE', 'Comms adapter': '#1D4ED8', Network: '#93B4F5', Workstation: '#14202B', Other: '#7C8798', Unknown: '#CBD2DC' };
+const LEVEL_COLOR = { EXACT: '#FF6B61', PROBABLE: '#F59E4B', POSSIBLE: '#E8C84A', NONE: '#8793A5', UNRUN: '#6B7585' };
+const ROLE_COLOR = { PLC: '#2DD4BF', Drive: '#4ADE80', 'Comms adapter': '#A78BFA', Network: '#60A5FA', Workstation: '#F5C542', Other: '#94A3B8', Unknown: '#6B7585' };
 const PURDUE = [['3', 'Level 3', 'Site operations'], ['2', 'Level 2', 'Supervisory: HMI, EWS'], ['1', 'Level 1', 'Basic control: PLCs, adapters'],
   ['0', 'Level 0', 'Process: drives, I/O'], ['', 'Unplaced', 'Not enough identity yet']];
 const LIFECYCLE = ['Acquisition', 'Deployment', 'Commissioning', 'In service', 'Maintenance', 'Decommissioned'];
@@ -24,23 +26,24 @@ const LIFECYCLE = ['Acquisition', 'Deployment', 'Commissioning', 'In service', '
 // or saving an untouched form would log a change nobody made.
 const SITE_DEFAULTS = { lifecycle: 'In service' };
 
-const S = { inv: null, rank: [], site: {}, caps: [], changes: [], index: null, search: '', level: 'ALL', kevOnly: false, unvalOnly: false,
-  openCap: null, openAdv: null, tab: 'attrs', editing: false, staged: null };
+const S = { inv: null, rank: [], site: {}, flows: [], caps: [], changes: [], index: null, search: '', level: 'ALL', kevOnly: false, unvalOnly: false,
+  openCap: null, openAdv: null, tab: 'attrs', editing: false, staged: null,
+  color: 'role', showAdv: true, layout: 'force', path: null };
 
 // ------------------------------------------------------------------ helpers
 
-function h(tag, props, ...kids) {
-  const el = document.createElement(tag);
+function build(el, props, kids) {
   for (const [k, v] of Object.entries(props || {})) {
     if (v == null || v === false) continue;
-    if (k === 'class') el.className = v;
-    else if (k === 'style') Object.assign(el.style, v);                 // CSSOM: allowed under the CSP
+    if (k === 'style') Object.assign(el.style, v);                      // CSSOM: allowed under the CSP
     else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
     else el.setAttribute(k, v === true ? '' : v);
   }
   for (const c of kids.flat(Infinity)) if (c != null && c !== false) el.append(c instanceof Node ? c : String(c));
   return el;
 }
+const h = (tag, props, ...kids) => build(document.createElement(tag), props, kids);
+const sv = (tag, props, ...kids) => build(document.createElementNS('http://www.w3.org/2000/svg', tag), props, kids);
 const $ = (id) => document.getElementById(id);
 const store = { get(k) { try { return localStorage.getItem(k) || ''; } catch { return ''; } }, set(k, v) { try { localStorage.setItem(k, v); } catch { /* private window */ } } };
 const val = (a, k) => (a && a[k] && a[k].value != null ? a[k].value : null);
@@ -49,6 +52,7 @@ const fmtTime = (iso) => (iso ? String(iso).replace('T', ' ').replace(/:\d\d(\.\
 const fmtSize = (n) => (n > 1 << 30 ? (n / (1 << 30)).toFixed(1) + ' GB' : (n / (1 << 20)).toFixed(1) + ' MB');
 const bar = (pct, color) => h('span', { class: 'bar' }, h('span', { style: { width: Math.max(0, Math.min(100, pct)) + '%', background: color || null } }));
 const dot = (color) => h('span', { class: 'dot', style: { background: color } });
+const chip = (label, on, fn) => h('button', { class: 'chip' + (on ? ' on' : ''), 'aria-pressed': String(on), onclick: () => { fn(); render(); } }, label);
 const levelBadge = (l) => h('span', { class: 'badge lv-' + l }, l === 'UNRUN' ? 'NOT RUN' : l);
 
 let toastTimer;
@@ -92,6 +96,27 @@ function purdueOf(a) {
   return { PLC: '1', 'Comms adapter': '1', Network: '1', Drive: '0', Workstation: '2' }[roleGroup(a)] || '';
 }
 
+/** Free-text words (all must match) plus filters: level:exact proto:modbus role:plc kev unvalidated. */
+function parseQuery(q) {
+  const t = { text: [] };
+  for (const w of String(q).toLowerCase().split(/\s+/).filter(Boolean)) {
+    const m = w.match(/^(level|proto|role):(.+)$/);
+    if (m) t[m[1]] = m[2]; else if (w === 'kev' || w === 'unvalidated') t[w] = true; else t.text.push(w);
+  }
+  return t;
+}
+const filterActive = () => !!(S.search.trim() || S.level !== 'ALL' || S.kevOnly || S.unvalOnly);
+/** The chips (level, KEV, not validated) and the query box together: the table hides what fails, the graph dims it. */
+function matches(a) {
+  const q = parseQuery(S.search), lv = levelOf(a), kev = !!(a.match && a.match.kevAtModel);
+  const hay = [a.id, nameOf(a), val(a, 'vendor'), val(a, 'model'), val(a, 'mac'), val(a, 'hostname')].filter(Boolean).map((v) => str(v).toLowerCase());
+  return (S.level === 'ALL' || lv === S.level) && (!S.kevOnly || kev) && (!S.unvalOnly || !isValidated(a))
+    && (!q.level || lv.toLowerCase() === q.level) && (!q.kev || kev) && (!q.unvalidated || !isValidated(a))
+    && (!q.proto || str(val(a, 'protocols')).toLowerCase().includes(q.proto))
+    && (!q.role || (roleGroup(a) + ' ' + str(val(a, 'role'))).toLowerCase().includes(q.role))
+    && q.text.every((w) => hay.some((v) => v.includes(w)));
+}
+
 function advisoryRows() {
   const m = new Map();
   for (const a of assets()) {
@@ -111,27 +136,32 @@ function reviewGroups() {
   const conflicts = all.filter((a) => Object.values(a).some((f) => f && f.conflict));
   const low = all.filter((a) => ['vendor', 'model', 'role'].some((k) => a[k] && a[k].confidence === 'LOW'));
   return [
-    { title: 'Conflicting values', color: '#B54708', items: conflicts.map((a) => [a, 'Values disagree across observations: ' + Object.keys(a).filter((k) => a[k] && a[k].conflict).join(', ')]) },
-    { title: 'Low-confidence identity', color: '#5B6474', items: low.map((a) => [a, 'Role, vendor or model rests on weak evidence. Confirm with the plant engineer.']) },
-    { title: 'Awaiting validation', color: '#0F766E', items: all.filter((a) => !isValidated(a)).map((a) => [a, a.completeness.filled + ' of 14 attributes filled']) },
+    { title: 'Conflicting values', color: '#F59E4B', items: conflicts.map((a) => [a, 'Values disagree across observations: ' + Object.keys(a).filter((k) => a[k] && a[k].conflict).join(', ')]) },
+    { title: 'Low-confidence identity', color: '#8793A5', items: low.map((a) => [a, 'Role, vendor or model rests on weak evidence. Confirm with the plant engineer.']) },
+    { title: 'Awaiting validation', color: '#2DD4BF', items: all.filter((a) => !isValidated(a)).map((a) => [a, a.completeness.filled + ' of 14 attributes filled']) },
   ].filter((g) => g.items.length);
 }
 const reviewCount = () => new Set(reviewGroups().flatMap((g) => g.items.map((i) => i[0].id))).size;
 
 async function loadAll() {
   const [inv, caps, idx] = await Promise.all([api('GET', 'inventory'), api('GET', 'captures'), api('GET', 'index')]);
-  S.inv = inv.inventory; S.rank = inv.rank; S.site = inv.site; S.caps = caps; S.index = idx;
+  S.inv = inv.inventory; S.rank = inv.rank; S.site = inv.site; S.flows = inv.flows || []; S.caps = caps; S.index = idx;
 }
 
 // ------------------------------------------------------------------ chrome
 
 function chrome(route) {
-  document.querySelectorAll('[data-nav]').forEach((n) => n.classList.toggle('on', n.dataset.nav === route || (route === 'asset' && n.dataset.nav === 'inventory')));
+  document.querySelectorAll('[data-nav]').forEach((n) => n.classList.toggle('on', n.dataset.nav === route || (route === 'asset' && n.dataset.nav === 'graph')));
   const active = S.caps.filter((c) => c.state === 'queued' || c.state === 'running').length;
   $('n-queue').textContent = active || '';
   $('n-assets').textContent = assets().length || '';
   $('n-review').textContent = reviewCount() || '';
   $('n-adv').textContent = advisoryRows().length || '';
+  $('tb-queue').textContent = active || '';
+  $('tb-review-n').textContent = reviewCount() || '';
+  $('asset-list').replaceChildren(...S.rank.map(byId).filter(Boolean).slice(0, 500).map((a) => h('option', { value: a.id }, nameOf(a))));
+  filterPanel();
+  legendPanel();
   const ix = S.index || {};
   const badge = $('idx-badge');
   badge.className = 'badge ' + (!ix.verified ? 'bad' : ix.warning ? 'warn' : 'ok');
@@ -140,6 +170,35 @@ function chrome(route) {
   banner.replaceChildren();
   if (!ix.verified) banner.append(h('div', { class: 'banner bad' }, 'Advisory index is UNVERIFIED (no public key). An altered index can hide vulnerable devices.'));
   else if (ix.warning) banner.append(h('div', { class: 'banner warn' }, ix.warning));
+}
+
+/** Filter button: the match-level / KEV / validation filters (shared with the inventory table) and how the graph is drawn. */
+function filterPanel() {
+  const p = $('pop-filter');
+  const had = [...p.querySelectorAll('button')].indexOf(document.activeElement);   // keep keyboard focus on the same chip after the rebuild
+  const on = (label, is, fn) => h('button', { class: 'chip' + (is ? ' on' : ''), 'aria-pressed': String(is), onclick: () => { fn(); render(); } }, label);
+  const group = (title, ...kids) => h('div', { class: 'stack', style: { gap: '6px' } }, h('div', { class: 'small strong' }, title), h('div', { class: 'row' }, kids));
+  p.replaceChildren(
+    group('Advisory match', ['ALL', ...LEVELS].map((l) => on(l === 'ALL' ? 'All levels' : l, S.level === l, () => { S.level = l; }))),
+    group('Show only', on('KEV only', S.kevOnly, () => { S.kevOnly = !S.kevOnly; }), on('Not validated', S.unvalOnly, () => { S.unvalOnly = !S.unvalOnly; })),
+    group('Colour nodes by', on('Role', S.color === 'role', () => { S.color = 'role'; }), on('Advisory risk', S.color === 'risk', () => { S.color = 'risk'; })),
+    group('Advisories on the graph', on(S.showAdv ? 'Shown (EXACT, PROBABLE)' : 'Hidden', S.showAdv, () => { S.showAdv = !S.showAdv; })),
+    group('Layout', on('Force', S.layout === 'force', () => { S.layout = 'force'; relayoutSoon(); }), on('Purdue levels', S.layout === 'purdue', () => { S.layout = 'purdue'; relayoutSoon(); })),
+    h('div', { class: 'muted small' }, 'Filters dim the non-matching assets on the graph and hide them in the inventory table.'));
+  if (had >= 0) p.querySelectorAll('button')[had].focus();
+}
+const relayoutSoon = () => { GR.pos.clear(); GR.sig = ''; GR.fitted = false; };
+
+function legendPanel() {
+  const sw = (c, t) => h('span', { class: 'row legend' }, h('span', { class: 'dot', style: { background: c } }), t);
+  const ix = S.index || {};
+  $('pop-info').replaceChildren(
+    h('div', { class: 'strong' }, S.color === 'risk' ? 'Node colour: advisory match' : 'Node colour: role'),
+    h('div', { class: 'stack', style: { gap: '4px' } }, S.color === 'risk' ? [...LEVELS, 'UNRUN'].map((l) => sw(LEVEL_COLOR[l], l === 'UNRUN' ? 'NOT RUN' : l)) : Object.keys(ROLE_COLOR).map((g) => sw(ROLE_COLOR[g], g))),
+    h('div', { class: 'small' }, 'Red ring: KEV-listed advisory at model. Check badge: validated. Triangle: advisory (red when KEV-listed). Dashed grey edge: unit or slot behind a gateway.'),
+    h('div', { class: 'small' }, 'Arrows run client to server and are labelled with the message kind seen (Modbus FC43/14, ListIdentity, S7 SZL). Thicker means more messages. Only header-validated traffic is drawn.'),
+    h('div', { class: 'small muted' }, 'Keyboard: Tab to a node, Enter opens it. On the graph: arrows pan, + and - zoom, 0 fits.'),
+    h('div', { class: 'small' }, 'Advisory index: ' + (ix.verified ? 'signature verified' : 'UNVERIFIED') + ', generated ' + fmtTime(ix.generated) + ', KEV ' + (ix.kevCatalogVersion || '?') + '.'));
 }
 
 // ------------------------------------------------------------------ screens
@@ -164,7 +223,7 @@ function overview() {
         h('div', { class: 'stat' }, h('span', { class: 'stat-label' }, 'CISA attributes filled (avg)'),
           h('span', { class: 'row' }, h('span', { class: 'kpi' }, sum.meanFilled), h('span', { class: 'muted' }, '/ 14 · passive max 9')), bar(sum.meanFilled / 14 * 100)),
         h('div', { class: 'stat' }, h('span', { class: 'stat-label' }, 'KEV at model'),
-          h('span', { class: 'kpi', style: { color: kev ? '#9F1A1A' : null } }, kev), h('span', { class: 'muted small' }, lv.EXACT + ' EXACT · ' + lv.PROBABLE + ' PROBABLE matches')),
+          h('span', { class: 'kpi', style: { color: kev ? LEVEL_COLOR.EXACT : null } }, kev), h('span', { class: 'muted small' }, lv.EXACT + ' EXACT · ' + lv.PROBABLE + ' PROBABLE matches')),
         h('div', { class: 'stat' }, h('span', { class: 'stat-label' }, 'Needs review'),
           h('span', { class: 'head' }, h('span', { class: 'kpi' }, reviewCount()), h('a', { class: 'btn sm', href: '#/review' }, 'Review')),
           h('span', { class: 'muted small' }, all.filter((a) => !isValidated(a)).length + ' not validated'))),
@@ -198,7 +257,7 @@ function overview() {
           h('div', { class: 'card-b fill' }, ATTRS.map(([k, label, by]) => {
             const pct = Math.round(parseFloat((sum.fillRate || {})[k] || 0) * 100);
             return h('div', { class: 'stack', style: { gap: '4px' } }, h('span', { class: 'head' }, label, h('span', { class: 'badge ' + (by === 'human' ? 'c-PERSON' : 'c-LOW') }, pct + '%')),
-              bar(pct, by === 'human' ? '#6B3FA0' : null));
+              bar(pct, by === 'human' ? '#A78BFA' : null));
           })))),
     ],
   ];
@@ -260,11 +319,8 @@ async function removeCapture(c) {
 }
 
 function inventory() {
-  const q = S.search.trim().toLowerCase();
-  const ranked = S.rank.map(byId).filter(Boolean);
-  const rows = ranked.filter((a) => (S.level === 'ALL' || levelOf(a) === S.level) && (!S.kevOnly || (a.match && a.match.kevAtModel)) && (!S.unvalOnly || !isValidated(a))
-    && (!q || [a.id, nameOf(a), val(a, 'vendor'), val(a, 'model'), val(a, 'mac'), val(a, 'hostname')].some((v) => v && str(v).toLowerCase().includes(q))));
-  const chip = (label, on, fn) => h('button', { class: 'chip' + (on ? ' on' : ''), 'aria-pressed': String(on), onclick: () => { fn(); render(); } }, label);
+  const q = S.search.trim();
+  const rows = S.rank.map(byId).filter(Boolean).filter(matches);
   return [
     h('div', { class: 'head' },
       h('div', {}, h('h1', {}, 'Asset inventory'), h('div', { class: 'muted' }, 'Ranked fix-first: KEV at model, match level, criticality, CVSS, then most work left.')),
@@ -287,18 +343,33 @@ function inventory() {
             h('span', { class: 'mono small muted' }, a.match && a.match.maxCvss ? a.match.maxCvss.toFixed(1) : '')),
           h('span', {}, h('span', { class: 'badge ' + (isValidated(a) ? 'ok' : 'lv-NONE') }, isValidated(a) ? 'Validated' : 'Pending'))))),
       h('div', { class: 'card-b head muted small' }, 'Showing ' + rows.length + ' of ' + assets().length + ' assets', 'Port-only observations are not counted as identified devices.')),
+    conversations(),
   ];
+}
+
+/** The graph's edges as a table (the accessible twin of the graph): who talked to whom, with the message kinds seen. */
+function conversations() {
+  const keep = (id) => !filterActive() || matches(byId(id));
+  const flows = graphModel().edges.filter((e) => e.kind === 'flow' && (keep(e.from) || keep(e.to)));
+  const link = (id) => h('a', { href: '#/asset/' + encodeURIComponent(id) }, nameOf(byId(id)), ' ', h('span', { class: 'mono small muted' }, id));
+  return h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Conversations', h('span', { class: 'muted small' }, 'observed client → server; header-validated Modbus, EtherNet/IP and S7comm messages only')),
+    h('div', { class: 'scroll' },
+      h('div', { class: 'trow thead g-flow' }, ['Client', 'Server', 'Protocol', 'Message kinds', 'Messages'].map((t) => h('span', {}, t))),
+      flows.length === 0 ? h('div', { class: 'empty' }, assets().length ? 'No conversations decoded yet.' : 'No assets yet. Queue a capture.')
+        : flows.slice(0, 500).map((e) => h('div', { class: 'trow g-flow' }, link(e.from), link(e.to), h('span', { class: 'mono small' }, e.f.protocol + ' ' + e.f.port),
+          h('span', { class: 'small wrap' }, Object.entries(e.f.labels || {}).map(([k, n]) => k + ' ×' + n).join(' · ')), h('span', { class: 'mono' }, e.n)))));
 }
 
 function asset(id) {
   const a = byId(id);
-  if (!a) return [h('a', { class: 'btn sm', href: '#/inventory' }, '‹ Inventory'), h('div', { class: 'card empty' }, 'No asset ' + id + ' in the current inventory.')];
+  if (!a) return [h('a', { class: 'btn sm', href: '#/graph' }, '‹ Graph'), h('div', { class: 'card empty' }, 'No asset ' + id + ' in the current inventory.')];
   const site = siteOf(a), c = a.completeness, role = store.get('role') || 'collector';
   const tab = (k, label) => h('button', { class: 'tab' + (S.tab === k ? ' on' : ''), onclick: () => { S.tab = k; S.editing = false; render(); } }, label);
   const advs = (a.match && a.match.advisories) || [];
   const hist = S.changes.filter((x) => x.asset === a.id);
+  const convs = convsOf(a);
   return [
-    h('a', { class: 'btn sm', href: '#/inventory', style: { alignSelf: 'flex-start' } }, '‹ Inventory'),
+    h('div', { class: 'row' }, h('a', { class: 'btn sm', href: '#/graph' }, '‹ Graph'), h('a', { class: 'btn sm', href: '#/inventory' }, 'Inventory table')),
     h('div', { class: 'card' },
       h('div', { class: 'card-b head', style: { alignItems: 'flex-start' } },
         h('div', { class: 'stack', style: { gap: '6px' } },
@@ -311,8 +382,8 @@ function asset(id) {
           fact('Completeness', c.filled + ' / 14'), h('div', {}, h('div', { class: 'muted small' }, 'Match ceiling'), levelBadge(c.matchCeiling)),
           fact('Lifecycle', site.lifecycle || 'In service'))),
       c.nextStep ? h('div', { class: 'note' }, h('strong', {}, 'Next step to raise the match: '), c.nextStep) : null,
-      h('div', { class: 'tabs' }, tab('attrs', 'Attributes'), tab('advs', 'Advisories (' + advs.length + ')'), tab('hist', 'History (' + hist.length + ')'))),
-    S.tab === 'attrs' ? attrsCard(a, site, role) : S.tab === 'advs' ? h('div', { class: 'card' },
+      h('div', { class: 'tabs' }, tab('attrs', 'Attributes'), tab('advs', 'Advisories (' + advs.length + ')'), tab('conv', 'Conversations (' + convs.length + ')'), tab('hist', 'History (' + hist.length + ')'))),
+    S.tab === 'attrs' ? attrsCard(a, site, role) : S.tab === 'conv' ? convCard(convs, a.id) : S.tab === 'advs' ? h('div', { class: 'card' },
       advs.length ? advs.map((x) => h('div', { class: 'card-b stack', style: { gap: '8px', borderBottom: '1px solid var(--line2)' } },
         h('div', { class: 'row' }, h('span', { class: 'mono strong' }, x.advisory), levelBadge(x.level), (x.kev || []).length ? h('span', { class: 'badge kev' }, 'KEV') : null,
           h('span', { class: 'badge lv-NONE' }, 'CVSS ' + (x.cvss || 0).toFixed(1))),
@@ -328,6 +399,18 @@ function asset(id) {
   ];
 }
 
+/** Observed conversations of one asset (the graph's edges touching it), with the message kinds as evidence. */
+const convsOf = (a) => graphModel().edges.filter((e) => e.kind === 'flow' && (e.from === a.id || e.to === a.id));
+function convCard(convs, id) {
+  return h('div', { class: 'card' }, convs.length ? convs.map((e) => {
+    const out = e.from === id, peer = byId(out ? e.to : e.from);
+    return h('div', { class: 'card-b stack', style: { gap: '6px', borderBottom: '1px solid var(--line2)' } },
+      h('div', { class: 'row' }, h('span', { class: 'badge lv-NONE' }, out ? 'to' : 'from'), h('a', { class: 'strong', href: '#/asset/' + encodeURIComponent(peer.id) }, nameOf(peer)),
+        h('span', { class: 'mono small muted' }, peer.id), h('span', { class: 'badge c-LOW' }, e.f.protocol + ' ' + e.f.port), h('span', { class: 'small muted' }, e.n + (e.n === 1 ? ' message' : ' messages'))),
+      h('div', { class: 'small' }, Object.entries(e.f.labels || {}).map(([k, n]) => k + ' ×' + n).join(' · ') || 'no message kinds recorded'));
+  }) : h('div', { class: 'empty' }, 'No conversation decoded for this asset yet. Edges come from Modbus, EtherNet/IP and S7comm messages whose headers validate; port-only traffic is not drawn.'));
+}
+
 function attrsCard(a, site, role) {
   const missing = Object.fromEntries((a.completeness.missing || []).map((m) => [m.attr, m]));
   const fieldVal = (k) => (k === 'os' ? a.os || a.firmware : k === 'vendor' ? a.vendor || a.vendor_oui : a[k]);   // OUI vendor is shown, flagged LOW
@@ -338,7 +421,7 @@ function attrsCard(a, site, role) {
       onclick: () => save(a, { validated: !isValidated(a) }) }, isValidated(a) ? 'Remove validation' : 'Mark validated')));
   if (S.editing) return h('div', { class: 'card' }, head, editForm(a, site));
   return h('div', { class: 'card' }, head,
-    role !== 'validator' ? h('div', { class: 'small muted', style: { padding: '8px 16px', background: '#FAFAFB', borderBottom: '1px solid var(--line2)' } }, 'Only a validator can mark an asset validated. Change Role in the sidebar.') : null,
+    role !== 'validator' ? h('div', { class: 'small muted strip-note' }, 'Only a validator can mark an asset validated. Change Role in Settings (the sliders button).') : null,
     h('div', { class: 'scroll' },
       h('div', { class: 'g-attr thead' }, ['Attribute', 'Value', 'Confidence', 'Evidence / how to fill'].map((t) => h('span', {}, t))),
       ATTRS.concat(ATTRS_EXTRA).map(([k, label, by]) => {
@@ -477,10 +560,297 @@ function log() {
   ];
 }
 
+// ------------------------------------------------------------------ graph
+
+// Assets are nodes, observed conversations (S.flows, client -> server) are directed edges, advisories hang off assets.
+// Plain SVG and a small force layout; no library, so nothing is fetched and the CSP stays default-src 'self'.
+const NODE_R = 18;
+const ICONS = {   // 24x24 line icons, drawn dark on the bright node colour
+  PLC: 'M5 6h14v12H5z M9 10h6 M9 14h6', Workstation: 'M3 5h18v11H3z M8 20h8 M12 16v4', Network: 'M12 4v16 M4 12h16 M12 4l-3 3 M12 4l3 3 M12 20l-3-3 M12 20l3-3 M4 12l3-3 M4 12l3 3 M20 12l-3-3 M20 12l-3 3',
+  Drive: 'M12 8a4 4 0 1 0 .01 0 M3 12h3 M18 12h3', 'Comms adapter': 'M4 12h16 M8 8l-4 4 4 4 M16 8l4 4-4 4',
+  Other: 'M6 6h12v12H6z', Unknown: 'M9 9a3 3 0 1 1 4.5 2.6c-1 .6-1.5 1.1-1.5 2.4 M12 17.5h.01',
+};
+const PROTO_NAME = { modbus: 'Modbus', s7comm: 'S7', 'ethernet-ip': 'ENIP' };
+const GR = { pos: new Map(), view: { x: 0, y: 0, k: 1 }, fitted: false, sig: '', vp: null, els: null, drag: null, moved: false };
+
+/** "ListIdentity" -> "ENIP ListIdentity"; the top message kind of a conversation, "+n" when there are more. */
+function flowLabel(f) {
+  const kinds = Object.entries(f.labels || {}).sort((a, b) => b[1] - a[1]).map((x) => x[0]);
+  if (!kinds.length) return PROTO_NAME[f.protocol] || f.protocol;
+  const pre = PROTO_NAME[f.protocol] || f.protocol;
+  const top = /^(Modbus|S7|EtherNet\/IP|CIP)/.test(kinds[0]) ? kinds[0] : pre + ' ' + kinds[0];
+  return top + (kinds.length > 1 ? ' +' + (kinds.length - 1) : '');
+}
+
+function graphModel() {
+  const all = assets(), nodes = all.map((a) => ({ id: a.id, a })), edges = [];
+  const ipOf = (a) => str(val(a, 'ip')) || a.id.split('/')[0];
+  const owner = new Map();                                              // IP -> the asset that owns it (a unit/slot only when nothing else does)
+  for (const a of all) if (!a.subaddr) owner.set(ipOf(a), a.id);
+  for (const a of all) if (a.subaddr && !owner.has(ipOf(a))) owner.set(ipOf(a), a.id);
+  for (const a of all) if (a.subaddr && owner.get(ipOf(a)) !== a.id) edges.push({ id: 'u:' + a.id, kind: 'unit', from: owner.get(ipOf(a)), to: a.id, label: a.subaddr });
+  S.flows.forEach((f, i) => {
+    const from = owner.get(f.client), to = owner.get(f.server);
+    if (from && to && from !== to) edges.push({ id: 'f' + i, kind: 'flow', from, to, f, n: f.messages || 0, label: flowLabel(f) });
+  });
+  if (S.showAdv) {
+    for (const r of advisoryRows()) {
+      const hits = r.hits.filter((x) => x.level === 'EXACT' || x.level === 'PROBABLE');   // vendor-only matches would hang every advisory on every device
+      if (!hits.length) continue;
+      nodes.push({ id: 'adv:' + r.id, adv: r });
+      for (const x of hits) edges.push({ id: 'a:' + r.id + '>' + x.a.id, kind: 'adv', from: x.a.id, to: 'adv:' + r.id, label: x.level });
+    }
+  }
+  return { nodes, edges };
+}
+
+function nodeLabel(n) {
+  if (n.adv) return 'Advisory ' + n.adv.id + ', CVSS ' + n.adv.cvss.toFixed(1) + (n.adv.kev ? ', KEV listed' : '') + ', affects ' + n.adv.hits.length + (n.adv.hits.length === 1 ? ' asset' : ' assets');
+  const a = n.a, vm = [str(val(a, 'vendor')), str(val(a, 'model'))].filter(Boolean).join(' ');
+  return nameOf(a) + ', ' + a.id + ', ' + roleGroup(a) + (vm ? ', ' + vm : '') + ', advisory match ' + (levelOf(a) === 'UNRUN' ? 'not run' : levelOf(a))
+    + (a.match && a.match.kevAtModel ? ', KEV at model' : '') + (isValidated(a) ? ', validated' : '');
+}
+const edgeLabel = (e, byNode) => (e.kind === 'flow' ? 'Conversation from ' + byNode(e.from) + ' to ' + byNode(e.to) + ': ' + e.f.protocol + ' ' + e.f.port + ', '
+  + Object.entries(e.f.labels || {}).map(([k, n]) => k + ' x' + n).join(', ') + ', ' + e.n + ' messages'
+  : e.kind === 'unit' ? byNode(e.to) + ' sits behind ' + byNode(e.from) + ' as ' + e.label : byNode(e.from) + ' matches advisory ' + byNode(e.to) + ' at ' + e.label);
+
+const K = 150;   // layout spacing
+/** Fruchterman-Reingold on one set of nodes: repulsion K*K/d (not beyond 3K), springs d*d/K, gravity to the origin. */
+function relax(nodes, edges, iters, warm) {
+  const P = nodes.map((n) => GR.pos.get(n.id)), ix = new Map(nodes.map((n, i) => [n.id, i]));
+  const band = (n) => (n.a ? ({ '3.5': -1.5, 3: -1, 2: 0, 1: 1, 0: 2 }[purdueOf(n.a)] ?? 3) : 3.5) * K * 0.8;   // Purdue layers: top = site operations, bottom = process; advisories and unplaced below
+  for (let it = 0; it < iters; it++) {
+    const t = warm ? K * 0.08 * (1 - it / iters) + 0.5 : K * 0.6 * (1 - it / iters) + 1;
+    const dx = P.map(() => 0), dy = P.map(() => 0);
+    for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) {
+      let x = P[i].x - P[j].x, y = P[i].y - P[j].y, d = Math.hypot(x, y);
+      if (d > 3 * K) continue;
+      if (d < 1) { x = 1; y = 0; d = 1; }
+      const f = K * K / d / d;
+      dx[i] += x * f; dy[i] += y * f; dx[j] -= x * f; dy[j] -= y * f;
+    }
+    for (const e of edges) {
+      const i = ix.get(e.from), j = ix.get(e.to);
+      if (i == null || j == null) continue;
+      const x = P[i].x - P[j].x, y = P[i].y - P[j].y, d = Math.hypot(x, y) || 1, f = d / K * (e.kind === 'adv' ? 0.6 : 1);
+      dx[i] -= x * f; dy[i] -= y * f; dx[j] += x * f; dy[j] += y * f;
+    }
+    P.forEach((p, i) => {
+      if (p.fixed) return;
+      dx[i] -= p.x * 0.05; dy[i] -= p.y * 0.05;
+      if (S.layout === 'purdue') dy[i] += (band(nodes[i]) - p.y) * 0.25;
+      const d = Math.hypot(dx[i], dy[i]) || 1, m = Math.min(d, t) / d;
+      p.x += dx[i] * m; p.y += dy[i] * m;
+    });
+  }
+}
+
+/**
+ * Fresh layout: every connected component is laid out on its own, then the components are packed in rows, biggest
+ * first (one force run over everything flings small components far away). A later poll only nudges (`warm`) so
+ * nothing the user has looked at jumps. Purdue mode is one global run because the levels fix the rows.
+ */
+function layoutGraph({ nodes, edges }, warm) {
+  const ids = new Set(nodes.map((n) => n.id));
+  for (const id of [...GR.pos.keys()]) if (!ids.has(id)) GR.pos.delete(id);
+  nodes.forEach((n, i) => {
+    if (GR.pos.has(n.id)) return;
+    const e = edges.find((x) => (x.from === n.id && GR.pos.has(x.to)) || (x.to === n.id && GR.pos.has(x.from)));
+    const q = e && GR.pos.get(e.from === n.id ? e.to : e.from), r = e ? 90 : 45 * Math.sqrt(i + 1), t = i * 2.4;   // golden-ish angle: deterministic, no Math.random
+    GR.pos.set(n.id, { x: (q ? q.x : 0) + r * Math.cos(t), y: (q ? q.y : 0) + r * Math.sin(t) });
+  });
+  const big = nodes.length > 600 ? 60 : nodes.length > 250 ? 120 : 0;
+  if (warm || S.layout === 'purdue') return relax(nodes, edges, big || (warm ? 50 : 260), warm);
+  const adj = new Map(nodes.map((n) => [n.id, []]));
+  edges.forEach((e) => { if (adj.has(e.from) && adj.has(e.to)) { adj.get(e.from).push(e.to); adj.get(e.to).push(e.from); } });
+  const seen = new Set(), groups = [];
+  for (const n of nodes) {
+    if (seen.has(n.id)) continue;
+    const stack = [n.id], members = [];
+    seen.add(n.id);
+    while (stack.length) { const u = stack.pop(); members.push(u); for (const v of adj.get(u)) if (!seen.has(v)) { seen.add(v); stack.push(v); } }
+    groups.push(members);
+  }
+  groups.sort((x, y) => y.length - x.length);
+  const boxes = groups.map((g) => {
+    const set = new Set(g);
+    relax(nodes.filter((n) => set.has(n.id)), edges.filter((e) => set.has(e.from) && set.has(e.to)), big || 260, false);
+    const P = g.map((id) => GR.pos.get(id));
+    const x0 = Math.min(...P.map((p) => p.x)) - 60, y0 = Math.min(...P.map((p) => p.y)) - 60;
+    return { g, x0, y0, w: Math.max(...P.map((p) => p.x)) + 60 - x0, h: Math.max(...P.map((p) => p.y)) + 60 - y0 };
+  });
+  const rowW = Math.max(900, Math.sqrt(boxes.reduce((a, b) => a + b.w * b.h, 0)) * 1.5);
+  let x = 0, y = 0, rowH = 0;
+  for (const b of boxes) {
+    if (x > 0 && x + b.w > rowW) { x = 0; y += rowH; rowH = 0; }
+    for (const id of b.g) { const p = GR.pos.get(id); p.x += x - b.x0; p.y += y - b.y0; }
+    x += b.w; rowH = Math.max(rowH, b.h);
+  }
+}
+
+const stageSize = () => [$('stage').clientWidth || 1200, $('stage').clientHeight || 700];
+function applyView() {
+  const v = GR.view;
+  if (GR.vp) GR.vp.setAttribute('transform', 'translate(' + v.x + ' ' + v.y + ') scale(' + v.k + ')');
+  $('graph').classList.toggle('far', v.k < 0.4);
+}
+function fitView() {
+  const P = [...GR.pos.values()], [W, H] = stageSize();
+  if (!P.length) { GR.view = { x: W / 2, y: H / 2, k: 1 }; return applyView(); }
+  const x0 = Math.min(...P.map((p) => p.x)), x1 = Math.max(...P.map((p) => p.x)), y0 = Math.min(...P.map((p) => p.y)), y1 = Math.max(...P.map((p) => p.y));
+  const k = Math.max(0.15, Math.min(1.2, (W - 120) / (x1 - x0 + 160), (H - 120) / (y1 - y0 + 160)));   // leave room for the toolbar
+  GR.view = { k, x: (W - 60) / 2 - (x0 + x1) / 2 * k, y: H / 2 - (y0 + y1) / 2 * k };
+  GR.fitted = true;
+  applyView();
+}
+function zoomBy(f, cx, cy) {
+  const v = GR.view, [W, H] = stageSize(), k = Math.max(0.1, Math.min(4, v.k * f));
+  cx = cx == null ? W / 2 : cx; cy = cy == null ? H / 2 : cy;
+  GR.view = { k, x: cx - (cx - v.x) * k / v.k, y: cy - (cy - v.y) * k / v.k };
+  applyView();
+}
+function centerOn(id) {
+  const p = GR.pos.get(id), [W, H] = stageSize(), k = Math.max(GR.view.k, 0.9);
+  if (!p) return;
+  GR.view = { k, x: (W > 900 ? W / 2 - 230 : W / 2) - p.x * k, y: H / 2 - p.y * k };   // left of the side panel
+  applyView();
+}
+/** Forget every position (and any pinned node) and lay the graph out again. */
+function relayout() { relayoutSoon(); render(); }
+
+/** Directed conversation path first, then ignoring direction; advisory links do not count as a path. */
+function findPath(from, to) {
+  const { edges } = graphModel();
+  for (const directed of [true, false]) {
+    const prev = new Map([[from, null]]), queue = [from];
+    while (queue.length && !prev.has(to)) {
+      const u = queue.shift();
+      for (const e of edges) {
+        if (e.kind === 'adv') continue;
+        const v = e.from === u ? e.to : !directed && e.to === u ? e.from : null;
+        if (v && !prev.has(v)) { prev.set(v, { u, e: e.id }); queue.push(v); }
+      }
+    }
+    if (prev.has(to)) {
+      const nodes = [to], es = [];
+      for (let c = to; prev.get(c); c = prev.get(c).u) { es.push(prev.get(c).e); nodes.unshift(prev.get(c).u); }
+      return { nodes, edges: es };
+    }
+  }
+  return null;
+}
+
+function nodeColor(n) {
+  if (n.adv) return n.adv.kev ? LEVEL_COLOR.EXACT : LEVEL_COLOR.PROBABLE;
+  return S.color === 'risk' ? LEVEL_COLOR[levelOf(n.a)] : ROLE_COLOR[roleGroup(n.a)];
+}
+
+function pickNode(id) {
+  if (id.startsWith('adv:')) { S.openAdv = id.slice(4); location.hash = '#/advisories'; } else location.hash = '#/asset/' + encodeURIComponent(id);
+}
+
+function drawGraph() {
+  const svg = $('graph'), model = graphModel(), { nodes, edges } = model;
+  const ae = document.activeElement, keep = ae && ae.classList && ae.classList.contains('node') ? ae.dataset.id : null;
+  const sig = nodes.map((n) => n.id).join(',') + '|' + edges.map((e) => e.id).join(',');
+  if (sig !== GR.sig) { const first = GR.sig === ''; GR.sig = sig; layoutGraph(model, !first && GR.pos.size > 0); }
+  if (!GR.fitted) fitView();
+  $('graph-empty').hidden = nodes.length > 0;
+
+  const r = route(), sel = r.name === 'asset' ? r.arg : null, byNode = (id) => (id.startsWith('adv:') ? id.slice(4) : nameOf(byId(id)) === id ? id : nameOf(byId(id)) + ' (' + id + ')');
+  const near = new Set(sel ? [sel] : []);
+  if (sel) edges.forEach((e) => { if (e.from === sel) near.add(e.to); if (e.to === sel) near.add(e.from); });
+  const pathN = S.path && new Set(S.path.nodes), pathE = S.path && new Set(S.path.edges);
+  const fa = filterActive(), good = new Set(assets().filter(matches).map((a) => a.id));
+  const nodeOn = (n) => (pathN ? pathN.has(n.id) : sel ? near.has(n.id) : fa ? (n.a ? good.has(n.id) : edges.some((e) => e.to === n.id && good.has(e.from))) : true);
+  const on = new Set(nodes.filter(nodeOn).map((n) => n.id));
+
+  // several edges between one pair fan out as arcs
+  const pairs = new Map();
+  for (const e of edges) { const k = e.from < e.to ? e.from + '\n' + e.to : e.to + '\n' + e.from; (pairs.get(k) || pairs.set(k, []).get(k)).push(e); }
+  for (const g of pairs.values()) g.forEach((e, i) => { e.idx = i; e.cnt = g.length; });
+
+  const marker = (id, color) => sv('marker', { id, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 10, markerHeight: 10, markerUnits: 'userSpaceOnUse', orient: 'auto' }, sv('path', { d: 'M0 0L10 5L0 10z', fill: color }));
+  const els = { nodes: new Map(), edges: [] };
+  const edgeEls = edges.map((e) => {
+    const hot = pathE && pathE.has(e.id), dim = !(on.has(e.from) && on.has(e.to)) || (pathE && !hot) || (sel && !(e.from === sel || e.to === sel));
+    const path = sv('path', { class: 'epath', fill: 'none', 'stroke-width': e.kind === 'flow' ? 1.5 + Math.min(3, Math.log10(e.n + 1)) : 1.5, 'marker-end': 'url(#arr-' + (hot ? 'hot' : e.kind) + ')' });
+    const label = sv('text', { class: 'elabel', 'text-anchor': 'middle', 'paint-order': 'stroke' }, e.label);
+    els.edges.push({ e, path, label });
+    return sv('g', { class: 'edge ' + e.kind + (dim ? ' dim' : '') + (hot ? ' hot' : ''), role: 'img', 'aria-label': edgeLabel(e, byNode) }, sv('title', {}, edgeLabel(e, byNode)), path, label);
+  });
+  const nodeEls = nodes.map((n) => {
+    const a = n.a, dim = !on.has(n.id), kev = n.adv ? n.adv.kev : !!(a.match && a.match.kevAtModel);
+    const name = n.adv ? n.adv.id : nameOf(a), short = name.length > 22 ? name.slice(0, 21) + '…' : name;
+    const g = sv('g', { class: 'node' + (dim ? ' dim' : '') + (n.id === sel ? ' sel' : '') + (n.adv ? ' adv' : ''), tabindex: '0', role: 'button', 'data-id': n.id, 'aria-label': nodeLabel(n),
+      onclick: () => { if (GR.moved) { GR.moved = false; return; } pickNode(n.id); },
+      onkeydown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); pickNode(n.id); } },
+      onpointerdown: (ev) => { if (ev.button) return; GR.moved = false; GR.drag = { id: n.id, x: ev.clientX, y: ev.clientY }; ev.stopPropagation(); } },
+    sv('title', {}, nodeLabel(n)),
+    kev && !n.adv ? sv('circle', { class: 'ring-kev', r: NODE_R + 5 }) : null,
+    n.adv ? sv('path', { class: 'disc', d: 'M0 -21 L19 13 L-19 13 Z', fill: nodeColor(n) }) : sv('circle', { class: 'disc', r: NODE_R, fill: nodeColor(n) }),
+    sv('path', { class: 'icon', d: n.adv ? 'M0 -6v8M0 6.5h.01' : ICONS[roleGroup(a)], transform: n.adv ? null : 'translate(-9 -9) scale(.75)' }),
+    !n.adv && isValidated(a) ? sv('g', { class: 'badge-ok', transform: 'translate(13 -13)' }, sv('circle', { r: 7 }), sv('path', { d: 'M-3.5 0l2.5 2.5 4.5-5' })) : null,
+    sv('text', { class: 'nlabel', y: NODE_R + 16, 'text-anchor': 'middle', 'paint-order': 'stroke' }, short));
+    els.nodes.set(n.id, g);
+    return g;
+  });
+  GR.vp = sv('g', { id: 'viewport' }, sv('g', { class: 'edges' }, edgeEls), sv('g', { class: 'nodes' }, nodeEls));
+  svg.replaceChildren(sv('defs', {}, marker('arr-flow', '#C5CCD6'), marker('arr-hot', '#2DD4BF'), marker('arr-unit', '#8793A5'), marker('arr-adv', '#F59E4B')),
+    sv('rect', { class: 'bg', x: -50000, y: -50000, width: 100000, height: 100000, fill: 'transparent' }), GR.vp);
+  GR.els = els;
+  placeGraph();
+  applyView();
+  if (keep && els.nodes.get(keep)) els.nodes.get(keep).focus({ preventScroll: true });
+}
+
+/** Set every node and edge position from GR.pos (also called while dragging, so nothing is rebuilt mid-drag). */
+function placeGraph() {
+  if (!GR.els) return;
+  for (const [id, g] of GR.els.nodes) { const p = GR.pos.get(id); g.setAttribute('transform', 'translate(' + p.x + ' ' + p.y + ')'); }
+  for (const { e, path, label } of GR.els.edges) {
+    const a = GR.pos.get(e.from), b = GR.pos.get(e.to), dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1, sgn = e.from < e.to ? 1 : -1;
+    const off = (e.idx - (e.cnt - 1) / 2) * 60 * 2;                       // control-point offset; the arc peaks at half of it
+    const cx = (a.x + b.x) / 2 - dy / len * sgn * off, cy = (a.y + b.y) / 2 + dx / len * sgn * off;
+    const d0 = Math.hypot(cx - a.x, cy - a.y) || 1, d1 = Math.hypot(b.x - cx, b.y - cy) || 1, r1 = NODE_R + (e.kind === 'adv' ? 9 : 5);
+    const sx = a.x + (cx - a.x) / d0 * (NODE_R + 3), sy = a.y + (cy - a.y) / d0 * (NODE_R + 3), ex = b.x - (b.x - cx) / d1 * r1, ey = b.y - (b.y - cy) / d1 * r1;
+    path.setAttribute('d', 'M' + sx + ' ' + sy + ' Q' + cx + ' ' + cy + ' ' + ex + ' ' + ey);
+    let ang = Math.atan2(ey - sy, ex - sx) * 180 / Math.PI;
+    if (ang > 90 || ang < -90) ang += 180;                                 // keep the text upright
+    label.setAttribute('transform', 'translate(' + (sx / 4 + cx / 2 + ex / 4) + ' ' + (sy / 4 + cy / 2 + ey / 4) + ') rotate(' + ang + ')');
+    if (len < e.label.length * 6 + 50) label.setAttribute('display', 'none'); else label.removeAttribute('display');   // too short to carry its text; the tooltip and the table still have it
+  }
+}
+
+function initGraph() {
+  const svg = $('graph'), stage = $('stage');
+  const world = (ev) => { const r = svg.getBoundingClientRect(), v = GR.view; return { x: (ev.clientX - r.left - v.x) / v.k, y: (ev.clientY - r.top - v.y) / v.k }; };
+  let pan = null;
+  svg.addEventListener('pointerdown', (ev) => { if (!ev.button) { pan = { x: ev.clientX, y: ev.clientY, vx: GR.view.x, vy: GR.view.y }; svg.classList.add('panning'); } });
+  window.addEventListener('pointermove', (ev) => {
+    if (GR.drag) {
+      if (Math.hypot(ev.clientX - GR.drag.x, ev.clientY - GR.drag.y) > 4) GR.moved = true;
+      if (GR.moved) { const p = GR.pos.get(GR.drag.id), w = world(ev); if (p) { p.x = w.x; p.y = w.y; p.fixed = true; placeGraph(); } }
+    } else if (pan) { GR.view.x = pan.vx + ev.clientX - pan.x; GR.view.y = pan.vy + ev.clientY - pan.y; applyView(); }
+  });
+  window.addEventListener('pointerup', () => { GR.drag = null; pan = null; svg.classList.remove('panning'); });
+  svg.addEventListener('wheel', (ev) => { ev.preventDefault(); const r = svg.getBoundingClientRect(); zoomBy(ev.deltaY < 0 ? 1.15 : 1 / 1.15, ev.clientX - r.left, ev.clientY - r.top); }, { passive: false });
+  svg.addEventListener('keydown', (ev) => {
+    const step = ev.target === svg && { ArrowLeft: [60, 0], ArrowRight: [-60, 0], ArrowUp: [0, 60], ArrowDown: [0, -60] }[ev.key];
+    if (step) { GR.view.x += step[0]; GR.view.y += step[1]; applyView(); ev.preventDefault(); }
+    else if (ev.key === '+' || ev.key === '=') zoomBy(1.25); else if (ev.key === '-') zoomBy(0.8); else if (ev.key === '0') fitView();
+  });
+  stage.addEventListener('dragover', (ev) => ev.preventDefault());
+  stage.addEventListener('drop', (ev) => { ev.preventDefault(); upload([...ev.dataTransfer.files]); });
+  $('z-in').addEventListener('click', () => zoomBy(1.25));
+  $('z-out').addEventListener('click', () => zoomBy(0.8));
+  $('z-fit').addEventListener('click', fitView);
+}
+
 // ------------------------------------------------------------------ routing, refresh
 
 function route() {
-  const [, name, arg] = (location.hash || '#/overview').match(/^#\/([a-z]+)\/?(.*)$/) || [, 'overview', ''];
+  const [, name, arg] = (location.hash || '#/graph').match(/^#\/([a-z]+)\/?(.*)$/) || [, 'graph', ''];
   return { name, arg: decodeURIComponent(arg || '') };
 }
 
@@ -491,7 +861,13 @@ function render() {
   if (r.name + r.arg !== lastRoute) { S.tab = 'attrs'; S.editing = false; lastRoute = r.name + r.arg; }
   chrome(r.name);
   const screens = { overview, captures, inventory, review, advisories, index: indexScreen, log, asset: () => asset(r.arg) };
-  $('main').replaceChildren(...[].concat((screens[r.name] || overview)()).flat(Infinity).filter(Boolean));
+  const main = $('main'), open = r.name !== 'graph';
+  main.hidden = !open;
+  main.className = r.name === 'asset' ? 'panel' : 'sheet';
+  $('stage').toggleAttribute('inert', open && r.name !== 'asset');            // a sheet covers the graph; the side panel does not
+  main.replaceChildren(...(open ? [r.name === 'asset' ? null : h('a', { class: 'close', href: '#/graph', 'aria-label': 'Close and return to the graph', title: 'Close' }, '×'),
+    ...[].concat((screens[r.name] || overview)()).flat(Infinity)] : []).filter(Boolean));
+  drawGraph();
 }
 
 // The page keeps itself current: captures queued by another process (the lab feed, curl) show up without a click.
@@ -512,9 +888,52 @@ async function refresh(background) {
     await loadAll();
     if (route().name === 'log' || route().name === 'asset') S.changes = await api('GET', 'changes');
   } catch (e) { if (background) { schedulePoll(); return; } toast('Cannot reach the console: ' + e.message); }
-  const sig = JSON.stringify([S.inv, S.rank, S.site, S.caps, S.index, S.changes]);
+  const sig = JSON.stringify([S.inv, S.rank, S.site, S.flows, S.caps, S.index, S.changes]);
   if (!background || sig !== lastSig) { lastSig = sig; if (!S.editing) render(); else chrome(route().name); }
   schedulePoll();
+}
+
+/** Search panel, toolbar and popovers: one popover open at a time, Escape closes it (or the sheet). */
+function initChrome() {
+  const pops = [['menu-btn', 'nav'], ['btn-filter', 'pop-filter'], ['tb-export', 'pop-export'], ['tb-settings', 'pop-settings'], ['tb-info', 'pop-info']];
+  const closeAll = (except) => pops.forEach(([b, p]) => { if (p !== except) { $(p).hidden = true; $(b).setAttribute('aria-expanded', 'false'); } });
+  pops.forEach(([b, p]) => $(b).addEventListener('click', () => { const open = $(p).hidden; closeAll(p); $(p).hidden = !open; $(b).setAttribute('aria-expanded', String(open)); }));
+  $('nav').addEventListener('click', () => closeAll());
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (pops.some(([, p]) => !$(p).hidden)) closeAll(); else if (route().name !== 'graph') location.hash = '#/graph';
+  });
+  $('rawq-btn').addEventListener('click', () => { const open = $('rawq-body').hidden; $('rawq-body').hidden = !open; $('rawq-btn').setAttribute('aria-expanded', String(open)); if (open) $('q').focus(); });
+  $('btn-route').addEventListener('click', () => { const open = $('row-target').hidden; $('row-target').hidden = !open; $('btn-route').setAttribute('aria-expanded', String(open)); });
+  $('tb-refresh').addEventListener('click', () => refresh());
+  $('tb-import').addEventListener('click', () => $('import-pick').click());
+  $('import-pick').addEventListener('change', (e) => { upload([...e.target.files]); e.target.value = ''; });
+  $('tb-layout').addEventListener('click', relayout);
+  const pick = (txt) => {                                                  // id, then name, then any substring, in fix-first order
+    const t = txt.trim().toLowerCase(), all = S.rank.map(byId).filter(Boolean);
+    if (!t) return null;
+    return all.find((a) => a.id.toLowerCase() === t) || all.find((a) => nameOf(a).toLowerCase() === t)
+      || all.find((a) => [a.id, nameOf(a), val(a, 'vendor'), val(a, 'model')].some((v) => v && str(v).toLowerCase().includes(t))) || null;
+  };
+  $('start').addEventListener('change', () => {
+    const a = pick($('start').value);
+    if (!$('start').value.trim()) return;
+    if (!a) { toast('No asset matches "' + $('start').value.trim() + '"'); return; }
+    $('start').value = a.id;
+    location.hash = '#/asset/' + encodeURIComponent(a.id);
+    centerOn(a.id);
+  });
+  const go = () => {
+    const a = pick($('start').value), b = pick($('target').value);
+    if (!a || !b) { toast('Pick a start and a target asset first'); return; }
+    S.path = findPath(a.id, b.id);
+    if (!S.path) toast('No observed conversation path from ' + nameOf(a) + ' to ' + nameOf(b));
+    else toast('Path of ' + S.path.edges.length + (S.path.edges.length === 1 ? ' hop' : ' hops') + ' highlighted');
+    if (location.hash !== '#/graph') location.hash = '#/graph'; else render();
+  };
+  $('btn-go').addEventListener('click', go);
+  $('target').addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+  $('btn-back').addEventListener('click', () => { S.path = null; $('start').value = ''; $('target').value = ''; if (location.hash !== '#/graph') location.hash = '#/graph'; else render(); });
 }
 
 function init() {
@@ -523,9 +942,11 @@ function init() {
   roleSel.value = store.get('role') || 'collector';
   actor.addEventListener('change', () => store.set('actor', actor.value.trim()));
   roleSel.addEventListener('change', () => { store.set('role', roleSel.value); render(); });
-  $('q').addEventListener('input', (e) => { S.search = e.target.value; if (route().name !== 'inventory') location.hash = '#/inventory'; else render(); });
-  window.addEventListener('hashchange', () => { refresh(); $('main').focus(); });
-  if (!store.get('actor')) toast('Enter your name in the sidebar: every edit is logged under it.');
+  $('q').addEventListener('input', (e) => { S.search = e.target.value; render(); });
+  initGraph();
+  initChrome();
+  window.addEventListener('hashchange', () => { refresh(); if (route().name === 'graph') $('graph').focus(); else $('main').focus(); });
+  if (!store.get('actor')) toast('Enter your name in Settings (the sliders button): every edit is logged under it.');
   refresh();
 }
 document.addEventListener('DOMContentLoaded', init);

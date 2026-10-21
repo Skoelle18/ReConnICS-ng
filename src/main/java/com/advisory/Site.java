@@ -67,7 +67,9 @@ final class Site {
     private int seq;
     /** Built inventory; null = stale. Cleared whenever a capture is merged or removed, an edit is saved or the index changes. */
     private Inventory cached;
-    private AdvisoryMatcher matcher;                 // for matcherFor; the index is immutable once loaded
+    private List<Object> cachedFlows = List.of();    // conversations of the merged captures; built together with `cached`
+    static final int MAX_FLOWS = 5_000, MAX_LABELS = 8;
+    private AdvisoryMatcher matcher;                // for matcherFor; the index is immutable once loaded
     private AdvisoryIndex matcherFor;
 
     /** index: already loaded from indexPath by the CLI (which enforces --pubkey or --insecure-no-verify). */
@@ -242,8 +244,10 @@ final class Site {
      * posted list as-is, so they merge into the inventory like an analyzed capture. There is no PCAP and nothing to
      * re-analyze. The same payload twice is a no-op; returns the entry, or null for a repeat.
      */
-    synchronized Map<String, Object> addPosted(List<Object> assets, String actor) throws IOException {
-        String obs = Json.write(Map.of("assets", assets));
+    synchronized Map<String, Object> addPosted(List<Object> assets, String actor) throws IOException { return addPosted(assets, List.of(), actor); }
+
+    synchronized Map<String, Object> addPosted(List<Object> assets, List<Object> flows, String actor) throws IOException {
+        String obs = Json.write(flows.isEmpty() ? Map.of("assets", assets) : Map.of("assets", assets, "flows", flows));
         byte[] bytes = obs.getBytes(StandardCharsets.UTF_8);
         String hex;
         try { hex = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)); }
@@ -302,10 +306,14 @@ final class Site {
     synchronized Inventory inventory() throws IOException {
         if (cached != null) return cached;
         List<Object> all = new ArrayList<>();
+        Map<String, Map<String, Object>> flows = new LinkedHashMap<>();
         for (var c : captures) {
             if (!"done".equals(c.get("state"))) continue;
             Path p = captureDir.resolve(c.get("id") + ".obs.json");
-            if (Files.exists(p)) all.addAll(Json.arr(Json.obj(Json.parse(Files.readString(p))).get("assets")));
+            if (!Files.exists(p)) continue;
+            var doc = Json.obj(Json.parse(Files.readString(p)));
+            all.addAll(Json.arr(doc.get("assets")));
+            addFlows(flows, doc.get("flows"));
         }
         edits.forEach((id, fields) -> {
             Map<String, Object> e = new LinkedHashMap<>();
@@ -325,8 +333,42 @@ final class Site {
         AdvisoryIndex idx = index;
         if (matcherFor != idx) { matcher = new AdvisoryMatcher(Inventory.sanitize(idx)); matcherFor = idx; }
         inv.match(idx.meta, matcher, verified);
+        cachedFlows = List.copyOf(flows.values());
         return cached = inv;
     }
+
+    /**
+     * Sums the analyzer's {@code flows} (client, server, protocol, port, messages, labels) per directed pair and protocol.
+     * The input is untrusted (a POSTed payload can carry anything): strings are cleaned, counts clamped, sizes capped.
+     */
+    private static void addFlows(Map<String, Map<String, Object>> into, Object list) {
+        for (Object o : Json.arr(list)) {
+            var f = Json.obj(o);
+            if (!(f.get("client") instanceof String c) || !(f.get("server") instanceof String s) || !(f.get("protocol") instanceof String pr)) continue;
+            c = Inventory.clean(c, 64); s = Inventory.clean(s, 64); pr = Inventory.clean(pr, 32);
+            if (c.isEmpty() || s.isEmpty() || pr.isEmpty()) continue;
+            String key = c + '>' + s + '>' + pr;
+            var m = into.get(key);
+            if (m == null) {
+                if (into.size() >= MAX_FLOWS) continue;
+                m = new LinkedHashMap<>();
+                m.put("client", c); m.put("server", s); m.put("protocol", pr);
+                m.put("port", f.get("port") instanceof String po ? Inventory.clean(po, 16) : "");
+                m.put("messages", 0.0);
+                m.put("labels", new LinkedHashMap<String, Object>());
+                into.put(key, m);
+            }
+            m.put("messages", (double) m.get("messages") + count(f.get("messages")));
+            @SuppressWarnings("unchecked") var labels = (Map<String, Object>) m.get("labels");
+            for (var l : Json.obj(f.get("labels")).entrySet()) {
+                String k = Inventory.clean(l.getKey(), 64);
+                if (!k.isEmpty() && (labels.size() < MAX_LABELS || labels.containsKey(k)))
+                    labels.merge(k, count(l.getValue()), (a, b) -> (double) a + (double) b);
+            }
+        }
+    }
+
+    private static double count(Object o) { return o instanceof Double d && Double.isFinite(d) ? Math.max(0, Math.min(d, 1e12)) : 0; }
 
     synchronized Map<String, Object> inventoryJson() throws IOException {
         Inventory inv = inventory();
@@ -340,6 +382,7 @@ final class Site {
         m.put("inventory", Json.parse(InventoryReport.json(inv)));
         m.put("rank", InventoryReport.rank(inv).stream().map(r -> r.id).toList());
         m.put("site", site);
+        m.put("flows", cachedFlows);
         return m;
     }
 

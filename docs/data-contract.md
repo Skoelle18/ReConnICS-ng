@@ -46,6 +46,23 @@ The revision form is the Rockwell convention (RSLinx, Studio 5000 and Rockwell s
 `20.011`); Wireshark shows the same value as `20.11` (`%d.%02d`). The serial form matches the serial printed on
 the module label and in RSLinx. The raw values remain in the evidence string.
 
+## Flows
+
+`flows` is an optional top-level array next to `assets` (absent when no conversation was seen). One entry per directed
+(client, server, protocol); it is what the UI's graph draws as edges.
+
+```json
+{"client": "10.0.1.50", "server": "10.0.1.40", "protocol": "modbus", "port": "502/tcp", "messages": 12,
+ "labels": {"Modbus FC43/14 request": 4, "Modbus FC3": 8}}
+```
+
+- Only header-validated or decoded Modbus, EtherNet/IP and S7comm messages count; port-only guesses and broadcast/multicast
+  destinations never make a flow. The server is the well-known-port side, the client its peer.
+- `labels` are message kinds (decoder detail without per-message numbers; Modbus function codes in decimal), at most 8 per flow.
+  At most 5 000 flows per capture.
+- `client` and `server` are IPs and join an asset by its `ip` (sub-units and slots share their gateway's IP).
+- The console treats a posted `flows` array as untrusted: strings are cleaned, counts clamped, sizes capped.
+
 ## Ports
 
 `ports` is a top-level array of `<port>/tcp|udp` strings (for example `["502/tcp"]`, `["44818/tcp","44818/udp"]`). It lists the

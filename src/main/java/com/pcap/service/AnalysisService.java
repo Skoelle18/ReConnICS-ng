@@ -173,6 +173,8 @@ public final class AnalysisService {
             if (captureError != null) {
                 doc.source.put("captureError", captureError);
             }
+            var flows = detector.flows().toList();
+            doc.flows = flows.isEmpty() ? null : flows;
             if (aggregator.droppedOverCap() > 0) {
                 doc.source.put("observationsDroppedOverAssetCap", aggregator.droppedOverCap());
             }

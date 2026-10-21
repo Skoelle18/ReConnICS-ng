@@ -18,6 +18,8 @@ public final class IngestModels {
     public static final class Document {
         public Map<String, Object> source;
         public List<Asset> assets;
+        /** Directed client-to-server conversations ({@code client, server, protocol, port, messages, labels}); absent when none were seen. */
+        public List<Map<String, Object>> flows;
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

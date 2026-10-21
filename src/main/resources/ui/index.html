@@ -8,44 +8,87 @@
 <script src="app.js" defer></script>
 </head>
 <body>
-<div class="shell">
-  <aside class="side">
-    <div class="brand">
-      <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="M14 2 25 8.5v11L14 26 3 19.5v-11z" fill="#0F766E"/><path d="M9 17V11h4a2.5 2.5 0 0 1 0 5H9m4 0 3 3" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <div><div class="brand-name">ReConICS</div><div class="side-muted small">Passive OT inventory · offline</div></div>
-    </div>
-    <nav aria-label="Main">
-      <a class="nav" href="#/overview" data-nav="overview"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Overview</a>
-      <a class="nav" href="#/captures" data-nav="captures"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="19" cy="17" r="2"/></svg>Capture queue<span class="count" id="n-queue"></span></a>
-      <a class="nav" href="#/inventory" data-nav="inventory"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></svg>Inventory<span class="count" id="n-assets"></span></a>
-      <a class="nav" href="#/review" data-nav="review"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l2 2 4-4"/><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/></svg>Review queue<span class="count" id="n-review"></span></a>
-      <a class="nav" href="#/advisories" data-nav="advisories"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/></svg>Advisories<span class="count" id="n-adv"></span></a>
-      <a class="nav" href="#/index" data-nav="index"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>Advisory index</a>
-      <a class="nav" href="#/log" data-nav="log"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Change log</a>
-    </nav>
-    <div class="who">
-      <label for="actor" class="side-muted small strong">Your name</label>
-      <input id="actor" autocomplete="name" placeholder="e.g. R. Analyst">
-      <label for="role" class="side-muted small strong">Role</label>
-      <select id="role"><option value="collector">Collector</option><option value="validator">Validator</option></select>
-      <div class="side-muted small">Edits are logged under this name. No login: the console only listens on 127.0.0.1.</div>
-    </div>
-  </aside>
-  <div class="content">
-    <header class="top">
-      <div class="search">
-        <label for="q" class="sr">Search assets</label>
-        <input id="q" type="search" placeholder="Search IP, MAC, hostname, model">
-      </div>
-      <div class="top-right">
-        <a class="badge" id="idx-badge" href="#/index">Index</a>
-        <span class="badge lv-NONE">127.0.0.1 only</span>
-      </div>
-    </header>
-    <div id="banner"></div>
-    <main id="main" tabindex="-1"></main>
-  </div>
+<!-- Full-bleed asset graph; the other screens open as a sheet or side panel over it (#main). -->
+<div id="stage">
+  <svg id="graph" tabindex="0" role="group" aria-label="Asset conversation graph. Each asset is a focusable node; Enter opens its details. Plus and minus zoom, zero fits the graph. The Inventory table lists the same assets and conversations."></svg>
+  <div id="graph-empty" hidden>No assets yet. Use the upload button on the right, or drop a PCAP here, to start the inventory.</div>
 </div>
+
+<section class="panel search" aria-label="Find assets">
+  <div class="row-s">
+    <button class="ib" id="menu-btn" aria-label="Menu: all screens" title="Menu" aria-expanded="false" aria-controls="nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+    <input id="start" list="asset-list" placeholder="Start Node" aria-label="Start node: IP, name, vendor or model" autocomplete="off">
+    <button class="ib" id="btn-route" aria-label="Pathfinding row" title="Pathfinding" aria-expanded="true" aria-controls="row-target"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h6a3 3 0 0 0 0-6h-4a3 3 0 0 1 0-6h6"/></svg></button>
+    <button class="ib" id="btn-back" aria-label="Back: clear selection and path" title="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5l-9 7 9 7zM6 5v14"/></svg></button>
+    <button class="ib" id="btn-filter" aria-label="Filters and display options" title="Filter" aria-expanded="false" aria-controls="pop-filter"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 8v6l-4-2v-4z"/></svg></button>
+  </div>
+  <div class="row-s" id="row-target">
+    <span class="ib ghost" aria-hidden="true"></span>
+    <input id="target" list="asset-list" placeholder="Target Node" aria-label="Target node: IP, name, vendor or model" autocomplete="off">
+    <button class="ib" id="btn-go" aria-label="Show the shortest conversation path from start to target" title="Find path"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg></button>
+  </div>
+  <nav id="nav" class="pop" aria-label="Main" hidden>
+    <a class="nav" href="#/graph" data-nav="graph"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8 7l8 1M7 8l4 8M17 10l-4 6"/></svg>Asset graph</a>
+    <a class="nav" href="#/overview" data-nav="overview"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Overview</a>
+    <a class="nav" href="#/captures" data-nav="captures"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="19" cy="17" r="2"/></svg>Capture queue<span class="count" id="n-queue"></span></a>
+    <a class="nav" href="#/inventory" data-nav="inventory"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></svg>Inventory table<span class="count" id="n-assets"></span></a>
+    <a class="nav" href="#/review" data-nav="review"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l2 2 4-4"/><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/></svg>Review queue<span class="count" id="n-review"></span></a>
+    <a class="nav" href="#/advisories" data-nav="advisories"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/></svg>Advisories<span class="count" id="n-adv"></span></a>
+    <a class="nav" href="#/index" data-nav="index"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>Advisory index</a>
+    <a class="nav" href="#/log" data-nav="log"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Change log</a>
+  </nav>
+  <div id="pop-filter" class="pop" hidden></div>
+</section>
+<datalist id="asset-list"></datalist>
+<div id="banner"></div>
+
+<div class="toolbar" role="toolbar" aria-label="Tools" aria-orientation="vertical">
+  <button class="ib" id="tb-refresh" aria-label="Refresh now" title="Refresh"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>
+  <button class="ib" id="tb-import" aria-label="Import: add PCAP files to the capture queue" title="Import PCAPs"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0-4 4m4-4 4 4M4 16v4h16v-4"/></svg><span class="tb-count" id="tb-queue"></span></button>
+  <input type="file" id="import-pick" class="sr" multiple accept=".pcap,.pcapng,.cap" tabindex="-1" aria-hidden="true">
+  <button class="ib" id="tb-export" aria-label="Export inventory" title="Export" aria-expanded="false" aria-controls="pop-export"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12m0 0-4-4m4 4 4-4M4 20h16"/></svg></button>
+  <button class="ib" id="tb-layout" aria-label="Re-run the graph layout and fit it to the window" title="Layout"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8 7l8 1M7 8l4 8M17 10l-4 6"/></svg></button>
+  <a class="ib" id="tb-table" href="#/inventory" aria-label="Inventory table: the assets and conversations as a list" title="Table view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg></a>
+  <a class="ib" id="tb-review" href="#/review" aria-label="Review queue" title="Review queue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l2 2 4-4"/><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/></svg><span class="tb-count" id="tb-review-n"></span></a>
+  <a class="ib" id="tb-overview" href="#/overview" aria-label="Site overview" title="Overview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V4M4 20h16M8 16v-5M13 16V8M18 16v-3"/></svg></a>
+  <button class="ib" id="tb-settings" aria-label="Settings: your name and role" title="Settings" aria-expanded="false" aria-controls="pop-settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg></button>
+  <button class="ib" id="tb-info" aria-label="Legend and index status" title="Info" aria-expanded="false" aria-controls="pop-info"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg></button>
+</div>
+<div id="pop-export" class="pop side-pop" hidden>
+  <a class="btn sm" href="/api/v1/export/inventory.csv" download="inventory.csv">inventory.csv</a>
+  <a class="btn sm" href="/api/v1/export/inventory.json" download="inventory.json">inventory.json</a>
+  <a class="btn sm" href="/api/v1/export/report.html" download="report.html">report.html</a>
+</div>
+<div id="pop-settings" class="pop side-pop who" hidden>
+  <label for="actor" class="small strong">Your name</label>
+  <input id="actor" autocomplete="name" placeholder="e.g. R. Analyst">
+  <label for="role" class="small strong">Role</label>
+  <select id="role"><option value="collector">Collector</option><option value="validator">Validator</option></select>
+  <div class="muted small">Edits are logged under this name. No login: the console only listens on 127.0.0.1.</div>
+</div>
+<div id="pop-info" class="pop side-pop" hidden></div>
+
+<div class="zoom" role="group" aria-label="Zoom">
+  <button class="ib" id="z-in" aria-label="Zoom in" title="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+  <button class="ib" id="z-fit" aria-label="Fit graph to window" title="Fit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7M6 10v10h12V10"/></svg></button>
+  <button class="ib" id="z-out" aria-label="Zoom out" title="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+</div>
+
+<div class="rawq" id="rawq">
+  <div id="rawq-body" class="panel" hidden>
+    <label for="q" class="sr">Filter assets</label>
+    <input id="q" type="search" placeholder="Search IP, MAC, hostname, vendor, model" autocomplete="off">
+    <div class="muted small">Words must all match. Filters: <span class="mono">level:exact</span> <span class="mono">proto:modbus</span> <span class="mono">role:plc</span> <span class="mono">kev</span> <span class="mono">unvalidated</span>. Non-matching assets are dimmed on the graph and hidden in the table.</div>
+  </div>
+  <button id="rawq-btn" aria-expanded="false" aria-controls="rawq-body">Raw Query</button>
+</div>
+
+<div class="status" aria-label="Status">
+  <a class="badge" id="idx-badge" href="#/index">Index</a>
+  <span class="badge lv-NONE">127.0.0.1 only</span>
+</div>
+
+<main id="main" class="sheet" tabindex="-1" hidden></main>
 <div id="toast" role="status" aria-live="polite"></div>
 </body>
 </html>
