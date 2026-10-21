@@ -43,9 +43,28 @@ final class IngestServer {
     /** One GET /matches at a time: each is CPU- and memory-heavy (see class comment). */
     final java.util.concurrent.Semaphore matching = new java.util.concurrent.Semaphore(1);
 
+    /** Origins (--allow-origin) that may read the GET routes in CORS_READS cross-origin; empty = no CORS header at all. */
+    private volatile Set<String> allowedOrigins = Set.of();
+    private static final Set<String> CORS_READS = Set.of("/api/v1/inventory", "/api/v1/changes", "/api/v1/captures");
+    private static final java.util.regex.Pattern ORIGIN = java.util.regex.Pattern.compile("^https?://[A-Za-z0-9.-]+(:\\d{1,5})?$");
+
     IngestServer(AdvisoryIndex index) { this.site = null; this.index = index; this.matcher = new AdvisoryMatcher(index); }
 
     IngestServer(Site site) { this.site = site; this.index = site.index(); this.matcher = new AdvisoryMatcher(index); }
+
+    /**
+     * Opt in to cross-origin reads for exact origins such as http://localhost:8123 (scheme, host, optional port; no
+     * wildcard, no path). Only the GETs in CORS_READS get the header; writes never do, and OPTIONS is still unanswered.
+     */
+    IngestServer allowOrigins(Collection<String> origins) {
+        Set<String> ok = new HashSet<>();
+        for (String o : origins) {
+            if (!ORIGIN.matcher(o).matches()) throw new IllegalArgumentException("--allow-origin needs an exact origin like http://localhost:8123 (no wildcard)");
+            ok.add(o.toLowerCase(Locale.ROOT));
+        }
+        this.allowedOrigins = Set.copyOf(ok);
+        return this;
+    }
 
     /** The legacy routes follow an index swapped in through the UI. */
     private synchronized AdvisoryMatcher matcher() {
@@ -124,6 +143,11 @@ final class IngestServer {
     private boolean siteRoute(HttpExchange ex, String method, String path) throws IOException {
         String actor = actor(ex);
         String role = Objects.toString(ex.getRequestHeaders().getFirst("X-Role"), "");
+        if (method.equals("GET") && CORS_READS.contains(path) && !allowedOrigins.isEmpty()) {
+            ex.getResponseHeaders().set("Vary", "Origin");
+            String origin = ex.getRequestHeaders().getFirst("Origin");
+            if (origin != null && allowedOrigins.contains(origin)) ex.getResponseHeaders().set("Access-Control-Allow-Origin", origin);
+        }
         try {
             if (method.equals("GET") && path.equals("/api/v1/captures")) send(ex, 200, Json.write(site.captures()));
             else if (method.equals("POST") && path.equals("/api/v1/captures")) {

@@ -21,6 +21,7 @@ public final class AdvisoryCli {
               verify --index FILE --pubkey FILE                 exit 0 only if the signature is valid
               match --index FILE (--pubkey FILE | --insecure-no-verify) [--format json|csv|html] [--out FILE] ASSETS.json
               serve --index FILE (--pubkey FILE | --insecure-no-verify) [--port 8088] [--data data/site]
+                    [--allow-origin ORIGIN[,ORIGIN...]]
                           local web UI + ingest API on 127.0.0.1; captures, edits and change log kept under --data
               inventory --in OBSERVATIONS.json --out DIR [--oui oui.csv] [--index FILE (--pubkey FILE | --insecure-no-verify)]
               An index is refused unless its signature verifies (--pubkey); --insecure-no-verify accepts it unverified.
@@ -37,6 +38,7 @@ public final class AdvisoryCli {
             if (!argv[i].startsWith("--")) pos.add(argv[i]);
             else if (argv[i].equals("--offline")) o.put("offline", "1");
             else if (argv[i].equals("--insecure-no-verify")) o.put("insecure-no-verify", "1");
+            else if (argv[i].equals("--allow-origin") && i + 1 < argv.length) o.merge("allow-origin", argv[++i], (a, b) -> a + "," + b);   // repeatable
             else if (i + 1 < argv.length) o.put(argv[i].substring(2), argv[++i]);
             else die("missing value for " + argv[i]);
         }
@@ -77,7 +79,10 @@ public final class AdvisoryCli {
                 int port = Integer.parseInt(o.getOrDefault("port", "8088"));
                 var site = new Site(Path.of(o.getOrDefault("data", "data/site")), loadIndex(o), Path.of(o.get("index")),
                         o.containsKey("pubkey") ? Path.of(o.get("pubkey")) : null, o.containsKey("insecure-no-verify"));
-                new IngestServer(site).start(port);
+                var server = new IngestServer(site);
+                try { if (o.containsKey("allow-origin")) server.allowOrigins(List.of(o.get("allow-origin").split(","))); }
+                catch (IllegalArgumentException e) { die(e.getMessage()); }
+                server.start(port);
                 System.err.println("UI on http://127.0.0.1:" + port + "/  (ingest API under /api/v1/, site data in " + site.dir + ")");
             }
             case "verify" -> {

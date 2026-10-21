@@ -113,9 +113,13 @@ curl 'http://127.0.0.1:8088/api/v1/matches?format=html' > report.html
 ## Site console (local web UI)
 
 ```bash
-java -jar target/reconnics-ng.jar serve --index data/index.json --pubkey keys/index-signing.pub [--data data/site]
+java -jar target/reconnics-ng.jar serve --index data/index.json --pubkey keys/index-signing.pub [--data data/site] [--allow-origin http://localhost:8123]
 # open http://127.0.0.1:8088/
 ```
+
+`--allow-origin` (optional, repeatable, exact origins only, no wildcard) lets one other local page, such as the lab's
+3D viewer, read `GET /api/v1/{inventory,changes,captures}` cross-origin. It is read-only by design: writes get no CORS
+header and preflights are never answered, so that page can look but not change anything.
 
 Queue PCAPs (they run one at a time and merge into one site inventory), browse the fix-first inventory with
 evidence for every CISA attribute, fill in what passive capture cannot (criticality, location, zone, Purdue level, ...),
