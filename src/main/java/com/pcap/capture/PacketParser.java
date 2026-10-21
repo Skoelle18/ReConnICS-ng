@@ -14,15 +14,19 @@ public final class PacketParser {
             return b.status(ParseStatus.UNSUPPORTED,
                     "unsupported link-layer type code=" + record.linkType().code()).build();
         }
-        if (record.linkType() != LinkType.ETHERNET) {
-            return b.status(ParseStatus.UNSUPPORTED,
-                    "link type " + record.linkType() + " not parsed").build();
-        }
         if (record.dataLength() == 0) {
             return b.status(ParseStatus.SKIPPED, "empty frame").build();
         }
 
-        EthernetParser.Result eth = EthernetParser.parse(record.data(), record.dataOffset(), record.dataLength());
+        byte[] d = record.data();
+        int o = record.dataOffset();
+        int n = record.dataLength();
+        EthernetParser.Result eth = switch (record.linkType()) {
+            case ETHERNET -> EthernetParser.parse(d, o, n);
+            case LINUX_SLL -> EthernetParser.parseCooked(d, o, n, false);
+            case LINUX_SLL2 -> EthernetParser.parseCooked(d, o, n, true);
+            default -> EthernetParser.parseRawIp(d, o, n); // RAW_IP, IPV4, IPV6
+        };
         if (eth.status() != ParseStatus.OK) {
             return b.status(eth.status(), eth.detail()).build();
         }

@@ -36,6 +36,9 @@ final class IpParser {
         r.u16be(); // checksum
         IpAddress src = IpAddress.ipv4(data, offset + 12);
         IpAddress dst = IpAddress.ipv4(data, offset + 16);
+        if (totalLength == 0) {
+            totalLength = length; // TCP segmentation offload leaves 0 in frames captured on the sending host
+        }
         if (totalLength < ihl) {
             return Result.fail(ParseStatus.MALFORMED, "IPv4 total length < IHL");
         }

@@ -8,6 +8,7 @@ import com.pcap.inventory.DeviceMatcher;
 import com.pcap.protocol.enip.EnipIdentityParser;
 import com.pcap.protocol.modbus.ModbusIdentityParser;
 import com.pcap.protocol.s7.S7IdentityParser;
+import com.pcap.protocol.snmp.SnmpIdentityParser;
 import com.pcap.util.MacAddress;
 
 import java.util.ArrayList;
@@ -21,6 +22,7 @@ public final class ProtocolDetector {
     private final ModbusIdentityParser modbus = new ModbusIdentityParser();
     private final EnipIdentityParser enip = new EnipIdentityParser();
     private final S7IdentityParser s7 = new S7IdentityParser();
+    private final SnmpIdentityParser snmp = new SnmpIdentityParser();
 
     public List<DeviceObservation> detect(ParsedPacket packet) {
         List<DeviceObservation> out = new ArrayList<>();
@@ -93,8 +95,8 @@ public final class ProtocolDetector {
     }
 
     /**
-     * UDP: EtherNet/IP encapsulation on 44818 (ListIdentity is normally UDP, often broadcast) and
-     * class-1 implicit I/O on 2222 (presence only).
+     * UDP: EtherNet/IP encapsulation on 44818 (ListIdentity is normally UDP, often broadcast), SNMP responses
+     * from port 161, and class-1 implicit I/O on 2222 (presence only).
      */
     private void detectUdp(ParsedPacket packet, List<DeviceObservation> out) {
         byte[] data = packet.payload();
@@ -114,6 +116,11 @@ public final class ProtocolDetector {
             } else {
                 out.add(portOnly(packet, ProtocolType.ENIP, packet.dstPort() == 44818));
             }
+            return;
+        }
+        if (packet.srcPort() == 161) {
+            // a GetResponse comes from the managed device; requests carry nothing to decode
+            snmp.tryParse(data, off, len, frame).ifPresent(m -> out.add(toObs(packet, m)));
             return;
         }
         if (packet.srcPort() == 2222 || packet.dstPort() == 2222) {

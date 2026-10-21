@@ -6,10 +6,10 @@ Reconnics NG is a **CLI-only**, offline, passive OT asset inventory engine. It s
 PCAP file
    │
    ▼
-PcapReader (streaming classic PCAP / PCAPNG)
+PcapReader (streaming classic PCAP / PCAPNG, buffered, pure Java)
    │
    ▼
-PacketParser (Ethernet / VLAN / ARP / IPv4 / TCP|UDP)
+PacketParser (Ethernet / Linux cooked / raw IP, VLAN, ARP, IPv4, TCP|UDP)
    │
    ▼
 TcpReassembler (502 / 102 / 44818: per-direction, seq-ordered, framed by MBAP / TPKT / ENIP length)
@@ -18,7 +18,8 @@ TcpReassembler (502 / 102 / 44818: per-direction, seq-ordered, framed by MBAP / 
 ProtocolDetector (server side = well-known port; peer recorded as client; ARP presence)
    ├── ModbusIdentityParser   (MBAP + FC 0x2B / MEI 0x0E; gateway unit → subaddr u<n>)
    ├── EnipIdentityParser     (ListIdentity 0x0063 TCP/UDP; SendRRData Get_Attributes_All, Unconnected_Send → slot<n>)
-   └── S7IdentityParser       (TPKT/COTP + Userdata SZL 0x0011/0x0111, 0x001C/0x011C, multi-PDU)
+   ├── S7IdentityParser       (TPKT/COTP + Userdata SZL 0x0011/0x0111, 0x001C/0x011C, multi-PDU)
+   └── SnmpIdentityParser     (UDP 161 GetResponse: sysDescr.0 Siemens SIMATIC S7 format, sysName.0)
    │
    ▼
 DeviceAggregator + DeviceMatcher + IdentityResolver
@@ -41,6 +42,27 @@ IngestJsonWriter + IngestSchemaValidator
 | `inventory` | Conservative deduplication and field resolution |
 | `output` | Jackson serialization and schema checks |
 | `service` | End-to-end orchestration |
+
+## Capture layer: why it is hand-rolled
+
+Evaluated for replacing `PcapReader` and the L2-L4 decoders. Benchmark: Netresec 4SICS-GeekLounge-151022.pcap
+(2,274,747 frames, 209 MB, 97 IPv4 endpoints). Wireshark/tshark 4.6 finds about 44 protocol layers in it; pcap4j 1.8.2 decodes
+ARP, ICMP, IPv6, DNS and TCP/UDP and leaves everything else (S7, Modbus, SNMP, HTTP, TLS, ...) as raw bytes; tcpdump has
+no dissectors for it. The breadth is in application dissectors, not in the capture library, so a capture library does
+not widen what this tool sees; new protocols are added as identity parsers on top (SNMP first: it identified the
+S7-1200 in that capture, which no ICS-port parser could).
+
+- **pcap4j** reads files only through libpcap/Npcap (JNA). That adds a native install to a pure-Java jar (Npcap is not
+  redistributable without a paid OEM licence), cannot run `mvn test` on a machine without it, was last released in
+  2019 (1.8.2), and provides no TCP reassembly, which is the part this project actually needs.
+- **tcpdump/libpcap** is useful outside the jar: `tcpdump -r in.pcap -w out.pcap 'port 502 or port 44818 or port 102'`
+  shrinks a multi-GB capture before analysis. It stays an optional operator step, not a dependency.
+- **CapLoader** is Windows-only freeware with a GUI; it cannot be scripted from this CLI.
+- **GRASSMARLIN** is archived (2023), LGPL-3 and itself depends on a native pcap library; it is a source of ideas
+  (data-driven fingerprints), not code.
+
+The reader is about 480 lines, bounds-checks every length, and is covered by `FuzzTest`; the weak spots found in the
+review (unbuffered I/O, whole run lost on a cut-off tail, cooked captures and TSO frames dropped) are fixed in place.
 
 ## Detection basis
 

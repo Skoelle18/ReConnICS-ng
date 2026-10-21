@@ -12,6 +12,8 @@ import com.pcap.protocol.ProtocolDetector;
 import com.pcap.protocol.enip.EnipIdentityParser;
 import com.pcap.protocol.modbus.ModbusIdentityParser;
 import com.pcap.protocol.s7.S7IdentityParser;
+import com.pcap.protocol.snmp.SnmpIdentityParser;
+import com.pcap.protocol.snmp.SnmpIdentityParserTest;
 import com.pcap.service.AnalysisService;
 import org.junit.jupiter.api.Test;
 
@@ -196,12 +198,15 @@ class FuzzTest {
         List<byte[]> mbPdu = List.of(Arrays.copyOfRange(
                 modbusIdentityResponse("Schneider Electric", "TM221CE16R", "V1.6.2.0"), 7,
                 modbusIdentityResponse("Schneider Electric", "TM221CE16R", "V1.6.2.0").length));
+        byte[] snmpSeed = SnmpIdentityParserTest.response(0xA2,
+                SnmpIdentityParserTest.varbind(SnmpIdentityParserTest.SYS_DESCR, SnmpIdentityParserTest.S7_1200));
         assertTimeoutPreemptively(Duration.ofSeconds(120), () -> {
             for (int s = 0; s < SEEDS; s++) {
                 Random r = new Random(SEED * 31 + s);
                 ModbusIdentityParser mb = new ModbusIdentityParser();
                 EnipIdentityParser en = new EnipIdentityParser();
                 S7IdentityParser s7 = new S7IdentityParser();
+                SnmpIdentityParser snmp = new SnmpIdentityParser();
                 for (int i = 0; i < ITER; i++) {
                     String conn = "c" + (i % 3);
                     // a matching request first, so replies also reach the identity-attribute decoder
@@ -215,6 +220,8 @@ class FuzzTest {
                     s7.tryParse(t, 0, t.length, i, "f" + (i % 3));
                     byte[] m = mbap(prefixMutate(r, mbPdu.get(0)));
                     mb.tryParse(m, 0, m.length, i);
+                    byte[] sn = prefixMutate(r, snmpSeed);
+                    snmp.tryParse(sn, 0, sn.length, i);
                 }
             }
         });
@@ -251,7 +258,8 @@ class FuzzTest {
         assertTimeoutPreemptively(Duration.ofSeconds(60), () -> {
             for (int i = 0; i < ITER; i++) {
                 byte[] f = r.nextBoolean() ? mutate(r, seeds()[i % 3]) : randomBytes(r);
-                ParsedPacket p = pp.parse(new PacketRecord(i, 0, f.length, f.length, LinkType.ETHERNET, f, 0, f.length));
+                LinkType lt = LinkType.values()[i % LinkType.values().length]; // every link decoder sees hostile bytes
+                ParsedPacket p = pp.parse(new PacketRecord(i, 0, f.length, f.length, lt, f, 0, f.length));
                 det.detect(p);
             }
         });

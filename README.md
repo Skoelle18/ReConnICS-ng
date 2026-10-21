@@ -8,6 +8,7 @@ Passive OT asset inventory from classic PCAP captures. CLI-only Java 21 applicat
 
 - JDK 21+ (developed/tested with newer OpenJDK; `--release 21`)
 - Apache Maven 3.9+
+- No native libraries: PCAP/PCAPNG are read in pure Java (no libpcap/Npcap). For multi-GB captures, an optional `tcpdump -r in.pcap -w small.pcap 'port 502 or port 44818 or port 102'` first keeps analysis fast.
 
 ## Build
 
@@ -86,6 +87,7 @@ Passive PCAP results may be incomplete or spoofed.
 | Modbus FC43/14 | VendorName (`0x00`), ProductCode (`0x01`), MajorMinorRevision (`0x02`) |
 | EtherNet/IP ListIdentity | Vendor (mapped name or raw ID), product name, revision `major.minor`, serial (in `attributes`) |
 | S7 SZL 0x0011 | MLFB/model; vendor `Siemens` at MEDIUM (protocol context) |
+| SNMP sysDescr.0 / sysName.0 | Siemens SIMATIC S7 format: vendor, model (order number), serial, firmware; hostname from sysName |
 | S7 SZL 0x001C | Component name / version strings when present; vendor `Siemens` at MEDIUM |
 
 ## Documentation

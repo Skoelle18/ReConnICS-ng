@@ -2,6 +2,7 @@ package com.pcap.capture;
 
 import com.pcap.util.ByteReader;
 
+import java.io.BufferedInputStream;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
@@ -81,7 +82,8 @@ public final class PcapReader implements Closeable {
         if (!Files.isReadable(path)) {
             throw new PcapException("file is not readable: " + path);
         }
-        InputStream in = Files.newInputStream(path);
+        // buffered: the unbuffered stream cost two read syscalls per packet
+        InputStream in = new BufferedInputStream(Files.newInputStream(path), 1 << 16);
         try {
             return open(in, path);
         } catch (IOException | PcapException e) {

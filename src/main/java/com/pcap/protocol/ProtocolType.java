@@ -6,6 +6,8 @@ public enum ProtocolType {
     ENIP("ethernet-ip", 44818),
     /** EtherNet/IP class-1 implicit I/O (UDP 2222); presence only, no identity. */
     ENIP_IO("enip-io", 2222),
+    /** SNMP GetResponse (UDP 161): sysDescr / sysName identity. */
+    SNMP("snmp", 161),
     UNKNOWN("unknown", -1);
 
     private final String wireName;

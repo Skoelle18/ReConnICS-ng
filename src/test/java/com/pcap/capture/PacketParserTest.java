@@ -91,4 +91,63 @@ class PacketParserTest {
         PacketRecord rec = new PacketRecord(1, 0, frame.length, frame.length, LinkType.ETHERNET, frame, 0, frame.length);
         assertEquals(ParseStatus.UNSUPPORTED, parser.parse(rec).status());
     }
+
+    private static byte[] tcpFrame() {
+        return PcapTestSupport.ethernetIpv4Tcp(
+                PcapTestSupport.mac("aa:bb:cc:dd:ee:01"), PcapTestSupport.mac("aa:bb:cc:dd:ee:02"),
+                PcapTestSupport.ipv4("10.0.0.1"), PcapTestSupport.ipv4("10.0.0.2"), 12345, 502, new byte[]{1, 2});
+    }
+
+    private ParsedPacket parseAs(LinkType lt, byte[] f) {
+        return parser.parse(new PacketRecord(1, 0, f.length, f.length, lt, f, 0, f.length));
+    }
+
+    @Test
+    void parsesLinuxCookedV1AndV2() {
+        byte[] eth = tcpFrame();
+        byte[] ip = java.util.Arrays.copyOfRange(eth, 14, eth.length);
+        // SLL v1: pkttype, arphrd=1, halen=6, addr[8], protocol=0x0800
+        byte[] sll = PcapTestSupport.concat(new byte[]{0, 0, 0, 1, 0, 6, (byte) 0xaa, (byte) 0xbb, (byte) 0xcc, (byte) 0xdd,
+                (byte) 0xee, 0x01, 0, 0, 0x08, 0x00}, ip);
+        ParsedPacket p = parseAs(LinkType.LINUX_SLL, sll);
+        assertEquals(ParseStatus.OK, p.status());
+        assertEquals("aa:bb:cc:dd:ee:01", p.srcMac().orElseThrow().value());
+        assertEquals("10.0.0.2", p.dstIp().orElseThrow().value());
+        assertEquals(502, p.dstPort());
+        // SLL v2: protocol, reserved, ifindex, arphrd=1, pkttype, halen=6, addr[8]
+        byte[] sll2 = PcapTestSupport.concat(new byte[]{0x08, 0x00, 0, 0, 0, 0, 0, 1, 0, 1, 0, 6, (byte) 0xaa, (byte) 0xbb,
+                (byte) 0xcc, (byte) 0xdd, (byte) 0xee, 0x01, 0, 0}, ip);
+        p = parseAs(LinkType.LINUX_SLL2, sll2);
+        assertEquals(ParseStatus.OK, p.status());
+        assertEquals("aa:bb:cc:dd:ee:01", p.srcMac().orElseThrow().value());
+        assertEquals(502, p.dstPort());
+        assertEquals(ParseStatus.TRUNCATED, parseAs(LinkType.LINUX_SLL, new byte[10]).status());
+    }
+
+    @Test
+    void parsesRawIp() {
+        byte[] eth = tcpFrame();
+        byte[] ip = java.util.Arrays.copyOfRange(eth, 14, eth.length);
+        for (LinkType lt : new LinkType[]{LinkType.RAW_IP, LinkType.IPV4}) {
+            ParsedPacket p = parseAs(lt, ip);
+            assertEquals(ParseStatus.OK, p.status());
+            assertTrue(p.srcMac().isEmpty());
+            assertEquals(502, p.dstPort());
+        }
+        byte[] v6 = new byte[40];
+        v6[0] = 0x60;
+        assertEquals(ParseStatus.UNSUPPORTED, parseAs(LinkType.RAW_IP, v6).status());
+        v6[0] = 0x10;
+        assertEquals(ParseStatus.MALFORMED, parseAs(LinkType.RAW_IP, v6).status());
+    }
+
+    @Test
+    void ipv4TotalLengthZeroFromSegmentationOffload() {
+        byte[] f = tcpFrame();
+        f[14 + 2] = 0;
+        f[14 + 3] = 0;
+        ParsedPacket p = parseAs(LinkType.ETHERNET, f);
+        assertEquals(ParseStatus.OK, p.status());
+        assertEquals(2, p.payloadLength());
+    }
 }

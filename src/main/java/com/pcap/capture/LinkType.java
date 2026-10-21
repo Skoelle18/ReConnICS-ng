@@ -4,6 +4,7 @@ public enum LinkType {
     ETHERNET(1),
     RAW_IP(101),
     LINUX_SLL(113),
+    LINUX_SLL2(276),
     IPV4(228),
     IPV6(229),
     UNSUPPORTED(-1);

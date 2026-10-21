@@ -6,6 +6,7 @@ import com.pcap.model.DeviceObservation;
 import com.pcap.output.IngestJsonWriter;
 import com.pcap.output.IngestModels;
 import com.pcap.capture.PacketParser;
+import com.pcap.capture.PacketRecord;
 import com.pcap.capture.ParsedPacket;
 import com.pcap.capture.ParseStatus;
 import com.pcap.capture.PcapException;
@@ -60,6 +61,7 @@ public final class AnalysisService {
         long truncated = 0;
         long fragmented = 0;
         long unsupported = 0;
+        String captureError = null;
 
         try (PcapReader reader = PcapReader.open(capturePath)) {
             if (verbose) {
@@ -70,7 +72,19 @@ public final class AnalysisService {
                 if (cancelled.get()) {
                     throw new IOException("analysis cancelled");
                 }
-                var record = reader.readNext();
+                PacketRecord record;
+                try {
+                    record = reader.readNext();
+                } catch (PcapException e) {
+                    if (reader.framesRead() == 0) {
+                        throw e;
+                    }
+                    // damaged or cut-off tail: keep what the frames read so far established
+                    captureError = e.getMessage();
+                    LOG.warning("capture damaged after frame " + reader.framesRead() + ": " + captureError
+                            + " (results cover the frames before it)");
+                    break;
+                }
                 if (record == null) {
                     break;
                 }
@@ -156,6 +170,9 @@ public final class AnalysisService {
 
             IngestModels.Document doc = jsonWriter.build(draft);
             doc.source.put("tcpReassembly", reassembler.stats().toMap());
+            if (captureError != null) {
+                doc.source.put("captureError", captureError);
+            }
             if (aggregator.droppedOverCap() > 0) {
                 doc.source.put("observationsDroppedOverAssetCap", aggregator.droppedOverCap());
             }

@@ -6,9 +6,11 @@
 |---|---|
 | Classic PCAP (LE/BE, µs/ns) | Supported |
 | PCAPNG | Supported: SHB (both byte orders, multiple sections), IDB (per-interface link type, `if_tsresol`), EPB, SPB; other blocks skipped |
-| Non-Ethernet link types | Reported as unsupported |
+| Link types | Ethernet (+ up to two VLAN tags), Linux cooked v1/v2 (`tcpdump -i any`), raw IP (101, 228). Anything else (802.11, `DLT_NULL`/`DLT_LOOP`, PPP, ...) is counted as unsupported |
+| Damaged or cut-off capture | A bad record after at least one good frame stops reading; the frames before it are analysed and the ingest JSON carries `source.captureError`. A file that is bad before its first frame fails with exit code 4 |
 | IPv6 | Detected, not decoded |
 | IPv4 fragments | Counted; not reassembled |
+| IPv4 total length 0 | Taken as "to end of frame" (TCP segmentation offload on the capturing host) |
 | TCP | Reassembled per flow/direction for ports 502 / 102 / 44818 and framed by MBAP / TPKT / ENIP length (caps below) |
 | ARP | Sender IP/MAC recorded as presence (probes and VRRP/HSRP virtual MACs skipped) |
 
@@ -19,6 +21,7 @@
 | Modbus TCP | FC `0x2B` / MEI `0x0E` Read Device Identification objects `0x00`–`0x02` (+ other objects as `OTHER`); gateway units 1–247 exported as sub-devices (`subaddr` `u<unit>`) |
 | EtherNet/IP | `ListIdentity` (cmd `0x0063`, TCP and UDP 44818) and CIP Identity `Get_Attributes_All` in `SendRRData`, direct or via `Unconnected_Send` to a backplane slot (`subaddr` `slot<n>`): vendor, device type, product name, revision (`major.mmm`), serial (`%08X`) |
 | EtherNet/IP I/O | UDP 2222 class-1 traffic recorded as `enip-io` presence (no identity) |
+| SNMP | v1/v2c GetResponse from UDP 161: `sysDescr.0` in the Siemens SIMATIC S7 format (vendor, order number as model, serial, firmware) and `sysName.0` as hostname. Other vendors' `sysDescr` strings are recognised as SNMP but give no identity fields |
 | S7comm | TPKT/COTP validation; SZL replies in Userdata (ROSCTR 7), including replies split over several PDUs; **0x0011/0x0111** (order number, firmware) and **0x001C/0x011C** (AS name, module name, plant ID, serial, module type → `deviceType`) |
 
 ## Protocols — not implemented / partial

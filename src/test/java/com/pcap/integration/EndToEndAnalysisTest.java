@@ -49,6 +49,26 @@ class EndToEndAnalysisTest {
     }
 
     @Test
+    void cutOffCaptureKeepsWhatWasReadBeforeTheDamage() throws Exception {
+        byte[] frame = PcapTestSupport.ethernetIpv4Tcp(
+                PcapTestSupport.mac("00:11:22:33:44:55"), PcapTestSupport.mac("00:11:22:33:44:66"),
+                PcapTestSupport.ipv4("10.10.1.31"), PcapTestSupport.ipv4("10.10.1.10"), 502, 49152,
+                PcapTestSupport.modbusIdentityResponse("Acme", "PLC-1", "1.2.3"));
+        byte[] whole = PcapTestSupport.classicPcap(true, false, 1, frame, frame);
+        byte[] cut = java.util.Arrays.copyOf(whole, whole.length - 10); // second record loses its tail
+        Path pcap = PcapTestSupport.writeTempPcap("cut.pcap", cut);
+
+        var result = new AnalysisService().analyze(pcap, false);
+        assertEquals(1, result.report().framesProcessed());
+        assertNotNull(result.document().source.get("captureError"));
+        assertTrue(result.document().assets.stream().anyMatch(a -> "10.10.1.31".equals(a.ip)));
+        // a file that is damaged before the first frame is still a capture error
+        byte[] none = java.util.Arrays.copyOf(whole, 24 + 8);
+        assertThrows(com.pcap.capture.PcapException.class,
+                () -> new AnalysisService().analyze(PcapTestSupport.writeTempPcap("none.pcap", none), false));
+    }
+
+    @Test
     void analyzesSyntheticEnipIdentityCapture() throws Exception {
         byte[] payload = enipIdentityResponse(1, "1756-L61", 12, 34);
         byte[] frame = PcapTestSupport.ethernetIpv4Tcp(
