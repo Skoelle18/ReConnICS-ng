@@ -20,7 +20,8 @@ Executor: a Claude cloud session (Linux). Source of requirements: the mentor mee
 
 ## Step 0: state of main before this plan (done locally, before handoff)
 
-These two branches are merged into main before the cloud session starts. If they are not on main, stop and ask.
+Both branches are merged into `feature/zeek-icsnpp` (commit 64630ab, 205 Java + 60 UI tests green). Work on top of that
+branch; it is not on main yet. If `FlowTable` or `SnmpIdentityParser` is missing from your checkout, stop and ask.
 
 - **Capture fixes + SNMP** (from the capture-layer agent):
   - buffered reader
