@@ -59,6 +59,7 @@ public final class ZeekLogReader {
     static final int MAX_OBSERVATIONS = 200_000;
     static final int MAX_STAGED_OPS = 2_000;
     static final int MAX_IDENT_GROUPS = 4_096;
+    static final int MAX_UNMATCHED_KEYS = 200_000;
     private static final int MAX_VALUES_SCANNED = 16;
     private static final Pattern IPV4 = Pattern.compile("(?:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)");
     private static final Pattern HEX = Pattern.compile("(?:0[xX])?([0-9a-fA-F]{1,16})");
@@ -83,6 +84,7 @@ public final class ZeekLogReader {
     private final Map<String, long[]> scans = new LinkedHashMap<>();
     private final Map<String, Host> hosts = new LinkedHashMap<>();
     private final Map<String, IdentGroup> identGroups = new LinkedHashMap<>();
+    private final Set<String> unmatchedSeen = new java.util.HashSet<>();
 
     /** @param icsOnly   no flows for traffic that is not a decoded ICS protocol (hosts still become assets)
      *  @param keepScans give scan-only conversations a flow of their own */
@@ -132,6 +134,7 @@ public final class ZeekLogReader {
         scans.clear();
         hosts.clear();
         identGroups.clear();
+        unmatchedSeen.clear();
         if (dir == null || !Files.isDirectory(dir)) {
             throw new ZeekException(ZeekException.Kind.ENGINE, "the Zeek log directory does not exist: " + dir);
         }
@@ -427,6 +430,26 @@ public final class ZeekLogReader {
         String func = text(n, "func");
         if (o == null || r == null || rp < 0 || func == null || func.isEmpty()) {
             return false;
+        }
+        // What a row of this log is: a matched row is one request/response transaction. ICSNPP also re-writes a request that
+        // has no response yet on every later packet (one capture: 5.77 million rows for about 1,100 requests), so an unmatched
+        // request counts once per (connection, transaction id, function, address, quantity). A "_EXCEPTION" row only repeats
+        // the exception of a transaction whose matched row is already there.
+        if (func.endsWith("_EXCEPTION")) {
+            return true;
+        }
+        JsonNode m = n.get("matched");
+        boolean matched = m != null && m.asBoolean(false);
+        if (!matched) {
+            String key = text(n, "uid") + '|' + num(n, "tid", -1) + '|' + func + '|' + numOrNull(n, "address") + '|' + numOrNull(n, "quantity");
+            if (unmatchedSeen.contains(key)) {
+                return true;
+            }
+            if (unmatchedSeen.size() >= MAX_UNMATCHED_KEYS) {
+                stats.unmatchedOverCap++;
+                return true;
+            }
+            unmatchedSeen.add(key);
         }
         String access = ZeekNames.modbusAccess(func);
         JsonNode vals = n.get("write".equals(access) ? "request_values" : "response_values");

@@ -284,7 +284,7 @@ class ZeekLogReaderTest {
                 + "{\"ts\":1.0,\"id.orig_h\":\"10.0.0.5\",\"id.resp_h\":\"10.0.0.9\",\"id.resp_p\":80,\"proto\":\"tcp\",\"orig_bytes\":99999999999999999999999,\"orig_pkts\":-4,\"resp_pkts\":\"many\",\"conn_state\":{}}\n";
         Files.writeString(dir.resolve("conn.log"), rows);
         Files.writeString(dir.resolve("modbus.log"), "{\"id.orig_h\":\"10.0.0.5\",\"id.resp_h\":\"10.0.0.9\",\"id.resp_p\":502,\"func\":{}}\n{\"func\":\"READ_COILS\"}\n");
-        Files.writeString(dir.resolve("modbus_detailed.log"), "{\"id.orig_h\":\"10.0.0.5\",\"id.resp_h\":\"10.0.0.9\",\"id.resp_p\":502,\"func\":\"READ_COILS\",\"address\":-1,\"quantity\":1e30,\"response_values\":[\"a\",null,{},1.5,2]}\n");
+        Files.writeString(dir.resolve("modbus_detailed.log"), "{\"id.orig_h\":\"10.0.0.5\",\"id.resp_h\":\"10.0.0.9\",\"id.resp_p\":502,\"func\":\"READ_COILS\",\"matched\":true,\"address\":-1,\"quantity\":1e30,\"response_values\":[\"a\",null,{},1.5,2]}\n");
         Files.writeString(dir.resolve("cip_identity.log"), "{\"source_h\":\"10.0.0.9\",\"vendor_id\":-1}\n{\"source_h\":\"10.0.0.9\",\"vendor_id\":70000}\n{\"source_h\":\"10.0.0.9\",\"vendor_id\":1,\"revision\":\"x.y\",\"serial_number\":\"0xZZ\",\"product_name\":\"" + "P".repeat(5000) + "\"}\n");
         Files.writeString(dir.resolve("software.log"), "{\"host\":\"10.0.0.9\",\"software_type\":\"HTTP::SERVER\"}\n");
         ZeekData d = assertDoesNotThrow(() -> new ZeekLogReader(false, false).read(dir));
@@ -302,7 +302,7 @@ class ZeekLogReaderTest {
             int n = a == 150 ? 30 : 1;                                         // address 150 is the busiest, though it comes late
             for (int i = 0; i < n; i++) {
                 det.append("{\"id.orig_h\":\"10.0.0.5\",\"id.resp_h\":\"10.0.0.9\",\"id.resp_p\":502,\"func\":\"READ_HOLDING_REGISTERS\",\"address\":")
-                        .append(a).append(",\"quantity\":10,\"response_values\":[1,2,3,4,5,6,7,8,9,10,11,12]}\n");
+                        .append(a).append(",\"matched\":true,\"quantity\":10,\"response_values\":[1,2,3,4,5,6,7,8,9,10,11,12]}\n");
             }
         }
         Path dir = Files.createTempDirectory(tmp, "ops");
@@ -317,11 +317,29 @@ class ZeekLogReaderTest {
     }
 
     @Test
+    void aRepeatedlyLoggedUnansweredRequestCountsOnceAndMatchedRowsCountEachTime() throws Exception {
+        // ICSNPP re-writes a request that has no response yet on every later packet; matched rows are real transactions
+        String unanswered = "{\"uid\":\"Ca\",\"id.orig_h\":\"10.0.0.5\",\"id.resp_h\":\"10.0.0.9\",\"id.resp_p\":502,\"tid\":2,\"func\":\"READ_INPUT_REGISTERS\",\"address\":0,\"quantity\":1,\"matched\":false}\n";
+        String matched = "{\"uid\":\"Cb\",\"id.orig_h\":\"10.0.0.5\",\"id.resp_h\":\"10.0.0.9\",\"id.resp_p\":502,\"tid\":1,\"func\":\"READ_COILS\",\"address\":4,\"quantity\":8,\"matched\":true}\n";
+        String exception = "{\"uid\":\"Cb\",\"id.orig_h\":\"10.0.0.5\",\"id.resp_h\":\"10.0.0.9\",\"id.resp_p\":502,\"tid\":1,\"func\":\"READ_COILS_EXCEPTION\",\"exception_code\":\"ILLEGAL_ADDRESS\"}\n";
+        Path dir = Files.createTempDirectory(tmp, "dup");
+        Files.writeString(dir.resolve("modbus_detailed.log"), unanswered.repeat(1000) + matched.repeat(3) + exception.repeat(3));
+        ZeekData d = new ZeekLogReader(false, false).read(dir);
+        var ops = ops(d.flows().toList(true).get(0));
+        assertEquals(2, ops.size(), ops.toString());
+        var coils = ops.stream().filter(o -> "FC1 read coils".equals(o.get("function"))).findFirst().orElseThrow();
+        var regs = ops.stream().filter(o -> "FC4 read input registers".equals(o.get("function"))).findFirst().orElseThrow();
+        assertEquals(3L, coils.get("count"), "three matched transactions, and the exception rows are not extra transactions");
+        assertEquals(1L, regs.get("count"), "one unanswered request logged a thousand times");
+        assertEquals(0, d.stats().totalSkipped(), "repeats are expected, not malformed");
+    }
+
+    @Test
     void writesRecordTheRequestValuesAndCountAsWrites() throws Exception {
         Path dir = Files.createTempDirectory(tmp, "wr");
         Files.writeString(dir.resolve("modbus_detailed.log"),
-                "{\"id.orig_h\":\"10.0.0.5\",\"id.resp_h\":\"10.0.0.9\",\"id.resp_p\":502,\"func\":\"WRITE_MULTIPLE_REGISTERS\",\"address\":40,\"quantity\":2,\"request_values\":[7,9]}\n"
-                        + "{\"id.orig_h\":\"10.0.0.5\",\"id.resp_h\":\"10.0.0.9\",\"id.resp_p\":502,\"func\":\"READ_WRITE_MULTIPLE_REGISTERS\",\"address\":1,\"quantity\":1}\n");
+                "{\"id.orig_h\":\"10.0.0.5\",\"id.resp_h\":\"10.0.0.9\",\"id.resp_p\":502,\"func\":\"WRITE_MULTIPLE_REGISTERS\",\"matched\":true,\"address\":40,\"quantity\":2,\"request_values\":[7,9]}\n"
+                        + "{\"id.orig_h\":\"10.0.0.5\",\"id.resp_h\":\"10.0.0.9\",\"id.resp_p\":502,\"func\":\"READ_WRITE_MULTIPLE_REGISTERS\",\"matched\":true,\"address\":1,\"quantity\":1}\n");
         var ops = ops(new ZeekLogReader(false, false).read(dir).flows().toList(true).get(0));
         assertEquals("write", ops.get(0).get("access"));
         assertEquals(List.of(7L, 9L), ops.get(0).get("sampleValues"));

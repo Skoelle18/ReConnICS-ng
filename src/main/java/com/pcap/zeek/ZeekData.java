@@ -15,7 +15,7 @@ public record ZeekData(FlowTable flows, List<DeviceObservation> observations, St
     public static final class Stats {
         private final Map<String, long[]> logs = new TreeMap<>();   // name -> {rows used, rows skipped}
         long connections, scanAttempts, scanAttemptsUncounted, flowsDroppedOverCap, hosts, hostsDroppedOverCap;
-        long observationsDroppedOverCap;
+        long observationsDroppedOverCap, unmatchedOverCap;
 
         void used(String log) {
             logs.computeIfAbsent(log, k -> new long[2])[0]++;
@@ -67,6 +67,9 @@ public record ZeekData(FlowTable flows, List<DeviceObservation> observations, St
             }
             if (hostsDroppedOverCap > 0) {
                 m.put("hostsDroppedOverCap", hostsDroppedOverCap);
+            }
+            if (unmatchedOverCap > 0) {
+                m.put("modbusUnmatchedRequestsOverCap", unmatchedOverCap);
             }
             if (observationsDroppedOverCap > 0) {
                 m.put("observationsDroppedOverCap", observationsDroppedOverCap);

@@ -124,7 +124,7 @@ class ZeekMergeTest {
         log("modbus.log", "{\"id.orig_h\":\"10.0.1.100\",\"id.resp_h\":\"10.0.1.20\",\"id.resp_p\":502,\"func\":\"READ_HOLDING_REGISTERS\",\"pdu_type\":\"REQ\"}",
                 "{\"id.orig_h\":\"10.0.1.100\",\"id.resp_h\":\"10.0.1.20\",\"id.resp_p\":502,\"func\":\"READ_HOLDING_REGISTERS\",\"pdu_type\":\"RESP\"}",
                 "{\"id.orig_h\":\"10.0.1.100\",\"id.resp_h\":\"10.0.1.20\",\"id.resp_p\":502,\"func\":\"READ_HOLDING_REGISTERS\",\"pdu_type\":\"REQ\"}");
-        log("modbus_detailed.log", "{\"id.orig_h\":\"10.0.1.100\",\"id.resp_h\":\"10.0.1.20\",\"id.resp_p\":502,\"func\":\"READ_HOLDING_REGISTERS\",\"address\":0,\"quantity\":10,\"response_values\":[1,2]}");
+        log("modbus_detailed.log", "{\"id.orig_h\":\"10.0.1.100\",\"id.resp_h\":\"10.0.1.20\",\"id.resp_p\":502,\"func\":\"READ_HOLDING_REGISTERS\",\"matched\":true,\"address\":0,\"quantity\":10,\"response_values\":[1,2]}");
         IngestModels.Document d = merged();
         assertEquals(2, d.flows.size(), d.flows.toString());
         var mb = d.flows.stream().filter(f -> "modbus".equals(f.get("protocol"))).findFirst().orElseThrow();
