@@ -56,9 +56,10 @@ final class ZeekNames {
     }
 
     /** ICS protocol names Zeek puts in conn.log's {@code service} column, in our wire names. */
-    private static final Map<String, String> SERVICE = Map.of(
-            "modbus", "modbus", "dnp3", "dnp3", "enip", "ethernet-ip", "cip", "ethernet-ip",
-            "s7comm", "s7comm", "s7comm_plus", "s7comm", "s7comm-plus", "s7comm", "snmp", "snmp");
+    private static final Map<String, String> SERVICE = Map.ofEntries(
+            Map.entry("modbus", "modbus"), Map.entry("dnp3", "dnp3"), Map.entry("dnp3_tcp", "dnp3"), Map.entry("dnp3_udp", "dnp3"),
+            Map.entry("enip", "ethernet-ip"), Map.entry("cip", "ethernet-ip"), Map.entry("s7comm", "s7comm"),
+            Map.entry("s7comm_plus", "s7comm"), Map.entry("s7comm-plus", "s7comm"), Map.entry("snmp", "snmp"));
 
     /** The ICS wire names; a flow of one of these counts as an ICS edge in the benchmark, anything else is "unknown". */
     static final List<String> ICS = List.of("modbus", "dnp3", "ethernet-ip", "s7comm", "snmp");

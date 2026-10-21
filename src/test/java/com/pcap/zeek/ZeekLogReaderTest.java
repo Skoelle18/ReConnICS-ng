@@ -189,6 +189,26 @@ class ZeekLogReaderTest {
     }
 
     @Test
+    void serviceNamesAsZeekWritesThemMapToOurProtocolNames() {
+        // every ICS-relevant value seen in the conn.log / known_services.log of the 4SICS capture
+        assertEquals("dnp3", ZeekNames.protocolOf("dnp3_tcp"));
+        assertEquals("dnp3", ZeekNames.serviceName("DNP3_TCP"));
+        assertEquals("s7comm", ZeekNames.protocolOf("cotp,s7comm"));
+        assertEquals("s7comm", ZeekNames.protocolOf("cotp,s7comm-plus"));
+        assertEquals("modbus", ZeekNames.protocolOf("ssl,modbus"), "an ICS name wins over a co-detected TLS/HTTP one");
+        assertEquals("modbus", ZeekNames.protocolOf("http,modbus"));
+        assertEquals("ethernet-ip", ZeekNames.protocolOf("enip,ssl"));
+        assertEquals("ethernet-ip", ZeekNames.serviceName("enip"));
+        assertEquals("snmp", ZeekNames.protocolOf("snmp"));
+        assertEquals("krb_tcp", ZeekNames.protocolOf("krb_tcp"), "anything else keeps Zeek's own name");
+        assertEquals("unknown", ZeekNames.protocolOf(""));
+        assertEquals("unknown", ZeekNames.protocolOf(null));
+        assertEquals("script", ZeekNames.protocolOf("<script>"), "markup characters are dropped; what is left is a plain token");
+        assertEquals("unknown", ZeekNames.protocolOf("<>\"' &"), "nothing left means unknown");
+        assertEquals(32, ZeekNames.protocolOf("a".repeat(100)).length(), "capped at 32 characters");
+    }
+
+    @Test
     void aScanAttemptOnAServedPortCountsOnThatFlow() throws Exception {
         Path dir = logs(conn("10.0.0.5", "10.0.0.9", 80, "tcp", "SF", 10, 10, "http") + conn("10.0.0.5", "10.0.0.9", 80, "tcp", "S0", 0, 0, null));
         var f = new ZeekLogReader(false, false).read(dir).flows().toList().get(0);
