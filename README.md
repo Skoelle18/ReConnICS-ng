@@ -135,7 +135,7 @@ How detection and identity are measured, the held-out set, and the research tabl
 Copy the public key to the offline side once, separately from the USB that carries the index, and check it:
 
 ```bash
-sha256sum keys/index-signing.pub   # must equal: TBD after the key holder is named (docs/plan.md, "Signing key custody")
+sha256sum keys/index-signing.pub   # must equal: eb439797f996809f6329f0748fe21e6f5a6d912bbfbeb09d7102543a200be256
 ```
 
 Release jars (from v0.1, built by `.github/workflows/release.yml`): `sha256sum -c reconnics-ng.jar.sha256` and `gh attestation verify reconnics-ng.jar -R Skoelle18/ReConnICS-ng`. Precondition for v0.1: attestations only work on a public repo (or GitHub Enterprise Cloud), so the repo must be public before the tag is pushed.
