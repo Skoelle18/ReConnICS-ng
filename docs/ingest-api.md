@@ -49,7 +49,7 @@ allowed page can look but not change anything.
 | `POST` | `/api/v1/captures?name=FILE` | Queue a capture (`application/octet-stream` body, up to 4 GiB). `202` with the queue entry; `409` for a file already queued (same SHA-256). |
 | `GET` | `/api/v1/captures` | Queue in order: `state` `queued`/`running`/`done`/`failed`, `summary` (frames, protocols, identity fields), `diff` (`new`, `changed`, `notSeen`), `exit`/`error` when failed. |
 | `DELETE` | `/api/v1/captures/{id}` | Remove a queued or failed capture. |
-| `GET` | `/api/v1/inventory` | `{inventory, rank, site}`: the [`inventory.json`](inventory.md) document for all merged captures plus human edits, record ids in fix-first order, and site fields per id. |
+| `GET` | `/api/v1/inventory` | `{inventory, rank, site, flows}`: the [`inventory.json`](inventory.md) document for all merged captures plus human edits, record ids in fix-first order, site fields per id, and the observed conversations (`flows`, see [`data-contract.md`](data-contract.md#flows)) summed over the merged captures. |
 | `PATCH` | `/api/v1/assets/{id}` | Set `criticality` (`critical`/`high`/`medium`/`low`), `asset_number`, `location`, `logging`, `user_accounts` (comma-separated), `zone`, `owner`, `lifecycle`, `purdue` (`0`-`3.5`), `validated` (boolean, validator only). `""` clears. Returns the change-log entries written. |
 | `GET` | `/api/v1/changes` | Change log, newest first (captures merged, edits, index swaps). |
 | `POST` | `/api/v1/index[?dry=1]` | New index as the body, signature in `X-Index-Signature`. Verified against `--pubkey` first (`403` if it fails); `dry=1` only reports its metadata, otherwise it replaces the served index and re-matches. |

@@ -134,6 +134,11 @@ no remote content. `serve` needs an index and refuses one whose signature does n
 
 Tour:
 
+- **Asset graph** (the start page): a dark, full-bleed node-link view. Assets are round icon nodes coloured by role (or by advisory risk), observed
+  conversations are labelled arrows (`Modbus FC43/14 request`, `ENIP ListIdentity`, `S7 SZL read request`), and EXACT/PROBABLE advisories hang off assets
+  as triangles. Search panel top left (Start/Target node, shortest conversation path, filters), tool strip on the right (refresh, import PCAPs,
+  export, re-layout, table view, review queue, overview, settings, legend), zoom bottom right, filter query bar at the bottom (`level:exact kev proto:modbus`).
+  Click a node (or Tab to it and press Enter) for the side panel. The Inventory table lists the same assets and conversations.
 - **Capture queue**: upload a PCAP (or have another process `POST` one); each runs in turn and shows `new` / `changed` / `notSeen` counts.
 - **Inventory**: one row per device, fix-first. Click a device for tabs **Attributes** (value, confidence, evidence per field),
   **Advisories** (EXACT / PROBABLE / POSSIBLE matches) and **History**.

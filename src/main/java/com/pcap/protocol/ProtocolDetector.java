@@ -5,6 +5,7 @@ import com.pcap.model.DeviceObservation;
 import com.pcap.capture.ParsedPacket;
 import com.pcap.capture.ParseStatus;
 import com.pcap.inventory.DeviceMatcher;
+import com.pcap.inventory.FlowTable;
 import com.pcap.protocol.enip.EnipIdentityParser;
 import com.pcap.protocol.modbus.ModbusIdentityParser;
 import com.pcap.protocol.s7.S7IdentityParser;
@@ -21,6 +22,12 @@ public final class ProtocolDetector {
     private final ModbusIdentityParser modbus = new ModbusIdentityParser();
     private final EnipIdentityParser enip = new EnipIdentityParser();
     private final S7IdentityParser s7 = new S7IdentityParser();
+    private final FlowTable flows = new FlowTable();
+
+    /** Conversations seen so far (decoded or header-validated messages only). */
+    public FlowTable flows() {
+        return flows;
+    }
 
     public List<DeviceObservation> detect(ParsedPacket packet) {
         List<DeviceObservation> out = new ArrayList<>();
@@ -214,7 +221,8 @@ public final class ProtocolDetector {
         return p.srcPort() == port || p.dstPort() == port;
     }
 
-    private static DeviceObservation toObs(ParsedPacket packet, ProtocolMessage msg) {
+    private DeviceObservation toObs(ParsedPacket packet, ProtocolMessage msg) {
+        recordFlow(packet, msg);
         DeviceObservation o = msg.toObservation(
                 packet.frameNumber(),
                 packet.srcIp().orElse(null),
@@ -222,6 +230,18 @@ public final class ProtocolDetector {
                 packet.srcMac().orElse(null),
                 packet.dstMac().orElse(null));
         return o.withService((msg.serverOnSrc() ? packet.srcPort() : packet.dstPort()) + (packet.hasUdp() ? "/udp" : "/tcp"));
+    }
+
+    /** Client = the side that is not the server; broadcast/multicast destinations (ListIdentity requests) are not conversations. */
+    private void recordFlow(ParsedPacket p, ProtocolMessage msg) {
+        if (p.srcIp().isEmpty() || p.dstIp().isEmpty() || !p.srcIp().get().isUnicastHost() || !p.dstIp().get().isUnicastHost()
+                || p.srcMac().map(MacAddress::isBroadcastOrMulticast).orElse(false)
+                || p.dstMac().map(MacAddress::isBroadcastOrMulticast).orElse(false)) {
+            return;
+        }
+        boolean s = msg.serverOnSrc();
+        flows.add((s ? p.dstIp() : p.srcIp()).get().value(), (s ? p.srcIp() : p.dstIp()).get().value(), msg.protocol().wireName(),
+                (s ? p.srcPort() : p.dstPort()) + (p.hasUdp() ? "/udp" : "/tcp"), msg.detail());
     }
 
     private static DeviceObservation portOnly(ParsedPacket packet, ProtocolType type, boolean serverIsDst) {

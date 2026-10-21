@@ -156,6 +156,8 @@ public final class AnalysisService {
 
             IngestModels.Document doc = jsonWriter.build(draft);
             doc.source.put("tcpReassembly", reassembler.stats().toMap());
+            var flows = detector.flows().toList();
+            doc.flows = flows.isEmpty() ? null : flows;
             if (aggregator.droppedOverCap() > 0) {
                 doc.source.put("observationsDroppedOverAssetCap", aggregator.droppedOverCap());
             }

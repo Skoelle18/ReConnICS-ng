@@ -171,6 +171,37 @@ class SiteServerTest {
         assertEquals("10.10.1.31", Json.obj(log.get(1)).get("asset"));
     }
 
+    // the graph's edges: client -> server conversations, summed over merged captures; posted ones are untrusted
+    @Test
+    void flowsAreSummedAcrossCapturesAndPostedOnesAreCleaned() throws Exception {
+        for (String fw : List.of("1.9", "2.0")) {
+            var up = send("POST", "/api/v1/captures?name=fw" + fw + ".pcap", "application/octet-stream", acmePcap(fw));
+            assertEquals("done", waitFor((String) Json.obj(Json.parse(up.body())).get("id")).get("state"));
+        }
+        var flows = Json.arr(Json.obj(Json.parse(get("/api/v1/inventory").body())).get("flows"));
+        assertEquals(1, flows.size(), flows.toString());
+        var f = Json.obj(flows.get(0));
+        assertEquals("10.10.1.10", f.get("client"));
+        assertEquals("10.10.1.31", f.get("server"));
+        assertEquals("modbus", f.get("protocol"));
+        assertEquals("502/tcp", f.get("port"));
+        assertEquals(2.0, f.get("messages"), "one reply per capture");
+        assertEquals(Set.of("Modbus FC43/14 response"), Json.obj(f.get("labels")).keySet());
+
+        byte[] body = """
+                {"assets":[{"ip":"10.10.1.50"}],"flows":[
+                  {"client":"10.10.1.50","server":"10.10.1.31","protocol":"modbus","messages":1e30,"labels":{"<img src=x>\\u0007":-5},"extra":1},
+                  {"client":7},"junk"]}
+                """.getBytes(StandardCharsets.UTF_8);
+        assertEquals(200, send("POST", "/api/v1/assets", "application/json", body).statusCode());
+        flows = Json.arr(Json.obj(Json.parse(get("/api/v1/inventory").body())).get("flows"));
+        assertEquals(2, flows.size(), "the two malformed entries are dropped");
+        var posted = Json.obj(flows.get(1));
+        assertEquals(1e12, posted.get("messages"), "counts are clamped");
+        assertEquals(Set.of("<img src=x>"), Json.obj(posted.get("labels")).keySet(), "control characters are stripped; markup is the UI's job to escape");
+        assertEquals(0.0, Json.obj(posted.get("labels")).get("<img src=x>"));
+    }
+
     // a merge logs which asset, which field and old -> new; the asset's History shows the same entries
     @Test
     void mergeLogsPerAssetFieldChanges() throws Exception {
