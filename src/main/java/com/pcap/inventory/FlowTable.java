@@ -21,7 +21,7 @@ public final class FlowTable {
     public static final int MAX_OPERATIONS = 50;
     public static final int MAX_SAMPLES = 8;
     private static final java.util.regex.Pattern DROP = java.util.regex.Pattern.compile(
-            "\\s+(\\(|(unit|txn|objects|code|items|session|status|index|ret|rosctr|param|data|len|count)=).*$");
+            "\\s+(\\(|(unit|txn|objects|code|items|session|status|index|ret|rosctr|param|data|len|count|link)=).*$");
 
     private static final java.util.regex.Pattern HEX_FC = java.util.regex.Pattern.compile("Modbus FC=0x([0-9a-f]{1,2})( exception)?");
 
@@ -192,6 +192,8 @@ public final class FlowTable {
     }
 
     private final Map<String, Flow> flows = new LinkedHashMap<>();
+    /** First flow per unordered host pair and port, so a second source can find the flow a conversation already belongs to. */
+    private final Map<String, Flow> byPair = new java.util.HashMap<>();
 
     /** Decoder detail ("Modbus FC43/14 response objects=3 unit=1") reduced to the message kind ("Modbus FC43/14 response"). */
     static String label(String detail) {
@@ -224,8 +226,22 @@ public final class FlowTable {
                 return null;
             }
             flows.put(key, f = new Flow(client, server, protocol, port, transportOf(port)));
+            byPair.putIfAbsent(pairKey(client, server, port), f);
         }
         return f;
+    }
+
+    private static String pairKey(String a, String b, String port) {
+        return (a.compareTo(b) <= 0 ? a + '|' + b : b + '|' + a) + '|' + port;
+    }
+
+    /** The flow between these two hosts on this server port in either direction (any protocol), or null. */
+    public Flow match(String hostA, String hostB, String port) {
+        return byPair.get(pairKey(hostA, hostB, port));
+    }
+
+    public int size() {
+        return flows.size();
     }
 
     public void add(String client, String server, String protocol, String port, String detail) {

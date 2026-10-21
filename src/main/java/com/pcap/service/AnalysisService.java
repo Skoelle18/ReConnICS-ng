@@ -1,5 +1,6 @@
 package com.pcap.service;
 
+import com.pcap.inventory.ConversationTracker;
 import com.pcap.inventory.DeviceAggregator;
 import com.pcap.model.DetectionBasis;
 import com.pcap.model.DeviceObservation;
@@ -52,7 +53,12 @@ public final class AnalysisService {
     }
 
     public AnalysisResult analyze(Path capturePath, boolean verbose) throws IOException, PcapException {
+        return analyze(capturePath, verbose, AnalysisOptions.DEFAULT);
+    }
+
+    public AnalysisResult analyze(Path capturePath, boolean verbose, AnalysisOptions options) throws IOException, PcapException {
         cancelled.set(false);
+        ConversationTracker conversations = new ConversationTracker();
         DeviceAggregator aggregator = new DeviceAggregator();
         TcpReassembler reassembler = new TcpReassembler();
         Map<String, Long> candidates = new HashMap<>();
@@ -100,6 +106,7 @@ public final class AnalysisService {
                 }
                 switch (parsed.status()) {
                     case OK -> {
+                        conversations.observe(parsed);
                         List<DeviceObservation> obs = new ArrayList<>();
                         try {
                             for (ParsedPacket unit : reassembler.accept(parsed)) {
@@ -173,8 +180,13 @@ public final class AnalysisService {
             if (captureError != null) {
                 doc.source.put("captureError", captureError);
             }
-            var flows = detector.flows().toList();
+            conversations.mergeInto(detector.flows(), options.icsOnly(), options.keepScans());
+            var flows = detector.flows().toList(options.keepScans() && !options.icsOnly());
             doc.flows = flows.isEmpty() ? null : flows;
+            if (conversations.scanAttempts() > 0) {
+                // connections that never completed a handshake: edges only with --keep-scans, but the total is worth knowing
+                doc.source.put("scanAttempts", conversations.scanAttempts());
+            }
             if (aggregator.droppedOverCap() > 0) {
                 doc.source.put("observationsDroppedOverAssetCap", aggregator.droppedOverCap());
             }

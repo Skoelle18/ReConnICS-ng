@@ -6,6 +6,7 @@ import com.pcap.capture.ParsedPacket;
 import com.pcap.capture.ParseStatus;
 import com.pcap.inventory.DeviceMatcher;
 import com.pcap.inventory.FlowTable;
+import com.pcap.protocol.dnp3.Dnp3Parser;
 import com.pcap.protocol.enip.EnipIdentityParser;
 import com.pcap.protocol.modbus.ModbusIdentityParser;
 import com.pcap.protocol.s7.S7IdentityParser;
@@ -24,6 +25,7 @@ public final class ProtocolDetector {
     private final EnipIdentityParser enip = new EnipIdentityParser();
     private final S7IdentityParser s7 = new S7IdentityParser();
     private final SnmpIdentityParser snmp = new SnmpIdentityParser();
+    private final Dnp3Parser dnp3 = new Dnp3Parser();
     private final FlowTable flows = new FlowTable();
 
     /** Conversations seen so far (decoded or header-validated messages only). */
@@ -97,6 +99,7 @@ public final class ProtocolDetector {
         if (!portS7 && s7Msg.isEmpty() && s7.looksLikeTpktS7(data, off, len)) {
             s7.tryParse(data, off, len, frame, flowKey(packet)).ifPresent(m -> out.add(toObs(packet, m)));
         }
+        detectDnp3(packet, out);
 
         return dropNonUnicast(out);
     }
@@ -110,6 +113,9 @@ public final class ProtocolDetector {
         int off = packet.payloadOffset();
         int len = packet.payloadLength();
         long frame = packet.frameNumber();
+        if (detectDnp3(packet, out)) {
+            return;
+        }
         if (matchesPort(packet, 44818)) {
             Optional<ProtocolMessage> msg = enip.tryParse(data, off, len, frame)
                     .map(m -> byServerPort(packet, 44818, m));
@@ -222,6 +228,25 @@ public final class ProtocolDetector {
     static String flowKey(ParsedPacket p) {
         return p.srcIp().map(Object::toString).orElse("?") + ":" + p.srcPort()
                 + ">" + p.dstIp().map(Object::toString).orElse("?") + ":" + p.dstPort();
+    }
+
+    /**
+     * DNP3 on any port: the link header CRC is structure enough. The DIR bit, not the port, says who is master; the master
+     * is a client asset and the outstation the server. On port 20000 a payload that is not DNP3 is a port-only guess.
+     */
+    private boolean detectDnp3(ParsedPacket packet, List<DeviceObservation> out) {
+        Optional<ProtocolMessage> msg = dnp3.tryParse(packet.payload(), packet.payloadOffset(), packet.payloadLength(), packet.frameNumber());
+        if (msg.isPresent()) {
+            out.add(toObs(packet, msg.get()));
+            // the master is the side that is not the outstation
+            out.add(endpoint(packet, !msg.get().serverOnSrc(), ProtocolType.DNP3, DetectionBasis.HEADER_VALIDATED, "client",
+                    "DNP3 master (DIR bit of the link header)"));
+            return true;
+        }
+        if (matchesPort(packet, 20000)) {
+            out.add(portOnly(packet, ProtocolType.DNP3, packet.dstPort() == 20000));
+        }
+        return false;
     }
 
     private static boolean matchesPort(ParsedPacket p, int port) {

@@ -130,6 +130,17 @@ public final class PcapTestSupport {
         return eth;
     }
 
+    /** TCP frame with explicit flags (0x02 SYN, 0x12 SYN-ACK, 0x04 RST, 0x14 RST-ACK, 0x10 ACK, 0x18 PSH-ACK). */
+    public static byte[] ethernetIpv4TcpFlags(
+            byte[] srcMac, byte[] dstMac,
+            byte[] srcIp, byte[] dstIp,
+            int srcPort, int dstPort, int flags,
+            byte[] payload) {
+        byte[] f = ethernetIpv4Tcp(srcMac, dstMac, srcIp, dstIp, srcPort, dstPort, payload);
+        f[14 + 20 + 13] = (byte) flags;
+        return f;
+    }
+
     public static byte[] ethernetIpv4Udp(
             byte[] srcMac, byte[] dstMac,
             byte[] srcIp, byte[] dstIp,

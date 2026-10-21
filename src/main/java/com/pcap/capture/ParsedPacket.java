@@ -58,6 +58,7 @@ public final class ParsedPacket {
     public static final int TCP_FIN = 0x01;
     public static final int TCP_SYN = 0x02;
     public static final int TCP_RST = 0x04;
+    public static final int TCP_ACK = 0x10;
 
     /** TCP sequence number (unsigned 32-bit), or -1 when not TCP. */
     public long tcpSeq() {

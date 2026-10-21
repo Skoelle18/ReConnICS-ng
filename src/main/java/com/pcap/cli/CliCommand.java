@@ -1,5 +1,6 @@
 package com.pcap.cli;
 
+import com.pcap.service.AnalysisOptions;
 import com.pcap.service.AnalysisReport;
 
 import java.io.PrintStream;
@@ -52,6 +53,8 @@ public final class CliCommand {
         boolean verbose = false;
         boolean formatJson = false;
         String post = null;
+        boolean icsOnly = false;
+        boolean keepScans = false;
 
         for (int i = 0; i < tokens.size(); i++) {
             String t = tokens.get(i);
@@ -61,6 +64,8 @@ public final class CliCommand {
                     return ExitCode.OK;
                 }
                 case "--force", "-f" -> force = true;
+                case "--ics-only" -> icsOnly = true;
+                case "--keep-scans" -> keepScans = true;
                 case "--verbose", "-v" -> verbose = true;
                 case "--output", "-o" -> {
                     if (i + 1 >= tokens.size()) {
@@ -101,7 +106,7 @@ public final class CliCommand {
                 }
             }
         }
-        return new AnalyzeCommand(input, output, force, verbose, formatJson, post, out, err).run();
+        return new AnalyzeCommand(input, output, force, verbose, formatJson, post, new AnalysisOptions(icsOnly, keepScans), out, err).run();
     }
 
     public static void printHelp(PrintStream ps) {
@@ -120,6 +125,9 @@ public final class CliCommand {
         ps.println("      --format summary  Human-readable summary on stderr (default)");
         ps.println("      --post <url>      POST ingest JSON to a loopback ingest API, e.g.");
         ps.println("                        http://127.0.0.1:8088/api/v1/assets (see 'serve')");
+        ps.println("      --ics-only        Only decoded ICS protocols as edges; no unknown-protocol host pairs");
+        ps.println("      --keep-scans      Also draw edges for conversations that only saw scan attempts");
+        ps.println("                        (connections whose handshake never completed); default: counted only");
         ps.println("  -v, --verbose         Diagnostic logging on stderr (includes stack traces)");
         ps.println();
         ps.println("Exit codes:");
@@ -132,7 +140,8 @@ public final class CliCommand {
         ps.println("  7 schema validation failure");
         ps.println();
         ps.println("Supported: classic PCAP and PCAPNG (Ethernet/IPv4, TCP and UDP).");
-        ps.println("Protocols: Modbus FC43/14, EtherNet/IP ListIdentity, S7 SZL 0x0011/0x001C subset.");
+        ps.println("Protocols: Modbus FC43/14, EtherNet/IP ListIdentity, S7 SZL 0x0011/0x001C subset, SNMP sysDescr,");
+        ps.println("DNP3 presence (link header + function code). Other TCP/UDP traffic shows as protocol \"unknown\" edges.");
     }
 
     public static void printVersion(PrintStream ps) {

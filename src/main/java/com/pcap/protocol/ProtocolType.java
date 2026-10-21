@@ -8,6 +8,8 @@ public enum ProtocolType {
     ENIP_IO("enip-io", 2222),
     /** SNMP GetResponse (UDP 161): sysDescr / sysName identity. */
     SNMP("snmp", 161),
+    /** DNP3 link frame with a valid header CRC (TCP/UDP 20000 or any port); presence and function code only. */
+    DNP3("dnp3", 20000),
     UNKNOWN("unknown", -1);
 
     private final String wireName;

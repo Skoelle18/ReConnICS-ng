@@ -2,6 +2,7 @@ package com.pcap.cli;
 
 import com.pcap.output.IngestJsonWriter;
 import com.pcap.capture.PcapException;
+import com.pcap.service.AnalysisOptions;
 import com.pcap.service.AnalysisService;
 
 import java.io.ByteArrayOutputStream;
@@ -25,6 +26,7 @@ public final class AnalyzeCommand {
     private final boolean verbose;
     private final boolean formatJson;
     private final String post;
+    private final AnalysisOptions options;
     private final PrintStream out;
     private final PrintStream err;
 
@@ -37,6 +39,20 @@ public final class AnalyzeCommand {
             String post,
             PrintStream out,
             PrintStream err) {
+        this(input, output, force, verbose, formatJson, post, AnalysisOptions.DEFAULT, out, err);
+    }
+
+    public AnalyzeCommand(
+            Path input,
+            Path output,
+            boolean force,
+            boolean verbose,
+            boolean formatJson,
+            String post,
+            AnalysisOptions options,
+            PrintStream out,
+            PrintStream err) {
+        this.options = options;
         this.input = input;
         this.output = output;
         this.force = force;
@@ -78,7 +94,7 @@ public final class AnalyzeCommand {
         Thread shutdown = new Thread(service::cancel, "reconnics-shutdown");
         Runtime.getRuntime().addShutdownHook(shutdown);
         try {
-            AnalysisService.AnalysisResult result = service.analyze(input, verbose);
+            AnalysisService.AnalysisResult result = service.analyze(input, verbose, options);
             IngestJsonWriter writer = service.jsonWriter();
 
             if (formatJson && output == null) {

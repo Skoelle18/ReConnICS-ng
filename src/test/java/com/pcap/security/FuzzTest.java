@@ -9,6 +9,8 @@ import com.pcap.capture.PcapException;
 import com.pcap.capture.PcapReader;
 import com.pcap.capture.TcpReassembler;
 import com.pcap.protocol.ProtocolDetector;
+import com.pcap.protocol.dnp3.Dnp3Parser;
+import com.pcap.protocol.dnp3.Dnp3ParserTest;
 import com.pcap.protocol.enip.EnipIdentityParser;
 import com.pcap.protocol.modbus.ModbusIdentityParser;
 import com.pcap.protocol.s7.S7IdentityParser;
@@ -222,6 +224,37 @@ class FuzzTest {
                     mb.tryParse(m, 0, m.length, i);
                     byte[] sn = prefixMutate(r, snmpSeed);
                     snmp.tryParse(sn, 0, sn.length, i);
+                }
+            }
+        });
+    }
+
+    /** DNP3 presence parser: mutated and truncated link frames, including ones whose CRCs were fixed up after the mutation. */
+    @Test
+    void dnp3OnMutatedLinkFrames() {
+        Random r = new Random(SEED + 5);
+        Dnp3Parser dnp3 = new Dnp3Parser();
+        List<byte[]> seeds = List.of(
+                Dnp3ParserTest.link(0xC4, 10, 1, Dnp3ParserTest.fragment(1, (byte) 0x3C, (byte) 0x01, (byte) 0x06)),
+                Dnp3ParserTest.link(0x44, 1, 10, Dnp3ParserTest.fragment(129, new byte[40])),
+                Dnp3ParserTest.link(0xC9, 10, 1, new byte[0]));
+        assertTimeoutPreemptively(Duration.ofSeconds(60), () -> {
+            for (int i = 0; i < ITER * 4; i++) {
+                byte[] f = prefixMutate(r, seeds.get(i % seeds.size()));
+                byte[] buf = new byte[f.length + 16];
+                System.arraycopy(f, 0, buf, 8, f.length);
+                dnp3.tryParse(buf, 8, f.length, i);
+                dnp3.looksLikeDnp3(buf, 8, f.length);
+                dnp3.tryParse(buf, 8, f.length + 8, i);          // a window that runs into the padding
+                byte[] rnd = randomBytes(r);
+                dnp3.tryParse(rnd, 0, rnd.length, i);
+                if (rnd.length >= 10) {                          // a plausible header around random user data
+                    rnd[0] = 0x05;
+                    rnd[1] = 0x64;
+                    int c = Dnp3Parser.crc(rnd, 0, 8);
+                    rnd[8] = (byte) c;
+                    rnd[9] = (byte) (c >> 8);
+                    dnp3.tryParse(rnd, 0, rnd.length, i);
                 }
             }
         });
