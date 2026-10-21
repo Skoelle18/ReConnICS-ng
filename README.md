@@ -223,8 +223,8 @@ Tour:
   export, re-layout, review queue, overview, settings, legend), zoom bottom right, filter query bar at the bottom (`level:exact kev proto:modbus`).
   Click a node (or Tab to it and press Enter) for the asset panel, or click an edge for the conversation panel (protocol, rate, operations). There is no row-based inventory table: the graph is the inventory, and the filters (level, KEV, protocol, unknown/scan edges, `rate>N`) dim what does not match. `inventory.csv/json` and the report stay available from the export button.
 - **Capture queue**: upload a PCAP (or have another process `POST` one); each runs in turn and shows `new` / `changed` / `notSeen` counts.
-- **Inventory**: one row per device, fix-first. Click a device for tabs **Attributes** (value, confidence, evidence per field),
-  **Advisories** (EXACT / PROBABLE / POSSIBLE matches) and **History**.
+- **Asset panel** (click a node): tabs **Attributes** (value, confidence, evidence per field), **Advisories** (EXACT / PROBABLE / POSSIBLE
+  matches), **Conversations** (peers with rate and operations) and **History**. The overview ranks devices fix-first.
 - **Change log**: every capture merge and every edit, append-only (`firmware 20.011 -> 24.011` style rows).
 
 The page refreshes itself in the background (every 3 s, 1.5 s while a capture is running, paused in hidden tabs), so
