@@ -9,6 +9,11 @@ const ATTRS = [
   ['criticality', 'Criticality', 'human'], ['asset_number', 'Asset number', 'human'], ['location', 'Physical location', 'human'],
   ['logging', 'Logging', 'human'], ['user_accounts', 'User accounts', 'human'],
 ];
+// Identity details that are not among the 14 but are decoded from the same identity messages; shown in the attribute table only.
+const ATTRS_EXTRA = [['serial', 'Serial number', 'passive'], ['deviceType', 'Device type', 'passive']];
+const IDENTITY_KEYS = ['vendor', 'model', 'os', 'serial', 'deviceType'];
+const NO_IDENTITY = 'No identity message observed (needs Modbus FC43 / ENIP ListIdentity / S7 SZL)';
+const EXTRA_HINT = { serial: 'Modbus FC43 object, ENIP ListIdentity serial, S7 SZL 0x0011.', deviceType: 'ENIP ListIdentity device type or S7 SZL 0x001C module type.' };
 const LEVELS = ['EXACT', 'PROBABLE', 'POSSIBLE', 'NONE'];
 const LEVEL_COLOR = { EXACT: '#B42318', PROBABLE: '#E07B00', POSSIBLE: '#C9A400', NONE: '#9AA3B2', UNRUN: '#9AA3B2' };
 const ROLE_COLOR = { PLC: '#0F766E', Drive: '#5EB8AE', 'Comms adapter': '#1D4ED8', Network: '#93B4F5', Workstation: '#14202B', Other: '#7C8798', Unknown: '#CBD2DC' };
@@ -226,9 +231,10 @@ function captures() {
             x.state === 'done' || x.state === 'failed' ? h('button', { class: 'btn sm', onclick: () => { S.openCap = x.id; render(); } }, 'Details') : null))))),
     c ? h('div', { class: 'card' }, h('div', { class: 'card-h' }, c.file, h('span', { class: 'badge st-' + c.state }, stateTxt[c.state])),
       c.state === 'done' && c.summary ? h('div', { class: 'card-b facts' },
-        fact('Frames processed', c.summary.frames.toLocaleString()), fact('Malformed / skipped', c.summary.malformed.toLocaleString()),
-        fact('Protocol candidates', Object.entries(c.summary.protocols || {}).map(([k, v]) => k + ' ' + v).join(', ') || 'none', true),
-        fact('Identity fields decoded', c.summary.identityFields), fact('Devices in capture', c.summary.devices),
+        c.kind === 'posted' ? fact('Source', 'Assets posted to the ingest API (no capture to re-read)', true) : [
+          fact('Frames processed', c.summary.frames.toLocaleString()), fact('Malformed / skipped', c.summary.malformed.toLocaleString()),
+          fact('Protocol candidates', Object.entries(c.summary.protocols || {}).map(([k, v]) => k + ' ' + v).join(', ') || 'none', true),
+          fact('Identity fields decoded', c.summary.identityFields)], fact('Devices in capture', c.summary.devices),
         h('div', {}, h('div', { class: 'muted small' }, 'Change to inventory'), h('div', { class: 'row' },
           h('span', { class: 'badge ok' }, '+' + c.diff.new + ' new'), h('span', { class: 'badge warn' }, c.diff.changed + ' changed'), h('span', { class: 'badge lv-NONE' }, c.diff.notSeen + ' not seen'))))
         : c.state === 'failed' ? h('div', { class: 'card-b stack' }, h('div', {}, h('strong', {}, 'Exit ' + c.exit + '. '), c.error),
@@ -317,14 +323,15 @@ function asset(id) {
         : h('div', { class: 'card-b' }, h('strong', {}, a.match ? 'No matching advisory in index (generated ' + fmtTime(S.index.generated) + '). ' : 'Matcher not run. '),
           h('span', { class: 'muted' }, 'This is not a clean bill of health: with match ceiling ' + c.matchCeiling + ' the matcher could not check this device against version ranges.')))
       : h('div', { class: 'card' }, hist.length ? hist.map((x) => h('div', { class: 'card-b row', style: { borderBottom: '1px solid var(--line2)' } },
-        h('span', { class: 'mono small muted' }, fmtTime(x.at)), h('span', { class: 'strong' }, x.actor), h('span', {}, x.field + ': ', h('span', { class: 'muted' }, x.from || '∅'), ' → ', x.to || '∅')))
-        : h('div', { class: 'empty' }, 'No human changes yet. Capture merges are in the change log.')),
+        h('span', { class: 'mono small muted' }, fmtTime(x.at)), h('span', { class: 'strong' }, x.actor), h('span', {}, x.field + ': ', h('span', { class: 'muted' }, x.from || '∅'), ' → ', x.to || '∅'), h('span', { class: 'small muted' }, x.source === 'human' ? '' : x.source)))
+        : h('div', { class: 'empty' }, 'No changes yet. Human edits and the field changes a capture merge made to this asset appear here.')),
   ];
 }
 
 function attrsCard(a, site, role) {
   const missing = Object.fromEntries((a.completeness.missing || []).map((m) => [m.attr, m]));
-  const fieldVal = (k) => (k === 'os' ? a.os || a.firmware : a[k]);
+  const fieldVal = (k) => (k === 'os' ? a.os || a.firmware : k === 'vendor' ? a.vendor || a.vendor_oui : a[k]);   // OUI vendor is shown, flagged LOW
+  const noIdentity = !IDENTITY_KEYS.some((k) => (k === 'os' ? a.os || a.firmware : a[k]));
   const head = h('div', { class: 'card-h' }, 'CISA high-priority attributes', h('span', { class: 'row' },
     S.editing ? null : h('button', { class: 'btn sm', onclick: () => { S.editing = true; render(); } }, 'Edit site fields'),
     S.editing ? null : h('button', { class: 'btn sm pri', disabled: role !== 'validator', title: role !== 'validator' ? 'Only a validator can validate. Change Role in the sidebar.' : null,
@@ -334,15 +341,15 @@ function attrsCard(a, site, role) {
     role !== 'validator' ? h('div', { class: 'small muted', style: { padding: '8px 16px', background: '#FAFAFB', borderBottom: '1px solid var(--line2)' } }, 'Only a validator can mark an asset validated. Change Role in the sidebar.') : null,
     h('div', { class: 'scroll' },
       h('div', { class: 'g-attr thead' }, ['Attribute', 'Value', 'Confidence', 'Evidence / how to fill'].map((t) => h('span', {}, t))),
-      ATTRS.map(([k, label, by]) => {
+      ATTRS.concat(ATTRS_EXTRA).map(([k, label, by]) => {
         const f = fieldVal(k), person = f && /^entered by /.test(f.evidence || '');
         return h('div', { class: 'g-attr' },
           h('span', { class: 'strong' }, label, h('span', { class: 'muted small', style: { display: 'block', fontWeight: '400' } }, by === 'human' ? 'filled by people' : 'from passive capture')),
-          h('span', { class: 'wrap' + (f ? '' : ' muted') }, f ? str(f.value) : 'Not filled'),
+          h('span', { class: 'wrap' + (f ? '' : ' muted') }, f ? str(f.value) : noIdentity && IDENTITY_KEYS.includes(k) ? NO_IDENTITY : 'Not filled'),
           h('span', { class: 'stack', style: { gap: '4px', alignItems: 'flex-start' } },
             f ? h('span', { class: 'badge c-' + (person ? 'PERSON' : f.confidence) }, person ? 'PERSON' : f.confidence) : null,
             f && f.conflict ? h('span', { class: 'badge warn' }, 'conflict') : null, f && f.inherited ? h('span', { class: 'badge lv-NONE' }, 'inherited') : null),
-          h('span', { class: 'small' + (f ? ' mono' : ' muted') }, f ? f.evidence : (missing[k] ? missing[k].hint : '')));
+          h('span', { class: 'small' + (f ? ' mono' : ' muted') }, f ? f.evidence : (missing[k] ? missing[k].hint : EXTRA_HINT[k] || '')));
       })),
     h('div', { class: 'card-h', style: { borderTop: '1px solid var(--line2)' } }, 'Site fields', h('span', { class: 'muted small' }, 'not part of the 14; for grouping and lifecycle')),
     h('div', { class: 'form' }, [['Zone', site.zone], ['Purdue level', site.purdue ? 'Level ' + site.purdue : 'Suggested: ' + (purdueOf(a) ? 'Level ' + purdueOf(a) : 'none')],

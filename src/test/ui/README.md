@@ -28,6 +28,4 @@ npm test
 
 ## Known bugs
 
-Tests marked `todo` document a bug that is not fixed yet. They are reported but do not fail the run. Remove the `todo` once the bug is fixed.
-
-- **Lifecycle sent on every save.** The edit form shows Lifecycle as "In service" when none is set, but compares against an empty value, so every save sends `lifecycle: "In service"` and logs a change nobody made.
+None. A test marked `todo` documents a bug that is not fixed yet: it is reported but does not fail the run. Remove the `todo` once the bug is fixed.

@@ -477,8 +477,12 @@ final class AdvisoryMatcher {
         for (String c : codes) {
             for (String pre : p.prefixes()) if (c.startsWith(pre)) return Level.EXACT;
             if (!p.codes().contains(c)) continue;
-            if (!lineCode(c))
-                return contradicts(model, p.r().product(), shared(codes, p)) || !sameRelease(model, p.r().product()) ? Level.NONE : Level.EXACT;
+            if (!lineCode(c)) {
+                if (!sameRelease(model, p.r().product())) return Level.NONE;
+                if (!contradicts(model, p.r().product(), shared(codes, p))) return Level.EXACT;
+                // the row names the family, the model is a catalog variant of it: a member, but not proven the affected one
+                return familyPrefix(model, p.r().product(), shared(codes, p)) ? Level.PROBABLE : Level.NONE;
+            }
             line = true;
         }
         if (line) {
@@ -506,6 +510,23 @@ final class AdvisoryMatcher {
         }
         if (!famWords.isEmpty() && p.codes().isEmpty() && p.words().containsAll(famWords)) return Level.EXACT;
         return codes.isEmpty() && !modelWords.isEmpty() && p.words().containsAll(modelWords) ? Level.EXACT : Level.NONE;
+    }
+
+    /** Catalog ratings in a model string ("1P", "240V", "2.2kW", "480VAC", "5HP"): they vary within one family. */
+    private static final Pattern RATING = Pattern.compile("\\d+(?:p|ph|v|vac|vdc|a|w|kw|hp|hz|kva)");
+
+    /**
+     * Family-prefix match: both names open with the same words that make a shared code ("PowerFlex 525"), and what
+     * follows in the model is only electrical ratings ("1P 240V 2.2kW"). Row "PowerFlex 525 AC Drives with embedded
+     * EtherNet/IP and Safety" then names the family of model "PowerFlex 525 1P 240V 2.2kW"; contradicts() would call
+     * the two unrelated because each side has words the other lacks.
+     */
+    static boolean familyPrefix(String asset, String row, Set<String> shared) {
+        List<String> aw = words(asset), rw = words(row);
+        for (int k = 1; k <= Math.min(aw.size(), rw.size()) && aw.get(k - 1).equals(rw.get(k - 1)); k++)
+            if (shared.contains(String.join("", aw.subList(0, k))))
+                return aw.subList(k, aw.size()).stream().allMatch(w -> RATING.matcher(w).matches());
+        return false;
     }
 
     private static final Set<String> BUS = Set.of("pn", "dp", "mf");   // PROFINET, PROFIBUS, multi-fieldbus

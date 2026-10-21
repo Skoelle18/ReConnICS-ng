@@ -107,6 +107,7 @@ scripts/reconics-run.sh assets/modbus.pcap results/ --index data/index.json --pu
 java -jar target/reconnics-ng.jar serve --index data/index.json --pubkey keys/index-signing.pub &
 java -jar target/reconnics-ng.jar analyze assets/modbus.pcap --post http://127.0.0.1:8088/api/v1/assets
 curl 'http://127.0.0.1:8088/api/v1/matches?format=html' > report.html
+# The same posts also merge into the Site console (http://127.0.0.1:8088/) as a "posted via API" queue entry.
 ```
 
 ## Site console (local web UI)

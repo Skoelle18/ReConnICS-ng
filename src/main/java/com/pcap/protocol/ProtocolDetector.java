@@ -56,7 +56,8 @@ public final class ProtocolDetector {
             out.add(portOnly(packet, ProtocolType.MODBUS, packet.dstPort() == 502));
         }
 
-        Optional<ProtocolMessage> enipMsg = enip.tryParse(data, off, len, frame, connectionKey(packet));
+        Optional<ProtocolMessage> enipMsg = enip.tryParse(data, off, len, frame, connectionKey(packet))
+                .map(m -> byServerPort(packet, 44818, m));
         if (enipMsg.isPresent()) {
             out.add(toObs(packet, enipMsg.get()));
             addClient(packet, 44818, ProtocolType.ENIP, out);
@@ -64,7 +65,8 @@ public final class ProtocolDetector {
             out.add(portOnly(packet, ProtocolType.ENIP, packet.dstPort() == 44818));
         }
 
-        Optional<ProtocolMessage> s7Msg = s7.tryParse(data, off, len, frame, flowKey(packet));
+        Optional<ProtocolMessage> s7Msg = s7.tryParse(data, off, len, frame, flowKey(packet))
+                .map(m -> byServerPort(packet, 102, m));
         if (s7Msg.isPresent()) {
             out.add(toObs(packet, s7Msg.get()));
             addClient(packet, 102, ProtocolType.S7COMM, out);
@@ -100,7 +102,8 @@ public final class ProtocolDetector {
         int len = packet.payloadLength();
         long frame = packet.frameNumber();
         if (matchesPort(packet, 44818)) {
-            Optional<ProtocolMessage> msg = enip.tryParse(data, off, len, frame);
+            Optional<ProtocolMessage> msg = enip.tryParse(data, off, len, frame)
+                    .map(m -> byServerPort(packet, 44818, m));
             if (msg.isPresent()) {
                 out.add(toObs(packet, msg.get()));
                 if (!msg.get().serverOnSrc()) {
@@ -212,12 +215,13 @@ public final class ProtocolDetector {
     }
 
     private static DeviceObservation toObs(ParsedPacket packet, ProtocolMessage msg) {
-        return msg.toObservation(
+        DeviceObservation o = msg.toObservation(
                 packet.frameNumber(),
                 packet.srcIp().orElse(null),
                 packet.dstIp().orElse(null),
                 packet.srcMac().orElse(null),
                 packet.dstMac().orElse(null));
+        return o.withService((msg.serverOnSrc() ? packet.srcPort() : packet.dstPort()) + (packet.hasUdp() ? "/udp" : "/tcp"));
     }
 
     private static DeviceObservation portOnly(ParsedPacket packet, ProtocolType type, boolean serverIsDst) {

@@ -155,6 +155,24 @@ class InventoryTest {
         assertEquals(List.of("10.0.6.1"), ids(i));
     }
 
+    // parser writes plain ports next to attributes.detectionBases: ports gets that provenance as evidence
+    @Test void portsFromParserGetEvidence() {
+        var i = inv("[{\"ip\":\"10.0.0.1\",\"ports\":[\"502/tcp\"],\"attributes\":{\"detectionBases\":[\"MESSAGE_DECODED\"]}}]");
+        var f = rec(i, "10.0.0.1").f.get("ports");
+        assertEquals(List.of("502/tcp"), f.list());
+        assertEquals(MEDIUM, f.conf());
+        assertTrue(f.evidence().contains("MESSAGE_DECODED"));
+    }
+
+    // parser writes the direction hint as attributes.role; it must reach the role handler
+    @Test void roleFromAttributes() {
+        var i = inv("[{\"ip\":\"10.0.0.1\",\"attributes\":{\"role\":\"server\"}},{\"ip\":\"10.0.0.2\",\"attributes\":{\"role\":\"client\"}},"
+                + "{\"ip\":\"10.0.0.3\",\"role\":\"Historian\",\"attributes\":{\"role\":\"server\"}}]");
+        assertEquals("ICS server/responder (inferred)", v(rec(i, "10.0.0.1"), "role"));
+        assertEquals("ICS client/initiator (inferred)", v(rec(i, "10.0.0.2"), "role"));
+        assertEquals("Historian", v(rec(i, "10.0.0.3"), "role"));
+    }
+
     // 7. OUI never feeds matching; role from device type / direction
     @Test void ouiAndRole() {
         var oui = Inventory.loadOui("Registry,Assignment,Organization Name,Organization Address\r\n"
