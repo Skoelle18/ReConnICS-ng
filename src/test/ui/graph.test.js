@@ -4,7 +4,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loadApp, settle } = require('./support/load-app');
-const { defaultRoutes, exampleInventory, field } = require('./support/fixtures');
+const { defaultRoutes, exampleInventory, field, RICH_FLOWS } = require('./support/fixtures');
 
 const nodes = (app) => app.$$('#graph .node');
 const edges = (app) => app.$$('#graph .edge');
@@ -220,6 +220,201 @@ test('graph', async (t) => {
       await app.get('upload')([{ name: 'x.pcap' }]);
       assert.equal(sent.headers['Content-Type'], 'application/octet-stream');
       assert.match(sent.route, /^captures\?name=x\.pcap$/);
+    } finally { app.close(); }
+  });
+});
+
+// Edges: protocol colours, the edge side panel, the filter toggles and the readable-label rules.
+const flowEdges = (app) => app.$$('#graph .edge.flow');
+const edgeOf = (app, proto) => flowEdges(app).find((e) => e.classList.contains('p-' + proto));
+const stroke = (e) => e.querySelector('.epath').getAttribute('stroke');
+const click = (app, el) => el.dispatchEvent(new app.window.MouseEvent('click', { bubbles: true }));
+// Assets list the protocols they were seen speaking (the native detector and the Zeek reader both write them), which is what proto: matches.
+function richInventory() {
+  const inv = exampleInventory();
+  const set = (id, ...p) => { inv.assets.find((a) => a.id === id).protocols = field(p); };
+  set('10.0.1.20', 'dnp3'); set('10.0.1.10', 'dnp3'); set('10.0.1.50', 'modbus', 'unknown'); set('10.0.1.40', 'modbus'); set('10.0.1.60', 'unknown');
+  return inv;
+}
+const richApp = (hash = '#/graph') => loadApp({ routes: defaultRoutes({ inventory: richInventory(), flows: RICH_FLOWS }), hash });
+
+test('edges', async (t) => {
+  await t.test('each protocol has its own edge colour, unknown is grey, and width grows with the message count', async () => {
+    const app = await richApp();
+    try {
+      const colours = new Map(flowEdges(app).map((e) => [[...e.classList].find((c) => c.startsWith('p-')), stroke(e)]));
+      assert.equal(colours.get('p-modbus'), app.get('PROTO_COLOR').modbus);
+      assert.equal(colours.get('p-dnp3'), app.get('PROTO_COLOR').dnp3);
+      assert.equal(colours.get('p-unknown'), '#7B8696');
+      assert.equal(new Set(['modbus', 'dnp3', 'ethernet-ip', 's7comm', 'snmp'].map((k) => app.get('PROTO_COLOR')[k])).size, 5, 'five distinct colours');
+      const width = (e) => parseFloat(e.querySelector('.epath').getAttribute('stroke-width'));
+      assert.ok(width(edgeOf(app, 'modbus')) > width(edgeOf(app, 'dnp3')), '1200 messages draw wider than 30');
+      assert.ok(width(edgeOf(app, 'dnp3')) > width(flowEdges(app).find((e) => e.classList.contains('scan'))), '30 messages draw wider than none');
+      assert.match(edgeOf(app, 'modbus').querySelector('path[marker-end]').getAttribute('marker-end'), /arr-p-modbus/);
+      assert.ok(app.$('#arr-p-dnp3'), 'an arrowhead exists for every protocol colour');
+    } finally { app.close(); }
+  });
+
+  await t.test('clicking an edge opens its panel with protocol, ports, counters, times, rate and the operations table', async () => {
+    const app = await richApp();
+    try {
+      click(app, edgeOf(app, 'modbus'));
+      await settle();
+      assert.equal(app.window.location.hash, '#/edge/' + encodeURIComponent('10.0.1.50>10.0.1.40>modbus>502/tcp'));
+      assert.equal(app.$('#main').className, 'panel');
+      const text = app.text();
+      assert.match(text, /Modbus/);
+      assert.match(text, /502\/tcp/);
+      assert.match(text, /Messages.*1,200|1,200/);
+      assert.match(text, /Packets\s*2,400/);
+      assert.match(text, /Bytes\s*95\.7 kB/);
+      assert.match(text, /First seen\s*2015-10-22 09:00:01Z/);
+      assert.match(text, /Last seen\s*2015-10-22 10:00:00Z/);
+      assert.match(text, /Rate\s*20\.0 \/min/, 'messages per minute over first..last seen: 1200 / 59.98 min');
+      assert.match(text, /Span\s*60 min/);
+      assert.match(text, /Modbus FC3 ×1100/);
+      const rows = app.$$('#main .trow.g-op:not(.thead)');
+      assert.equal(rows.length, 2);
+      assert.match(rows[0].textContent, /FC3 read holding registers.*read.*40001.*10.*1100.*12, 0, 7/, 'busiest first');
+      assert.match(rows[1].textContent, /FC16 write multiple registers.*write.*40100.*2.*100.*1, 2/);
+      assert.ok(edgeOf(app, 'modbus').classList.contains('hot'), 'the open edge is highlighted');
+      assert.ok(edgeOf(app, 'dnp3').classList.contains('dim'), 'the others dim');
+      assert.equal(app.$$('#graph .node').filter((n) => n.classList.contains('dim')).length > 0, true);
+    } finally { app.close(); }
+  });
+
+  await t.test('Enter on a focused edge opens the same panel; a DNP3 edge without operations explains where they come from', async () => {
+    const app = await richApp();
+    try {
+      const e = edgeOf(app, 'dnp3');
+      assert.equal(e.getAttribute('tabindex'), '0');
+      assert.equal(e.getAttribute('role'), 'button');
+      e.dispatchEvent(new app.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await settle();
+      assert.match(app.window.location.hash, /^#\/edge\/10\.0\.1\.20%3E10\.0\.1\.10%3Edn?p3/);
+      assert.match(app.text(), /DNP3 FC1 READ ×20/);
+      assert.match(app.text(), /Rate\s*3\.00 \/min/);
+      assert.equal(app.$$('#main .trow.g-op:not(.thead)').length, 0);
+      assert.match(app.text(), /No operation detail.*--engine zeek/);
+    } finally { app.close(); }
+  });
+
+  await t.test('an undecoded host pair says so, and a scan-only edge is labelled as scan attempts', async () => {
+    const app = await richApp('#/edge/' + encodeURIComponent('10.0.1.50>10.0.1.60>unknown>80/tcp'));
+    try {
+      assert.match(app.text(), /Unknown/);
+      assert.match(app.text(), /Carried but not decoded/);
+      assert.match(app.text(), /Rate\s*n\/a/, 'under a second: a burst has no rate');
+      await app.go('#/edge/' + encodeURIComponent('10.0.1.60>10.0.1.20>unknown>23/tcp'));
+      assert.match(app.text(), /scan attempts only/);
+      assert.match(app.text(), /Scan attempts\s*4/);
+    } finally { app.close(); }
+  });
+
+  await t.test('a conversation that is not in the inventory says so instead of failing', async () => {
+    const app = await richApp('#/edge/nope');
+    try {
+      assert.match(app.text(), /No such conversation/);
+    } finally { app.close(); }
+  });
+
+  await t.test('the filter toggles hide unknown edges, scan edges and single protocols', async () => {
+    const app = await richApp();
+    try {
+      assert.equal(flowEdges(app).length, 4);
+      const chip = (label) => app.$$('#pop-filter button, #pop-filter label').find((b) => b.textContent === label);
+      chip('Unknown protocol').click();
+      await settle();
+      assert.equal(app.get('S').hideUnknown, true);
+      assert.deepEqual(flowEdges(app).map((e) => [...e.classList].find((c) => c.startsWith('p-'))).sort(), ['p-dnp3', 'p-modbus'], 'both unknown edges (host pair and scan) go');
+      chip('Unknown protocol').click();
+      await settle();
+      chip('Scan attempts').click();
+      await settle();
+      assert.equal(flowEdges(app).length, 3);
+      assert.equal(flowEdges(app).some((e) => e.classList.contains('scan')), false);
+      assert.ok(edgeOf(app, 'unknown'), 'the decoded-less host pair stays');
+      chip('Scan attempts').click();
+      await settle();
+      const box = app.$$('#pop-filter input[type=checkbox]').find((c) => /Modbus/.test(c.getAttribute('aria-label')));
+      box.checked = false;
+      box.dispatchEvent(new app.window.Event('change', { bubbles: true }));
+      await settle();
+      assert.equal(edgeOf(app, 'modbus'), undefined);
+      assert.ok(edgeOf(app, 'dnp3'));
+      assert.deepEqual(app.$$('#pop-filter input[type=checkbox]').map((c) => /DNP3|Modbus|ENIP|S7|SNMP/.exec(c.getAttribute('aria-label'))[0]), ['Modbus', 'DNP3', 'ENIP', 'S7', 'SNMP']);
+    } finally { app.close(); }
+  });
+
+  await t.test('the query box understands proto:dnp3, proto:unknown and rate>N', async () => {
+    const app = await richApp();
+    try {
+      const ask = async (q) => { app.$('#q').value = q; app.$('#q').dispatchEvent(new app.window.Event('input')); await settle(); };
+      const lit = () => flowEdges(app).filter((e) => !e.classList.contains('dim')).map((e) => [...e.classList].find((c) => c.startsWith('p-'))).sort();
+      await ask('proto:dnp3');
+      assert.deepEqual(lit(), ['p-dnp3']);
+      await ask('proto:unknown');
+      assert.deepEqual(lit(), ['p-unknown'], 'the scan edge ends at a host that is not listed as unknown');
+      await ask('rate>10');
+      assert.deepEqual(lit(), ['p-modbus'], 'only the 20 /min conversation is faster than 10 /min');
+      await ask('rate>2');
+      assert.deepEqual(lit(), ['p-dnp3', 'p-modbus'], '3 /min passes');
+      assert.equal(app.get('parseQuery("rate>2.5 proto:dnp3 plc")').rate, 2.5);
+      assert.deepEqual([...app.get('parseQuery("rate>2.5 proto:dnp3 plc")').text], ['plc']);
+      await ask('rate>nonsense');
+      assert.equal(app.get('parseQuery("rate>nonsense")').rate, undefined, 'a malformed rate term is plain text, not a filter');
+    } finally { app.close(); }
+  });
+
+  await t.test('the node panel lists peers with rate and the operations summary, linking to the edge panel', async () => {
+    const app = await richApp('#/asset/10.0.1.40');
+    try {
+      app.$$('#main button.tab').find((b) => /^Conversations/.test(b.textContent)).click();
+      await settle();
+      const text = app.text();
+      assert.match(text, /from.*10\.0\.1\.50.*modbus 502\/tcp.*1200 messages · 20\.0 \/min/);
+      assert.match(text, /Operations: FC3 read holding registers @40001 ×1100 · FC16 write multiple registers @40100 ×100/);
+      const link = app.$$('#main a').find((a) => a.textContent === 'Details');
+      assert.equal(link.getAttribute('href'), '#/edge/' + encodeURIComponent('10.0.1.50>10.0.1.40>modbus>502/tcp'));
+    } finally { app.close(); }
+  });
+
+  await t.test('Zeek-sourced strings are text in the edge panel, never markup', async () => {
+    const evil = [{ client: '10.0.1.50', server: '10.0.1.40', protocol: '<img src=x onerror="window.__pwned=1">', port: '<script>window.__pwned=2</script>', messages: 3,
+      firstSeen: '2015-10-22T09:00:00Z', lastSeen: '2015-10-22T09:01:00Z', source: '<b>zeek</b>',
+      labels: { '<svg onload="window.__pwned=3">': 3 },
+      operations: [{ function: '<img src=y onerror="window.__pwned=4">', access: '<i>read</i>', object: '<u>g1</u>', address: 1, quantity: 2, count: 3,
+        sampleValues: ['<img src=z onerror="window.__pwned=5">', 7] }] }];
+    const app = await loadApp({ routes: defaultRoutes({ flows: evil }), hash: '#/edge/' + encodeURIComponent('10.0.1.50>10.0.1.40><img src=x onerror="window.__pwned=1">><script>window.__pwned=2</script>') });
+    try {
+      assert.equal(app.window.__pwned, undefined);
+      assert.equal(app.$$('#main img, #main script, #main svg, #main b, #main i, #main u, #graph img, #graph script').length, 0, 'no element was created from a string');
+      assert.match(app.text(), /<img src=y onerror=/);
+      assert.match(app.text(), /<img src=z onerror=/);
+      assert.match(app.text(), /<svg onload=/);
+      assert.match(app.text(), /<script>window\.__pwned=2<\/script>/);
+      assert.match(edgeOf(app, 'unknown').getAttribute('aria-label'), /<img src=x/);
+    } finally { app.close(); }
+  });
+
+  await t.test('labels keep a minimum size on screen: they grow in graph units as the view zooms out, edge labels vanish below the threshold', async () => {
+    const app = await richApp();
+    try {
+      const svg = app.$('#graph');
+      const px = (name) => parseFloat(svg.style.getPropertyValue(name));
+      app.get('GR').view = { x: 0, y: 0, k: 1 }; app.get('applyView()');
+      assert.equal(px('--nfs'), 13);
+      assert.equal(svg.classList.contains('no-elabels'), false);
+      app.get('GR').view = { x: 0, y: 0, k: 0.5 }; app.get('applyView()');
+      assert.ok(px('--nfs') * 0.5 >= 13 - 1e-9, 'node labels are at least 13 px on screen at zoom 0.5');
+      assert.ok(px('--efs') * 0.5 >= 12 - 1e-9, 'edge labels are at least 12 px on screen');
+      assert.equal(svg.classList.contains('no-elabels'), true, 'edge labels are dropped below zoom 0.55, not shrunk');
+      app.get('GR').view = { x: 0, y: 0, k: 0.2 }; app.get('applyView()');
+      assert.ok(px('--nfs') * 0.2 >= 13 - 1e-9);
+      assert.equal(app.$$('#graph .nlabel').length > 0, true, 'node labels stay');
+      app.get('GR').view = { x: 0, y: 0, k: 2 }; app.get('applyView()');
+      assert.equal(px('--nfs'), 12, 'zoomed in, labels scale with the view as before');
+      assert.equal(svg.classList.contains('no-elabels'), false);
     } finally { app.close(); }
   });
 });
