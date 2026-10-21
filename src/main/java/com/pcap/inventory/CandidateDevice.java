@@ -33,6 +33,9 @@ public final class CandidateDevice {
     private long lastFrame;
     private String subaddr;
     private final Set<String> roles = new TreeSet<>();
+    /** Ports this device answered on ({@code 502/tcp}); capped so a port scan of one host cannot bloat the output. */
+    private final Set<String> services = new TreeSet<>();
+    static final int MAX_SERVICES = 16;
 
     public CandidateDevice(String captureScopedId) {
         this.captureScopedId = captureScopedId;
@@ -48,6 +51,16 @@ public final class CandidateDevice {
     public Optional<String> roleHint() {
         return roles.contains("server") ? Optional.of("server")
                 : roles.contains("client") ? Optional.of("client") : Optional.empty();
+    }
+
+    public void observeService(String service) {
+        if (service != null && services.size() < MAX_SERVICES) {
+            services.add(service);
+        }
+    }
+
+    public Set<String> services() {
+        return services;
     }
 
     public Set<String> roles() {
@@ -182,6 +195,7 @@ public final class CandidateDevice {
         lastFrame = Math.max(lastFrame, o.lastFrame);
         fields.addAll(o.fields);
         roles.addAll(o.roles);
+        o.services.forEach(this::observeService);
         o.macLastFrame.forEach((m, f) -> {
             macs.add(m);
             macLastFrame.merge(m, f, Math::max);

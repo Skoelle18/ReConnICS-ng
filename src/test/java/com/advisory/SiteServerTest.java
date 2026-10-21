@@ -73,10 +73,12 @@ class SiteServerTest {
 
     private HttpResponse<String> get(String path) throws Exception { return send("GET", path, null, null); }
 
-    private byte[] acmePcap(String fw) {
+    private byte[] acmePcap(String fw) { return acmePcap(fw, "10.10.1.10"); }
+
+    private byte[] acmePcap(String fw, String clientIp) {
         byte[] frame = PcapTestSupport.ethernetIpv4Tcp(
                 PcapTestSupport.mac("00:11:22:33:44:55"), PcapTestSupport.mac("00:11:22:33:44:66"),
-                PcapTestSupport.ipv4("10.10.1.31"), PcapTestSupport.ipv4("10.10.1.10"),
+                PcapTestSupport.ipv4("10.10.1.31"), PcapTestSupport.ipv4(clientIp),
                 502, 49152, PcapTestSupport.modbusIdentityResponse("Acme", "X100", fw));
         return PcapTestSupport.classicPcap(true, false, 1, frame);
     }
@@ -88,6 +90,13 @@ class SiteServerTest {
             Thread.sleep(50);
         }
         throw new AssertionError("capture " + id + " never finished");
+    }
+
+    @Test
+    void encodedAmpersandInCaptureNameSurvives() throws Exception {
+        var up = send("POST", "/api/v1/captures?name=Hall%20B%20%26%20C.pcap", "application/octet-stream", acmePcap("1.9"));
+        assertEquals(202, up.statusCode(), up.body());
+        assertEquals("Hall B & C.pcap", Json.obj(Json.parse(up.body())).get("file"));
     }
 
     @Test
@@ -132,6 +141,52 @@ class SiteServerTest {
         assertEquals(200, csv.statusCode());
         assertTrue(csv.body().contains("10.10.1.31"));
         assertEquals(404, get("/api/v1/export/secrets.txt").statusCode());
+    }
+
+    // `analyze --post .../api/v1/assets` (live mode) must reach the inventory the UI reads
+    @Test
+    void postedAssetsAppearInSiteInventoryAndCaptureQueue() throws Exception {
+        byte[] body = ("{\"assets\":[{\"id\":\"10.10.1.31\",\"ip\":\"10.10.1.31\",\"protocols\":[\"modbus\"],"
+                + "\"vendor\":\"Acme\",\"model\":\"X100\",\"firmware\":\"1.9\"}]}").getBytes(StandardCharsets.UTF_8);
+        var post = send("POST", "/api/v1/assets", "application/json", body, "X-Actor", "Live Probe");
+        assertEquals(200, post.statusCode(), post.body());
+        var asset = asset(Json.obj(Json.parse(get("/api/v1/inventory").body())), "10.10.1.31");
+        assertEquals("EXACT", Json.obj(asset.get("match")).get("level"));
+
+        var caps = Json.arr(Json.parse(get("/api/v1/captures").body()));
+        assertEquals(1, caps.size());
+        var c = Json.obj(caps.get(0));
+        assertEquals("done", c.get("state"));
+        assertEquals("posted", c.get("kind"));
+        assertEquals("Live Probe", c.get("by"));
+        assertEquals(1.0, Json.obj(c.get("diff")).get("new"));
+
+        assertEquals(200, send("POST", "/api/v1/assets", "application/json", body).statusCode());
+        assertEquals(1, Json.arr(Json.parse(get("/api/v1/captures").body())).size(), "same payload again is not a second entry");
+        var log = Json.arr(Json.parse(get("/api/v1/changes").body()));
+        assertEquals(2, log.size(), "one entry for the new asset and the merge summary");
+        assertEquals("(asset)", Json.obj(log.get(1)).get("field"));
+        assertEquals("10.10.1.31", Json.obj(log.get(1)).get("asset"));
+    }
+
+    // a merge logs which asset, which field and old -> new; the asset's History shows the same entries
+    @Test
+    void mergeLogsPerAssetFieldChanges() throws Exception {
+        var first = send("POST", "/api/v1/captures?name=before.pcap", "application/octet-stream", acmePcap("1.9"), "X-Actor", "R. Analyst");
+        waitFor((String) Json.obj(Json.parse(first.body())).get("id"));
+        var second = send("POST", "/api/v1/captures?name=after.pcap", "application/octet-stream", acmePcap("2.1", "10.10.1.11"), "X-Actor", "R. Analyst");
+        String id2 = (String) Json.obj(Json.parse(second.body())).get("id");
+        assertEquals("done", waitFor(id2).get("state"));
+
+        var log = Json.arr(Json.parse(get("/api/v1/changes").body())).stream().map(Json::obj)
+                .filter(c -> ("capture " + id2).equals(c.get("source"))).toList();
+        assertTrue(log.stream().anyMatch(c -> "10.10.1.31".equals(c.get("asset")) && "firmware".equals(c.get("field"))
+                && "1.9".equals(c.get("from")) && "2.1".equals(c.get("to"))), log.toString());
+        assertTrue(log.stream().anyMatch(c -> "10.10.1.11".equals(c.get("asset")) && "(asset)".equals(c.get("field"))
+                && c.get("to").toString().startsWith("new in")), "a new asset is listed");
+        assertTrue(log.stream().anyMatch(c -> "10.10.1.10".equals(c.get("asset")) && "(asset)".equals(c.get("field"))
+                && c.get("to").toString().startsWith("not seen")), "an asset missing from the capture is listed");
+        assertTrue(log.get(0).get("to").toString().contains("\"changed\""), "the summary line stays, newest first");
     }
 
     private static Map<String, Object> asset(Map<String, Object> inv, String id) {

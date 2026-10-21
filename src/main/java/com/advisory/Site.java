@@ -33,6 +33,20 @@ final class Site {
     static final Set<String> CRITICALITY = Set.of("critical", "high", "medium", "low");
     static final Set<String> LIFECYCLE = Set.of("Acquisition", "Deployment", "Commissioning", "In service", "Maintenance", "Decommissioned");
     static final Set<String> PURDUE = Set.of("0", "1", "2", "3", "3.5");
+    /**
+     * MAC-derived NIC maker for the ICS vendors only (src/main/resources/oui-ics.csv, a subset of the IEEE MA-L registry).
+     * It fills vendor_oui (LOW) and never feeds advisory matching.
+     */
+    static final Map<String, String> OUI = loadBundledOui();
+
+    private static Map<String, String> loadBundledOui() {
+        try (InputStream in = Site.class.getResourceAsStream("/oui-ics.csv")) {
+            return in == null ? null : Inventory.loadOui(AdvisoryIndex.utf8(in.readAllBytes()));
+        } catch (IOException e) {
+            return null;                                     // no OUI fallback; everything else still works
+        }
+    }
+
     static final long MAX_PCAP = 4L << 30;
     static final int MAX_CHANGES = 2000;
 
@@ -51,6 +65,10 @@ final class Site {
     private volatile AdvisoryIndex index;
     private volatile boolean verified;
     private int seq;
+    /** Built inventory; null = stale. Cleared whenever a capture is merged or removed, an edit is saved or the index changes. */
+    private Inventory cached;
+    private AdvisoryMatcher matcher;                 // for matcherFor; the index is immutable once loaded
+    private AdvisoryIndex matcherFor;
 
     /** index: already loaded from indexPath by the CLI (which enforces --pubkey or --insecure-no-verify). */
     Site(Path dir, AdvisoryIndex index, Path indexPath, Path pubkey, boolean insecure) throws IOException {
@@ -136,7 +154,8 @@ final class Site {
         var c = find(id);
         if (!Set.of("queued", "failed").contains(c.get("state"))) throw new Conflict("only queued or failed captures can be removed");
         captures.remove(c);
-        for (String ext : List.of(".pcap", ".json")) Files.deleteIfExists(captureDir.resolve(id + ext));
+        cached = null;
+        for (String ext : List.of(".pcap", ".json", ".obs.json")) Files.deleteIfExists(captureDir.resolve(id + ext));
     }
 
     private Map<String, Object> find(String id) {
@@ -167,26 +186,87 @@ final class Site {
             summary.put("protocols", new TreeMap<>(r.protocolCandidates()));
             summary.put("identityFields", (double) r.identityFieldsDecoded());
             summary.put("devices", (double) r.assets().size());
-            synchronized (this) {
-                Map<String, String> before = fingerprints(inventory());
-                Files.writeString(captureDir.resolve(id + ".obs.json"), obs);
-                c.put("state", "done");
-                Map<String, String> after = fingerprints(inventory());
-                Set<String> seen = idsIn(obs);
-                Map<String, Object> diff = new LinkedHashMap<>();
-                diff.put("new", (double) after.keySet().stream().filter(k -> !before.containsKey(k)).count());
-                diff.put("changed", (double) after.keySet().stream().filter(k -> before.containsKey(k) && !before.get(k).equals(after.get(k))).count());
-                diff.put("notSeen", (double) before.keySet().stream().filter(k -> !seen.contains(k.split("/")[0])).count());
-                c.put("summary", summary);
-                c.put("diff", diff);
-                save(c);
-                log(String.valueOf(c.get("by")), "(site)", "capture", "", c.get("file") + " merged: " + Json.write(diff), "capture " + id);
-            }
+            synchronized (this) { merged(c, id, obs, summary); }
         } catch (PcapException e) {
             fail(c, 4, e.getMessage());
         } catch (Exception | StackOverflowError e) {
             fail(c, 5, "analysis failed: " + e.getClass().getSimpleName());
         }
+    }
+
+    /** Writes the observations, marks the entry done and logs what the merge changed. Caller holds the lock. */
+    private void merged(Map<String, Object> c, String id, String obs, Map<String, Object> summary) throws IOException {
+        Map<String, Map<String, String>> before = fingerprints(inventory());
+        Files.writeString(captureDir.resolve(id + ".obs.json"), obs);
+        c.put("state", "done");
+        cached = null;
+        Map<String, Map<String, String>> after = fingerprints(inventory());
+        Set<String> seen = idsIn(obs);
+        List<String> added = after.keySet().stream().filter(k -> !before.containsKey(k)).toList();
+        List<String> changed = after.keySet().stream().filter(k -> before.containsKey(k) && !before.get(k).equals(after.get(k))).toList();
+        List<String> notSeen = before.keySet().stream().filter(k -> !seen.contains(k.split("/")[0])).toList();
+        Map<String, Object> diff = new LinkedHashMap<>();
+        diff.put("new", (double) added.size());
+        diff.put("changed", (double) changed.size());
+        diff.put("notSeen", (double) notSeen.size());
+        c.put("summary", summary);
+        c.put("diff", diff);
+        save(c);
+        // One entry per asset or field, so an asset's History shows what a capture did to it. Details first, so the
+        // newest-first log lists the summary line on top.
+        String by = String.valueOf(c.get("by")), src = "capture " + id;
+        int budget = MAX_MERGE_LOG;
+        for (String k : added) if (budget-- > 0) log(by, k, "(asset)", "", "new in " + c.get("file"), src);
+        for (String k : changed) {
+            var b = before.get(k);
+            var a = after.get(k);
+            for (String f : new TreeSet<>(union(a.keySet(), b.keySet())))
+                if (!Objects.equals(a.get(f), b.get(f)) && budget-- > 0) log(by, k, f, b.getOrDefault(f, ""), a.getOrDefault(f, ""), src);
+        }
+        for (String k : notSeen) if (budget-- > 0) log(by, k, "(asset)", "", "not seen in " + c.get("file"), src);
+        if (budget < 0) log(by, "(site)", "capture", "", (-budget) + " more changes not listed; see the inventory", src);
+        log(by, "(site)", "capture", "", c.get("file") + " merged: " + Json.write(diff), src);
+    }
+
+    /** Most per-asset entries one merge writes; a first capture of a big plant lists its assets up to this, then stops. */
+    static final int MAX_MERGE_LOG = 1000;
+
+    private static <T> Set<T> union(Set<T> a, Set<T> b) {
+        Set<T> u = new HashSet<>(a);
+        u.addAll(b);
+        return u;
+    }
+
+    /**
+     * Assets POSTed to /api/v1/assets (analyzer --post): stored as a finished queue entry whose observations are the
+     * posted list as-is, so they merge into the inventory like an analyzed capture. There is no PCAP and nothing to
+     * re-analyze. The same payload twice is a no-op; returns the entry, or null for a repeat.
+     */
+    synchronized Map<String, Object> addPosted(List<Object> assets, String actor) throws IOException {
+        String obs = Json.write(Map.of("assets", assets));
+        byte[] bytes = obs.getBytes(StandardCharsets.UTF_8);
+        String hex;
+        try { hex = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)); }
+        catch (NoSuchAlgorithmException e) { throw new IllegalStateException(e); }
+        for (var c : captures) if (hex.equals(c.get("sha256"))) return null;
+        String id = String.format("c%04d", ++seq);
+        Map<String, Object> c = new LinkedHashMap<>();
+        c.put("id", id);
+        c.put("file", "posted via API");
+        c.put("kind", "posted");
+        c.put("size", (double) bytes.length);
+        c.put("sha256", hex);
+        c.put("by", actor);
+        c.put("at", Instant.now().toString());
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("frames", 0.0);
+        summary.put("malformed", 0.0);
+        summary.put("protocols", new TreeMap<String, Object>());
+        summary.put("identityFields", 0.0);
+        summary.put("devices", (double) assets.size());
+        captures.add(c);
+        merged(c, id, obs, summary);
+        return new LinkedHashMap<>(c);
     }
 
     private synchronized void fail(Map<String, Object> c, int exit, String msg) {
@@ -197,12 +277,12 @@ final class Site {
     }
 
     /** One string per record id, so a merge can be diffed without caring how fields are laid out. */
-    private static Map<String, String> fingerprints(Inventory inv) {
-        Map<String, String> m = new HashMap<>();
+    private static Map<String, Map<String, String>> fingerprints(Inventory inv) {
+        Map<String, Map<String, String>> m = new HashMap<>();
         for (var r : inv.records) {
-            StringBuilder b = new StringBuilder();
-            r.f.forEach((k, f) -> b.append(k).append('=').append(f.value()).append(';'));
-            m.put(r.id, b.toString());
+            Map<String, String> fields = new TreeMap<>();
+            r.f.forEach((k, f) -> fields.put(k, Inventory.cap(f.value() instanceof List<?> l ? String.join(", ", l.stream().map(String::valueOf).toList()) : String.valueOf(f.value()), Inventory.MAX_EVIDENCE)));
+            m.put(r.id, fields);
         }
         return m;
     }
@@ -218,8 +298,9 @@ final class Site {
     // ------------------------------------------------------------------ inventory
 
     /** Every merged capture in queue order, then human edits last so they win ties. */
-    // ponytail: rebuilt from disk on every call; cache it if a site grows past a few thousand assets
+    // ponytail: one cached inventory, rebuilt in full after any change; make it incremental if a rebuild gets slow
     synchronized Inventory inventory() throws IOException {
+        if (cached != null) return cached;
         List<Object> all = new ArrayList<>();
         for (var c : captures) {
             if (!"done".equals(c.get("state"))) continue;
@@ -240,9 +321,11 @@ final class Site {
             });
             if (e.size() > (slash >= 0 ? 2 : 1)) all.add(e);
         });
-        Inventory inv = Inventory.build(Json.write(Map.of("assets", all)), null);
-        inv.match(index, verified);
-        return inv;
+        Inventory inv = Inventory.build(Json.write(Map.of("assets", all)), OUI);
+        AdvisoryIndex idx = index;
+        if (matcherFor != idx) { matcher = new AdvisoryMatcher(Inventory.sanitize(idx)); matcherFor = idx; }
+        inv.match(idx.meta, matcher, verified);
+        return cached = inv;
     }
 
     synchronized Map<String, Object> inventoryJson() throws IOException {
@@ -294,6 +377,7 @@ final class Site {
         });
         if (fields.isEmpty()) edits.remove(id);
         writeAtomic(dir.resolve("edits.json"), Json.write(edits));
+        cached = null;
         return out;
     }
 
@@ -368,6 +452,7 @@ final class Site {
             Files.move(staged, indexPath, StandardCopyOption.REPLACE_EXISTING);
             index = idx;
             verified = idx.verified;
+            cached = null;
             log(actor, "(site)", "advisory index", old, String.valueOf(idx.meta.get("generated")) + (verified ? " (verified)" : " (UNVERIFIED)"), "import");
         }
         return m;

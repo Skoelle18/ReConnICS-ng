@@ -35,6 +35,7 @@ public final class DeviceAggregator {
         obs.ip().ifPresent(device::observeIp);
         if (obs.detectionBasis() != DetectionBasis.PORT_HEURISTIC) {
             device.observeRole(obs.role());
+            obs.service().ifPresent(device::observeService);
         }
         // Sub-devices record the carrier MAC only so a lone Modbus unit can be folded back into its IP;
         // DeviceMatcher.finalizeMacs() never emits a MAC on a sub-device.

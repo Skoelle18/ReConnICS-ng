@@ -24,7 +24,7 @@ The file uses the same payload as `POST /api/v1/assets`.
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/api/v1/assets` | Upsert observed assets, keyed by `id`. Re-posting the same id replaces it. |
+| `POST` | `/api/v1/assets` | Upsert observed assets, keyed by `id`. Re-posting the same id replaces it. With the UI (`serve`), the accepted assets are also added to the site inventory as one finished "posted via API" queue entry (not re-analyzed; an identical payload is not added twice). |
 | `GET` | `/api/v1/assets` | Return the assets exactly as they were posted. |
 | `DELETE` | `/api/v1/assets` | Clear all assets, for example between captures. |
 | `GET` | `/api/v1/matches[?format=csv\|html]` | Advisory matches for every asset. JSON by default. One request at a time; a concurrent one gets `503`. |

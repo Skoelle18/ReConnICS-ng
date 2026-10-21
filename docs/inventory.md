@@ -92,6 +92,7 @@ rest of the entry is kept.
 - It fills `vendor_oui` (LOW). That counts toward the Manufacturer attribute, but it is never used for advisory
   matching, because it names the NIC maker.
 - It is skipped for locally administered, virtual and ambiguous MACs.
+- The Site console (`serve`) uses a bundled table, `src/main/resources/oui-ics.csv`: about 130 IEEE MA-L blocks of ICS vendors only (Siemens, Rockwell, Schneider/Telemecanique, ABB, Phoenix Contact, Moxa, Hirschmann, WAGO, Beckhoff, Omron, Mitsubishi Electric, Honeywell, Emerson, GE). It is a filtered copy of the IEEE registry (via the Wireshark `manuf` mirror, 2026-10-21); the `inventory` CLI still needs `--oui` with the full IEEE CSV. A vendor from it shows as MAC-derived (LOW) in the UI and never feeds matching.
 
 ## Scoring
 
