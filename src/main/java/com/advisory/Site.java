@@ -68,7 +68,8 @@ final class Site {
     /** Built inventory; null = stale. Cleared whenever a capture is merged or removed, an edit is saved or the index changes. */
     private Inventory cached;
     private List<Object> cachedFlows = List.of();    // conversations of the merged captures; built together with `cached`
-    static final int MAX_FLOWS = 5_000, MAX_LABELS = 8;
+    static final int MAX_FLOWS = 5_000, MAX_LABELS = 8, MAX_OPERATIONS = 50, MAX_SAMPLES = 8;
+    private static final Set<String> FLOW_SOURCES = Set.of("zeek", "native", "zeek+native"), OP_ACCESS = Set.of("read", "write", "control", "other");
     private AdvisoryMatcher matcher;                // for matcherFor; the index is immutable once loaded
     private AdvisoryIndex matcherFor;
 
@@ -333,13 +334,15 @@ final class Site {
         AdvisoryIndex idx = index;
         if (matcherFor != idx) { matcher = new AdvisoryMatcher(Inventory.sanitize(idx)); matcherFor = idx; }
         inv.match(idx.meta, matcher, verified);
-        cachedFlows = List.copyOf(flows.values());
+        cachedFlows = flowList(flows.values());
         return cached = inv;
     }
 
     /**
-     * Sums the analyzer's {@code flows} (client, server, protocol, port, messages, labels) per directed pair and protocol.
-     * The input is untrusted (a POSTed payload can carry anything): strings are cleaned, counts clamped, sizes capped.
+     * Sums the analyzer's {@code flows} per directed (client, server, protocol, port): messages, packets, bytes and scan
+     * attempts add up, first/last seen widen, operations merge by (function, object, address, quantity), and the optional
+     * fields stay absent when no capture reported them. The input is untrusted (a POSTed payload can carry anything):
+     * strings are cleaned, counts clamped, sizes capped.
      */
     private static void addFlows(Map<String, Map<String, Object>> into, Object list) {
         for (Object o : Json.arr(list)) {
@@ -347,13 +350,14 @@ final class Site {
             if (!(f.get("client") instanceof String c) || !(f.get("server") instanceof String s) || !(f.get("protocol") instanceof String pr)) continue;
             c = Inventory.clean(c, 64); s = Inventory.clean(s, 64); pr = Inventory.clean(pr, 32);
             if (c.isEmpty() || s.isEmpty() || pr.isEmpty()) continue;
-            String key = c + '>' + s + '>' + pr;
+            String port = f.get("port") instanceof String po ? Inventory.clean(po, 16) : "";
+            String key = c + '>' + s + '>' + pr + '>' + port;
             var m = into.get(key);
             if (m == null) {
                 if (into.size() >= MAX_FLOWS) continue;
                 m = new LinkedHashMap<>();
                 m.put("client", c); m.put("server", s); m.put("protocol", pr);
-                m.put("port", f.get("port") instanceof String po ? Inventory.clean(po, 16) : "");
+                m.put("port", port);
                 m.put("messages", 0.0);
                 m.put("labels", new LinkedHashMap<String, Object>());
                 into.put(key, m);
@@ -365,7 +369,77 @@ final class Site {
                 if (!k.isEmpty() && (labels.size() < MAX_LABELS || labels.containsKey(k)))
                     labels.merge(k, count(l.getValue()), (a, b) -> (double) a + (double) b);
             }
+            if (f.get("transport") instanceof String t && (t.equals("tcp") || t.equals("udp"))) m.put("transport", t);
+            for (String k : List.of("packets", "bytes", "scanAttempts")) {
+                double n = count(f.get(k));
+                if (n > 0) m.merge(k, n, (a, b) -> Math.min(1e12, (double) a + (double) b));
+            }
+            for (String k : List.of("firstSeen", "lastSeen")) {
+                Instant t = instant(f.get(k));
+                if (t == null) continue;
+                Instant old = m.get(k) instanceof String os ? instant(os) : null;
+                if (old == null || (k.equals("firstSeen") ? t.isBefore(old) : t.isAfter(old))) m.put(k, t.toString());
+            }
+            if (f.get("source") instanceof String src && FLOW_SOURCES.contains(src)) {
+                String was = m.get("source") instanceof String x ? x : "";
+                boolean zeek = src.contains("zeek") || was.contains("zeek"), nat = src.contains("native") || was.contains("native");
+                m.put("source", zeek && nat ? "zeek+native" : zeek ? "zeek" : "native");
+            }
+            mergeOperations(m, f.get("operations"));
         }
+    }
+
+    /** Operations are held as a keyed map while captures merge ({@link #flowList} turns them back into the array). */
+    @SuppressWarnings("unchecked")
+    private static void mergeOperations(Map<String, Object> flow, Object list) {
+        Map<String, Map<String, Object>> ops = (Map<String, Map<String, Object>>) flow.computeIfAbsent("\0ops", k -> new LinkedHashMap<String, Map<String, Object>>());
+        for (Object o : Json.arr(list)) {
+            var op = Json.obj(o);
+            if (!(op.get("function") instanceof String fn)) continue;
+            fn = Inventory.clean(fn, 64);
+            if (fn.isEmpty()) continue;
+            String access = op.get("access") instanceof String a && OP_ACCESS.contains(a) ? a : "other";
+            String obj = op.get("object") instanceof String ob ? Inventory.clean(ob, 32) : "";
+            Double addr = op.get("address") instanceof Double ? count(op.get("address")) : null, qty = op.get("quantity") instanceof Double ? count(op.get("quantity")) : null;
+            String key = fn + '|' + access + '|' + obj + '|' + addr + '|' + qty;
+            var e = ops.get(key);
+            if (e == null) {
+                if (ops.size() >= MAX_OPERATIONS) continue;
+                e = new LinkedHashMap<>();
+                e.put("function", fn); e.put("access", access);
+                if (!obj.isEmpty()) e.put("object", obj);
+                if (addr != null) e.put("address", addr);
+                if (qty != null) e.put("quantity", qty);
+                e.put("count", 0.0);
+                ops.put(key, e);
+            }
+            e.put("count", Math.min(1e12, (double) e.get("count") + Math.max(1, count(op.get("count")))));
+            List<Object> samples = (List<Object>) e.computeIfAbsent("sampleValues", k -> new ArrayList<Object>());
+            for (Object v : Json.arr(op.get("sampleValues"))) {
+                if (samples.size() >= MAX_SAMPLES) break;
+                if (v instanceof Double d && Double.isFinite(d)) samples.add(d);
+                else if (v instanceof String sv) samples.add(Inventory.clean(sv, 32));
+            }
+            if (samples.isEmpty()) e.remove("sampleValues");
+        }
+    }
+
+    /** The merged flows with the operations map turned back into the contract's array. */
+    @SuppressWarnings("unchecked")
+    private static List<Object> flowList(Collection<Map<String, Object>> merged) {
+        List<Object> out = new ArrayList<>();
+        for (var m : merged) {
+            Map<String, Object> f = new LinkedHashMap<>(m);
+            var ops = (Map<String, Map<String, Object>>) f.remove("\0ops");
+            if (ops != null && !ops.isEmpty()) f.put("operations", List.copyOf(ops.values()));
+            out.add(f);
+        }
+        return List.copyOf(out);
+    }
+
+    private static Instant instant(Object o) {
+        if (!(o instanceof String s) || s.length() > 40) return null;
+        try { return Instant.parse(s); } catch (java.time.format.DateTimeParseException e) { return null; }
     }
 
     private static double count(Object o) { return o instanceof Double d && Double.isFinite(d) ? Math.max(0, Math.min(d, 1e12)) : 0; }

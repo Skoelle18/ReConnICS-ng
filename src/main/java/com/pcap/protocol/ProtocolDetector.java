@@ -247,8 +247,12 @@ public final class ProtocolDetector {
             return;
         }
         boolean s = msg.serverOnSrc();
-        flows.add((s ? p.dstIp() : p.srcIp()).get().value(), (s ? p.srcIp() : p.dstIp()).get().value(), msg.protocol().wireName(),
-                (s ? p.srcPort() : p.dstPort()) + (p.hasUdp() ? "/udp" : "/tcp"), msg.detail());
+        var flow = flows.flow((s ? p.dstIp() : p.srcIp()).get().value(), (s ? p.srcIp() : p.dstIp()).get().value(), msg.protocol().wireName(),
+                (s ? p.srcPort() : p.dstPort()) + (p.hasUdp() ? "/udp" : "/tcp"));
+        if (flow != null) {
+            // packets and bytes cover the counted messages only (a reassembled message is one unit), not the whole connection
+            flow.message(msg.detail()).seen(p.timestampMicros()).traffic(1, Math.max(0, p.payloadLength())).source("native");
+        }
     }
 
     private static DeviceObservation portOnly(ParsedPacket packet, ProtocolType type, boolean serverIsDst) {

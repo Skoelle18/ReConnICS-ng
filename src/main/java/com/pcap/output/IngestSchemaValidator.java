@@ -14,6 +14,11 @@ import java.util.Set;
  */
 public final class IngestSchemaValidator {
     private static final Set<String> CONFIDENCE = Set.of("HIGH", "MEDIUM", "LOW");
+    private static final Set<String> TRANSPORT = Set.of("tcp", "udp");
+    private static final Set<String> ACCESS = Set.of("read", "write", "control", "other");
+    private static final Set<String> FLOW_SOURCE = Set.of("zeek", "native", "zeek+native");
+    private static final int MAX_FLOW_OPERATIONS = 50;
+    private static final int MAX_SAMPLE_VALUES = 8;
     private final ObjectMapper mapper;
 
     public IngestSchemaValidator(ObjectMapper mapper) {
@@ -39,6 +44,9 @@ public final class IngestSchemaValidator {
                 errors.add("'source' must be an object when present");
             }
             assets = root.get("assets");
+            if (root.has("flows")) {
+                validateFlows(root.get("flows"), errors);
+            }
         } else {
             errors.add("root must be an array or object");
             return errors;
@@ -70,6 +78,114 @@ public final class IngestSchemaValidator {
         validateIdentityField(a.get("vendor"), index, "vendor", errors);
         validateIdentityField(a.get("model"), index, "model", errors);
         validateIdentityField(a.get("firmware"), index, "firmware", errors);
+    }
+
+    /** {@code flows} is optional and only grows: every field beyond client/server/protocol is optional, old entries stay valid. */
+    private void validateFlows(JsonNode flows, List<String> errors) {
+        if (!flows.isArray()) {
+            errors.add("'flows' must be an array when present");
+            return;
+        }
+        for (int i = 0; i < flows.size(); i++) {
+            JsonNode f = flows.get(i);
+            String at = "flows[" + i + "]";
+            if (!f.isObject()) {
+                errors.add(at + " must be an object");
+                continue;
+            }
+            for (String k : List.of("client", "server", "protocol")) {
+                if (text(f, k) == null) {
+                    errors.add(at + "." + k + " must be a non-empty string");
+                }
+            }
+            if (f.has("port") && !f.get("port").isTextual()) {
+                errors.add(at + ".port must be a string like \"502/tcp\"");
+            }
+            if (f.has("transport") && !(f.get("transport").isTextual() && TRANSPORT.contains(f.get("transport").asText()))) {
+                errors.add(at + ".transport must be tcp|udp");
+            }
+            if (f.has("source") && !(f.get("source").isTextual() && FLOW_SOURCE.contains(f.get("source").asText()))) {
+                errors.add(at + ".source must be zeek|native|zeek+native");
+            }
+            for (String k : List.of("messages", "packets", "bytes", "scanAttempts")) {
+                if (f.has(k) && !count(f.get(k))) {
+                    errors.add(at + "." + k + " must be a non-negative integer");
+                }
+            }
+            for (String k : List.of("firstSeen", "lastSeen")) {
+                if (f.has(k) && !instant(f.get(k))) {
+                    errors.add(at + "." + k + " must be an ISO-8601 UTC timestamp");
+                }
+            }
+            if (f.has("labels")) {
+                JsonNode labels = f.get("labels");
+                if (!labels.isObject()) {
+                    errors.add(at + ".labels must be an object of counts");
+                } else {
+                    labels.fields().forEachRemaining(e -> {
+                        if (!count(e.getValue())) {
+                            errors.add(at + ".labels." + e.getKey() + " must be a non-negative integer");
+                        }
+                    });
+                }
+            }
+            if (f.has("operations")) {
+                validateOperations(f.get("operations"), at, errors);
+            }
+        }
+    }
+
+    private void validateOperations(JsonNode ops, String at, List<String> errors) {
+        if (!ops.isArray()) {
+            errors.add(at + ".operations must be an array");
+            return;
+        }
+        if (ops.size() > MAX_FLOW_OPERATIONS) {
+            errors.add(at + ".operations exceeds " + MAX_FLOW_OPERATIONS + " entries");
+        }
+        for (int j = 0; j < ops.size(); j++) {
+            JsonNode o = ops.get(j);
+            String oat = at + ".operations[" + j + "]";
+            if (!o.isObject()) {
+                errors.add(oat + " must be an object");
+                continue;
+            }
+            if (text(o, "function") == null) {
+                errors.add(oat + ".function must be a non-empty string");
+            }
+            if (o.has("access") && !(o.get("access").isTextual() && ACCESS.contains(o.get("access").asText()))) {
+                errors.add(oat + ".access must be read|write|control|other");
+            }
+            for (String k : List.of("address", "quantity", "count")) {
+                if (o.has(k) && !count(o.get(k))) {
+                    errors.add(oat + "." + k + " must be a non-negative integer");
+                }
+            }
+            if (o.has("sampleValues")) {
+                JsonNode v = o.get("sampleValues");
+                if (!v.isArray()) {
+                    errors.add(oat + ".sampleValues must be an array");
+                } else if (v.size() > MAX_SAMPLE_VALUES) {
+                    errors.add(oat + ".sampleValues exceeds " + MAX_SAMPLE_VALUES + " entries");
+                }
+            }
+        }
+    }
+
+    private static boolean count(JsonNode n) {
+        return n.isIntegralNumber() && n.canConvertToLong() && n.asLong() >= 0;
+    }
+
+    private static boolean instant(JsonNode n) {
+        if (!n.isTextual()) {
+            return false;
+        }
+        try {
+            java.time.Instant.parse(n.asText());
+            return true;
+        } catch (java.time.format.DateTimeParseException e) {
+            return false;
+        }
     }
 
     private void validateIdentityField(JsonNode n, int index, String name, List<String> errors) {

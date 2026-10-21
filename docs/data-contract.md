@@ -49,19 +49,73 @@ the module label and in RSLinx. The raw values remain in the evidence string.
 ## Flows
 
 `flows` is an optional top-level array next to `assets` (absent when no conversation was seen). One entry per directed
-(client, server, protocol); it is what the UI's graph draws as edges.
+(client, server, protocol, server port); it is what the UI's graph draws as edges. Schema: [`flow.schema.json`](flow.schema.json).
+Only `client`, `server` and `protocol` are required. Every other key is optional and absent when unknown, so documents
+written before a key existed stay valid and old consumers ignore the keys they do not know.
 
 ```json
-{"client": "10.0.1.50", "server": "10.0.1.40", "protocol": "modbus", "port": "502/tcp", "messages": 12,
- "labels": {"Modbus FC43/14 request": 4, "Modbus FC3": 8}}
+{
+  "client": "10.0.0.5", "server": "10.0.0.9", "protocol": "modbus", "port": "502/tcp", "transport": "tcp",
+  "messages": 1200, "packets": 2400, "bytes": 98000,
+  "firstSeen": "2015-10-22T09:00:01Z", "lastSeen": "2015-10-22T10:00:00Z",
+  "labels": {"Modbus FC3": 1100, "Modbus FC16": 100},
+  "operations": [
+    {"function": "FC3 read holding registers", "access": "read", "address": 40001, "quantity": 10,
+     "count": 1100, "sampleValues": [12, 0, 7]}
+  ],
+  "scanAttempts": 0,
+  "source": "zeek+native"
+}
 ```
 
-- Only header-validated or decoded Modbus, EtherNet/IP and S7comm messages count; port-only guesses and broadcast/multicast
-  destinations never make a flow. The server is the well-known-port side, the client its peer.
-- `labels` are message kinds (decoder detail without per-message numbers; Modbus function codes in decimal), at most 8 per flow.
-  At most 5 000 flows per capture.
-- `client` and `server` are IPs and join an asset by its `ip` (sub-units and slots share their gateway's IP).
-- The console treats a posted `flows` array as untrusted: strings are cleaned, counts clamped, sizes capped.
+| Key | Meaning |
+|---|---|
+| `client`, `server` | IPs; they join an asset by its `ip` (sub-units and slots share their gateway's IP). The server is the well-known-port side (Zeek: the responder). |
+| `protocol` | `modbus`, `dnp3`, `enip`, `s7comm`, `snmp`, or a service name Zeek reports. **`unknown`** when nothing identifies the traffic; that is an accepted result, the edge still shows who talks to whom. |
+| `port` | Server port with transport, `502/tcp`. A string, as before; **not** the bare number, so existing consumers keep working. |
+| `transport` | `tcp` or `udp` (the suffix of `port`, repeated so a consumer need not parse it). |
+| `messages` | Decoded messages (Modbus, DNP3, ENIP, S7comm, SNMP). For `unknown` flows: data-carrying packets (native) or total packets (Zeek, whose `conn.log` has no per-packet payload flag). |
+| `packets`, `bytes` | Traffic counters. Zeek: the whole connection(s), both directions, payload bytes. Native: only the packets that carried a counted message. |
+| `firstSeen`, `lastSeen` | ISO-8601 UTC, millisecond precision only when non-zero. The console derives the message rate (messages per minute) from the two. |
+| `labels` | Message kinds (decoder detail without per-message numbers; Modbus function codes in decimal), at most 8 per flow. |
+| `operations` | What was asked of the server, aggregated by (function, object, address, quantity); see below. |
+| `scanAttempts` | Connections to the server that never completed a handshake. Absent when 0. |
+| `source` | Who produced the flow: `native`, `zeek`, or `zeek+native` when both reported it and the values were merged. |
+
+### Operations
+
+```json
+{"function": "FC3 read holding registers", "access": "read", "address": 40001, "quantity": 10, "count": 1100, "sampleValues": [12, 0, 7]}
+```
+
+- `access` is `read`, `write`, `control` (DNP3 select/operate/direct operate, restarts) or `other`.
+- `address` and `quantity` are non-negative integers and are omitted when the protocol has none. `object` (optional string) names a
+  DNP3 object group/variation such as `g30v1`.
+- `count` is how often that exact (function, object, address, quantity) was seen. `sampleValues` holds at most 8 numbers or strings,
+  the first values seen.
+- **Caps:** at most 50 operations per flow (new rows stop at the cap, known rows keep counting) and 8 `sampleValues` per row, so a
+  2M-frame capture cannot produce a giant JSON. Operations come from Zeek/ICSNPP; native mode records message kinds in `labels` only.
+
+### Aggregation and scan noise
+
+- Flows are aggregated **per host pair + protocol + server port**, never per Zeek connection. The 4SICS capture has about 935k
+  TCP connections, mostly scan noise; one entry per connection would be unusable.
+- A connection that never completed a handshake (Zeek `conn_state` S0, REJ, or RSTO/RSTOS0 with no data; natively a SYN with no
+  SYN-ACK) is a scan attempt. It adds to `scanAttempts` on its flow and does **not** create an edge on its own: a flow with
+  `messages` 0 and `scanAttempts` above 0 is left out unless the analyzer ran with `--keep-scans`.
+- At most 5 000 flows per capture. Only header-validated or decoded messages make a protocol flow; port-only guesses and
+  broadcast/multicast destinations never do.
+
+### Hosts seen only through Zeek
+
+A host that appears in Zeek's `conn.log` but in no decoded message becomes an asset with `protocols` `["unknown"]` (or the
+service name Zeek reports) and detection basis `zeek-conn` (`attributes.detectionBases`). It carries no identity fields and has
+LOW confidence. An asset that native decoding also found is merged by IP and MAC through `DeviceAggregator`; the Zeek and native
+values are both kept as evidence, native decoded values win a conflict.
+
+The console treats a posted `flows` array as untrusted: strings are cleaned, counts clamped, sizes capped. Across merged
+captures it sums `messages`, `packets`, `bytes` and `scanAttempts`, widens `firstSeen`/`lastSeen`, and merges `operations` by key
+within the same caps.
 
 ## Ports
 

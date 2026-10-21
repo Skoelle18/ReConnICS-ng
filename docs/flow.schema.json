@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReConICS flow (one entry of the document-level flows array)",
+  "description": "One directed client-to-server conversation per (client, server, protocol, server port). Only client, server and protocol are required; every other key is optional and absent when unknown. Unknown keys are ignored. See docs/data-contract.md, section Flows.",
+  "type": "object",
+  "required": ["client", "server", "protocol"],
+  "properties": {
+    "client": {"type": "string", "maxLength": 64},
+    "server": {"type": "string", "maxLength": 64},
+    "protocol": {"type": "string", "maxLength": 32, "description": "modbus, dnp3, enip, s7comm, snmp, ..., or unknown when nothing identifies the traffic"},
+    "port": {"type": "string", "maxLength": 16, "description": "server port with transport, for example 502/tcp"},
+    "transport": {"enum": ["tcp", "udp"]},
+    "messages": {"$ref": "#/$defs/count"},
+    "packets": {"$ref": "#/$defs/count"},
+    "bytes": {"$ref": "#/$defs/count"},
+    "firstSeen": {"type": "string", "format": "date-time"},
+    "lastSeen": {"type": "string", "format": "date-time"},
+    "labels": {
+      "type": "object",
+      "maxProperties": 8,
+      "additionalProperties": {"$ref": "#/$defs/count"}
+    },
+    "operations": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "required": ["function"],
+        "properties": {
+          "function": {"type": "string", "maxLength": 64},
+          "access": {"enum": ["read", "write", "control", "other"]},
+          "object": {"type": "string", "maxLength": 32, "description": "DNP3 object group/variation, for example g30v1"},
+          "address": {"$ref": "#/$defs/count"},
+          "quantity": {"$ref": "#/$defs/count"},
+          "count": {"$ref": "#/$defs/count"},
+          "sampleValues": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {"type": ["number", "string"]}
+          }
+        }
+      }
+    },
+    "scanAttempts": {"$ref": "#/$defs/count"},
+    "source": {"enum": ["zeek", "native", "zeek+native"]}
+  },
+  "$defs": {
+    "count": {"type": "integer", "minimum": 0}
+  }
+}

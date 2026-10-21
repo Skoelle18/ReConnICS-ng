@@ -202,6 +202,46 @@ class SiteServerTest {
         assertEquals(0.0, Json.obj(posted.get("labels")).get("<img src=x>"));
     }
 
+    // the optional flow fields add up across captures; hostile values in them are cleaned or dropped
+    @Test
+    void extendedFlowFieldsMergeAndHostileOnesAreDropped() throws Exception {
+        String one = """
+                {"assets":[{"ip":"10.0.0.9"}],"flows":[{"client":"10.0.0.5","server":"10.0.0.9","protocol":"modbus","port":"502/tcp","transport":"tcp",
+                  "messages":10,"packets":20,"bytes":300,"firstSeen":"2015-10-22T09:00:05Z","lastSeen":"2015-10-22T09:10:00Z","scanAttempts":2,"source":"zeek",
+                  "labels":{"FC3":10},
+                  "operations":[{"function":"FC3 read holding registers","access":"read","address":40001,"quantity":10,"count":10,"sampleValues":[1,2,3,4,5]}]}]}
+                """;
+        String two = """
+                {"assets":[{"ip":"10.0.0.9","mac":"00:00:00:00:00:09"}],"flows":[{"client":"10.0.0.5","server":"10.0.0.9","protocol":"modbus","port":"502/tcp","transport":"sctp",
+                  "messages":5,"packets":-4,"bytes":1e30,"firstSeen":"2015-10-22T08:00:00Z","lastSeen":"garbage","source":"native",
+                  "operations":[{"function":"FC3 read holding registers","access":"read","address":40001,"quantity":10,"count":5,"sampleValues":[6,7,8,9,10]},
+                                {"function":"<b>FC16\\u0007</b>","access":"nuke","object":"g1v1","count":-1,"sampleValues":[{"a":1},"x",null]}, {"nofunction":1}]}]}
+                """;
+        assertEquals(200, send("POST", "/api/v1/assets", "application/json", one.getBytes(StandardCharsets.UTF_8)).statusCode());
+        assertEquals(200, send("POST", "/api/v1/assets", "application/json", two.getBytes(StandardCharsets.UTF_8)).statusCode());
+        var flows = Json.arr(Json.obj(Json.parse(get("/api/v1/inventory").body())).get("flows"));
+        assertEquals(1, flows.size(), flows.toString());
+        var f = Json.obj(flows.get(0));
+        assertEquals(15.0, f.get("messages"));
+        assertEquals(20.0, f.get("packets"), "a negative packet count adds nothing");
+        assertEquals(1e12, f.get("bytes"), "bytes are clamped");
+        assertEquals("tcp", f.get("transport"), "an unknown transport is ignored");
+        assertEquals("2015-10-22T08:00:00Z", f.get("firstSeen"));
+        assertEquals("2015-10-22T09:10:00Z", f.get("lastSeen"), "an unparsable timestamp is ignored");
+        assertEquals(2.0, f.get("scanAttempts"));
+        assertEquals("zeek+native", f.get("source"));
+        var ops = Json.arr(f.get("operations"));
+        assertEquals(2, ops.size(), ops.toString());
+        var read = Json.obj(ops.get(0));
+        assertEquals(15.0, read.get("count"));
+        assertEquals(8, Json.arr(read.get("sampleValues")).size(), "sample values are capped at 8");
+        var write = Json.obj(ops.get(1));
+        assertEquals("<b>FC16</b>", write.get("function"), "control characters are stripped; markup is the UI's job to escape");
+        assertEquals("other", write.get("access"), "an unknown access kind becomes other");
+        assertEquals(1.0, write.get("count"));
+        assertEquals(List.of("x"), Json.arr(write.get("sampleValues")), "only numbers and strings are kept as samples");
+    }
+
     // a merge logs which asset, which field and old -> new; the asset's History shows the same entries
     @Test
     void mergeLogsPerAssetFieldChanges() throws Exception {
