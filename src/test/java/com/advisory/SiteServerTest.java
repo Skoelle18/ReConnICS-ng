@@ -36,6 +36,7 @@ class SiteServerTest {
 
     @TempDir Path tmp;
     HttpServer server;
+    IngestServer ingest;
     String base;
     Path indexPath, pub, key;
     final HttpClient http = HttpClient.newHttpClient();
@@ -48,7 +49,8 @@ class SiteServerTest {
         indexPath = tmp.resolve("index.json");
         writeIndex(indexPath, "2026-10-01T00:00:00Z");
         Site site = new Site(tmp.resolve("site"), AdvisoryIndex.load(indexPath, pub), indexPath, pub, false);
-        server = new IngestServer(site).start(0);
+        ingest = new IngestServer(site);
+        server = ingest.start(0);
         base = "http://127.0.0.1:" + server.getAddress().getPort();
     }
 
@@ -231,6 +233,40 @@ class SiteServerTest {
         assertEquals(404, get("/../pom.xml").statusCode());
         assertEquals(421, rawStatus("GET /api/v1/index HTTP/1.1\r\nHost: evil.example\r\nConnection: close\r\n\r\n"));
         assertEquals(421, rawStatus("GET / HTTP/1.1\r\nHost: evil.example:8088\r\nConnection: close\r\n\r\n"));
+    }
+
+    @Test
+    void allowOriginAddsCorsHeaderToReadOnlyGetsOnly() throws Exception {
+        String ok = "Origin", app = "http://localhost:8123";
+        for (String p : List.of("/api/v1/inventory", "/api/v1/changes", "/api/v1/captures"))
+            assertTrue(get(p).headers().firstValue("Access-Control-Allow-Origin").isEmpty(), "no flag, no header: " + p);
+        assertTrue(get("/api/v1/inventory").headers().firstValue("Vary").isEmpty());
+
+        ingest.allowOrigins(List.of(app));
+        for (String p : List.of("/api/v1/inventory", "/api/v1/changes", "/api/v1/captures")) {
+            var r = send("GET", p, null, null, ok, app);
+            assertEquals(200, r.statusCode());
+            assertEquals(app, r.headers().firstValue("Access-Control-Allow-Origin").orElse(null), p);
+            assertEquals("Origin", r.headers().firstValue("Vary").orElse(null), p);
+            assertTrue(r.headers().firstValue("Access-Control-Allow-Credentials").isEmpty());
+        }
+        // exact match only: another origin, another port, another scheme, no Origin at all
+        for (String other : List.of("http://evil.example", "http://localhost:8124", "https://localhost:8123", "http://localhost:8123.evil.example", "null"))
+            assertTrue(send("GET", "/api/v1/inventory", null, null, ok, other).headers().firstValue("Access-Control-Allow-Origin").isEmpty(), other);
+        assertTrue(get("/api/v1/inventory").headers().firstValue("Access-Control-Allow-Origin").isEmpty());
+        // other GETs and every write stay closed, and a preflight is still not answered
+        assertTrue(send("GET", "/api/v1/index", null, null, ok, app).headers().firstValue("Access-Control-Allow-Origin").isEmpty());
+        assertTrue(send("GET", "/api/v1/export/inventory.csv", null, null, ok, app).headers().firstValue("Access-Control-Allow-Origin").isEmpty());
+        var post = send("POST", "/api/v1/captures?name=x.pcap", "application/octet-stream", acmePcap("1.0"), ok, app);
+        assertTrue(post.headers().firstValue("Access-Control-Allow-Origin").isEmpty());
+        var pre = send("OPTIONS", "/api/v1/inventory", null, null, ok, app, "Access-Control-Request-Method", "GET");
+        assertTrue(pre.headers().firstValue("Access-Control-Allow-Origin").isEmpty());
+    }
+
+    @Test
+    void allowOriginRejectsWildcardsAndNonOrigins() {
+        for (String bad : List.of("*", "http://*.example", "localhost:8123", "http://localhost:8123/", "http://localhost:8123/x", ""))
+            assertThrows(IllegalArgumentException.class, () -> ingest.allowOrigins(List.of(bad)), bad);
     }
 
     private int rawStatus(String request) throws Exception {

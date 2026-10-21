@@ -99,6 +99,9 @@ Passive PCAP results may be incomplete or spoofed.
 
 ## End-to-end
 
+`data/index.json` and `keys/index-signing.pub` below: the public key is in this repo; the signed index is downloaded, see
+[Verifying the index](#verifying-the-index).
+
 ```bash
 # File mode: PCAP -> observations.json -> inventory.json/csv + report.html
 scripts/reconics-run.sh assets/modbus.pcap results/ --index data/index.json --pubkey keys/index-signing.pub
@@ -113,16 +116,44 @@ curl 'http://127.0.0.1:8088/api/v1/matches?format=html' > report.html
 ## Site console (local web UI)
 
 ```bash
-java -jar target/reconnics-ng.jar serve --index data/index.json --pubkey keys/index-signing.pub [--data data/site]
+java -jar target/reconnics-ng.jar serve --index data/index.json --pubkey keys/index-signing.pub [--data data/site] [--allow-origin http://localhost:8123]
 # open http://127.0.0.1:8088/
 ```
+
+`--allow-origin` (optional, repeatable, exact origins only, no wildcard) lets one other local page, such as the lab's
+3D viewer, read `GET /api/v1/{inventory,changes,captures}` cross-origin. It is read-only by design: writes get no CORS
+header and preflights are never answered, so that page can look but not change anything.
 
 Queue PCAPs (they run one at a time and merge into one site inventory), browse the fix-first inventory with
 evidence for every CISA attribute, fill in what passive capture cannot (criticality, location, zone, Purdue level, ...),
 validate records, see matched advisories, import a new signed index and export JSON/CSV/HTML. Every edit lands in an
 append-only change log. State lives in plain files under `--data`; the server only listens on 127.0.0.1 and serves
-no remote content. Routes: [`docs/ingest-api.md`](docs/ingest-api.md#site-console-routes). Design:
+no remote content. `serve` needs an index and refuses one whose signature does not verify against `--pubkey`. Routes:
+[`docs/ingest-api.md`](docs/ingest-api.md#site-console-routes). Design:
 [`docs/plans/2026-10-17-ui.md`](docs/plans/2026-10-17-ui.md).
+
+Tour:
+
+- **Capture queue**: upload a PCAP (or have another process `POST` one); each runs in turn and shows `new` / `changed` / `notSeen` counts.
+- **Inventory**: one row per device, fix-first. Click a device for tabs **Attributes** (value, confidence, evidence per field),
+  **Advisories** (EXACT / PROBABLE / POSSIBLE matches) and **History**.
+- **Change log**: every capture merge and every edit, append-only (`firmware 20.011 -> 24.011` style rows).
+
+The page refreshes itself in the background (every 3 s, 1.5 s while a capture is running, paused in hidden tabs), so
+captures posted by other processes show up without a click.
+
+### Demo with the lab
+
+The [ReConnICS-lab](https://github.com/GIGZ-XD/ReConnICS-lab) repo simulates an OT plant and has a 3D viewer that reads
+this console. Its README ("Run the demo") has the full steps; the console side is just:
+
+```bash
+java -jar target/reconnics-ng.jar serve --index data/index.json --pubkey keys/index-signing.pub --data data/site-demo --allow-origin http://localhost:8123
+```
+
+Use a fresh `--data` directory for each demo run (the console keeps its captures). The lab's replay then uploads its
+pcaps, so you can watch the L33ER appear in **Inventory** (firmware 20.011, ICSA-16-061-02 EXACT) and the firmware change
+land in the **Change log**.
 
 Arsenal demo (one command): `scripts/demo.sh [CAPTURE] --index data/index.json --pubkey keys/index-signing.pub`.
 
@@ -131,6 +162,19 @@ Arsenal demo (one command): `scripts/demo.sh [CAPTURE] --index data/index.json -
 How detection and identity are measured, the held-out set, and the research tables: [`eval/README.md`](eval/README.md).
 
 ## Verifying the index
+
+CI rebuilds and signs the index daily and publishes it as the `advisory-index` release (`index.json`, `index.json.sig`). Get
+the current public key (`git pull`), download the index and verify it before use:
+
+```bash
+gh release download advisory-index -R Skoelle18/ReConnICS-ng -D staging
+java -jar target/reconnics-ng.jar verify --index staging/index.json --pubkey keys/index-signing.pub   # exit 0 only if the signature is valid
+mkdir -p data && mv staging/index.json staging/index.json.sig data/
+```
+
+> **Older checkout?** The signing key was replaced. Run `git pull` to get the new `keys/index-signing.pub` and replace any
+> `data/index.json(.sig)` you downloaded earlier: an index signed with the old key no longer verifies, so
+> `serve --pubkey keys/index-signing.pub` refuses it.
 
 Copy the public key to the offline side once, separately from the USB that carries the index, and check it:
 
@@ -170,6 +214,10 @@ Not done: Explore beyond USB for file transfer protocols and also see what OT de
 ![swimlane diagram of end users](/docs/local-advisory-swimlane.png)
 
 ### Running it
+
+To use the index CI publishes, see [Verifying the index](#verifying-the-index). The commands below build and sign one yourself
+(online side; no GitHub access, or your own key). Use a key directory other than `keys/` for local experiments, or you
+overwrite the project's `keys/index-signing.pub`; an index you sign yourself is for local demos only.
 
 ```
 mvn package                                                 # builds + tests -> target/reconnics-ng.jar

@@ -37,6 +37,13 @@ Writes take `X-Actor` (name for the change log) and, for `validated`, `X-Role: v
 `application/json` or `application/octet-stream` (or a non-simple method), so another web page cannot send one
 without a CORS preflight, which the server never answers.
 
+By default no route sends any CORS header. `serve --allow-origin ORIGIN[,ORIGIN...]` (repeatable) lets one other local
+web page read the console, e.g. `--allow-origin http://localhost:8123` for the lab's 3D viewer: a request whose `Origin` is
+exactly one of those gets `Access-Control-Allow-Origin: <that origin>` (plus `Vary: Origin`) on `GET /api/v1/inventory`,
+`/api/v1/changes` and `/api/v1/captures` only. Matching is exact (scheme, host and port; no wildcard, `*` is refused) and
+read-only on purpose: writes never get the header, preflights stay unanswered and no credentials header is sent, so an
+allowed page can look but not change anything.
+
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/api/v1/captures?name=FILE` | Queue a capture (`application/octet-stream` body, up to 4 GiB). `202` with the queue entry; `409` for a file already queued (same SHA-256). |

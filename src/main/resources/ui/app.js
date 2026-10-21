@@ -494,16 +494,27 @@ function render() {
   $('main').replaceChildren(...[].concat((screens[r.name] || overview)()).flat(Infinity).filter(Boolean));
 }
 
-let polling = null;
-async function refresh() {
+// The page keeps itself current: captures queued by another process (the lab feed, curl) show up without a click.
+// Polls every 3 s, every 1.5 s while a capture is queued or running, not at all in a hidden tab.
+const POLL = { idle: 3000, busy: 1500 };
+let pollTimer = null, lastSig = '';
+function schedulePoll() {
+  clearTimeout(pollTimer); pollTimer = null;
+  if (document.hidden) return;
+  const busy = S.caps.some((c) => c.state === 'queued' || c.state === 'running');
+  pollTimer = setTimeout(() => refresh(true), busy ? POLL.busy : POLL.idle);
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) { clearTimeout(pollTimer); pollTimer = null; } else refresh(true); });
+
+/** background: a poll, not a user action: stay silent on errors and leave the DOM alone when nothing changed (keeps focus and scroll). */
+async function refresh(background) {
   try {
     await loadAll();
     if (route().name === 'log' || route().name === 'asset') S.changes = await api('GET', 'changes');
-  } catch (e) { toast('Cannot reach the console: ' + e.message); }
-  if (!S.editing) render(); else chrome(route().name);
-  const busy = S.caps.some((c) => c.state === 'queued' || c.state === 'running');
-  if (busy && !polling) polling = setInterval(refresh, 1500);
-  if (!busy && polling) { clearInterval(polling); polling = null; }
+  } catch (e) { if (background) { schedulePoll(); return; } toast('Cannot reach the console: ' + e.message); }
+  const sig = JSON.stringify([S.inv, S.rank, S.site, S.caps, S.index, S.changes]);
+  if (!background || sig !== lastSig) { lastSig = sig; if (!S.editing) render(); else chrome(route().name); }
+  schedulePoll();
 }
 
 function init() {
