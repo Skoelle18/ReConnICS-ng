@@ -106,9 +106,8 @@ public final class ZeekLogReader {
     }
 
     private static final class ConnAgg {
-        String client, server, port;
+        String client, server, port, protocol;
         long packets, bytes, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
-        final Map<String, Long> protocols = new LinkedHashMap<>();
     }
 
     private static final class Host {
@@ -327,7 +326,8 @@ public final class ZeekLogReader {
         if (hr.services.size() < 4 && !"unknown".equals(svc)) {
             hr.services.add(svc);
         }
-        String key = o + '>' + r + '>' + port;
+        // one conversation per host pair + server port + protocol: two protocols on one port (a probe and a master) stay two flows
+        String key = o + '>' + r + '>' + port + '>' + svc;
         ConnAgg a = conns.get(key);
         if (a == null) {
             if (conns.size() >= MAX_CONN_KEYS) {
@@ -338,15 +338,13 @@ public final class ZeekLogReader {
             a.client = o;
             a.server = r;
             a.port = port;
+            a.protocol = svc;
         }
         a.packets += num(n, "orig_pkts", 0) + num(n, "resp_pkts", 0);
         a.bytes += ob + rb;
         a.first = Math.min(a.first, ts);
         JsonNode d = n.get("duration");
         a.last = Math.max(a.last, ts + (d != null && d.isNumber() && Double.isFinite(d.asDouble()) && d.asDouble() >= 0 && d.asDouble() < 4e6 ? (long) (d.asDouble() * 1_000_000) : 0));
-        if (a.protocols.size() < 4 || a.protocols.containsKey(svc)) {
-            a.protocols.merge(svc, 1L, Long::sum);
-        }
         return true;
     }
 
@@ -366,12 +364,12 @@ public final class ZeekLogReader {
     private void emitConns() {
         List<ConnAgg> order = new ArrayList<>(conns.values());
         order.sort((a, b) -> {
-            int ia = ZeekNames.isIcs(best(a)) ? 0 : 1, ib = ZeekNames.isIcs(best(b)) ? 0 : 1;
+            int ia = ZeekNames.isIcs(a.protocol) ? 0 : 1, ib = ZeekNames.isIcs(b.protocol) ? 0 : 1;
             return ia != ib ? Integer.compare(ia, ib) : Long.compare(b.packets, a.packets);
         });
         for (ConnAgg a : order) {
-            String proto = best(a);
-            FlowTable.Flow f = flows.match(a.client, a.server, a.port);
+            String proto = a.protocol;
+            FlowTable.Flow f = flows.match(a.client, a.server, a.port, proto);
             if (f == null) {
                 if (icsOnly && !ZeekNames.isIcs(proto)) {
                     continue;
@@ -401,21 +399,6 @@ public final class ZeekLogReader {
                 f.scanAttempts(e.getValue()[0]);
             }
         }
-    }
-
-    private static String best(ConnAgg a) {
-        String pick = "unknown";
-        long most = -1;
-        for (Map.Entry<String, Long> e : a.protocols.entrySet()) {
-            if (ZeekNames.isIcs(e.getKey())) {
-                return e.getKey();
-            }
-            if (e.getValue() > most) {
-                most = e.getValue();
-                pick = e.getKey();
-            }
-        }
-        return pick;
     }
 
     // ------------------------------------------------------------------ modbus

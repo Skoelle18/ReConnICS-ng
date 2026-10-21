@@ -216,8 +216,8 @@ public final class FlowTable {
     }
 
     private final Map<String, Flow> flows = new LinkedHashMap<>();
-    /** First flow per unordered host pair and port, so a second source can find the flow a conversation already belongs to. */
-    private final Map<String, Flow> byPair = new java.util.HashMap<>();
+    /** Flows per unordered host pair and port (in creation order), so a second source can find the conversation it belongs to. */
+    private final Map<String, List<Flow>> byPair = new java.util.HashMap<>();
 
     /** Decoder detail ("Modbus FC43/14 response objects=3 unit=1") reduced to the message kind ("Modbus FC43/14 response"). */
     static String label(String detail) {
@@ -250,7 +250,7 @@ public final class FlowTable {
                 return null;
             }
             flows.put(key, f = new Flow(client, server, protocol, port, transportOf(port)));
-            byPair.putIfAbsent(pairKey(client, server, port), f);
+            byPair.computeIfAbsent(pairKey(client, server, port), k -> new ArrayList<>(2)).add(f);
         }
         return f;
     }
@@ -259,9 +259,37 @@ public final class FlowTable {
         return (a.compareTo(b) <= 0 ? a + '|' + b : b + '|' + a) + '|' + port;
     }
 
-    /** The flow between these two hosts on this server port in either direction (any protocol), or null. */
+    /** The first flow between these two hosts on this server port in either direction, whatever its protocol, or null. */
     public Flow match(String hostA, String hostB, String port) {
-        return byPair.get(pairKey(hostA, hostB, port));
+        List<Flow> l = byPair.get(pairKey(hostA, hostB, port));
+        return l == null ? null : l.get(0);
+    }
+
+    /**
+     * The flow this conversation belongs to: the one with the same protocol; failing that, one that is still {@code unknown}
+     * (the protocol was not identified, so the traffic can be this one); and when the caller itself does not know the protocol,
+     * the first flow there is. Two flows with different identified protocols on one host pair and port (an S7 probe and a
+     * DNP3 master both talking to port 20000) are never merged.
+     */
+    public Flow match(String hostA, String hostB, String port, String protocol) {
+        List<Flow> l = byPair.get(pairKey(hostA, hostB, port));
+        if (l == null) {
+            return null;
+        }
+        for (Flow f : l) {
+            if (f.protocol.equals(protocol)) {
+                return f;
+            }
+        }
+        if ("unknown".equals(protocol)) {
+            return l.get(0);
+        }
+        for (Flow f : l) {
+            if ("unknown".equals(f.protocol)) {
+                return f;
+            }
+        }
+        return null;
     }
 
     public int size() {
@@ -286,7 +314,7 @@ public final class FlowTable {
      */
     public void mergeFrom(FlowTable other) {
         for (Flow z : other.flows.values()) {
-            Flow n = match(z.client, z.server, z.port);
+            Flow n = match(z.client, z.server, z.port, z.protocol);
             if (n == null) {
                 Flow f = flow(z.client, z.server, z.protocol, z.port);
                 if (f != null) {

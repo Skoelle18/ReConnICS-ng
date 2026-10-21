@@ -61,8 +61,8 @@ A small curated ODVA vendor-ID table is included for common IDs (checked against
 
 ## Inputs not built yet
 
-- **Zeek / ICSNPP logs** are a *planned* input, not a built one (docs/plan.md §2, connector 2). The proposal's comparison
-  table says "we use its logs as one input"; read that as "planned". Today the input is a capture file (classic PCAP or pcapng).
+- **Zeek / ICSNPP logs** are an optional input, built (`--engine zeek|auto`, `--zeek-logs`; see `architecture.md`). They do not
+  replace the native decoders, and the default mode needs no Zeek.
 
 ## Advisory feed integrity
 
@@ -92,3 +92,35 @@ A small curated ODVA vendor-ID table is included for common IDs (checked against
   chassis/ENBT (serial 0051AEC3) as held-out `iti_EIP-IPAddressChangeAttempt`. Also, dev `iti_tia_s300_goOnline` shows the same CPU 315 (serial S C-B1U393142011, PLC_1) as held-out
   `iti_tia_s300_updateFirmware`, so all 3 real held-out captures overlap the dev set. Fixes tuned on those dev captures may
   therefore carry over to these two held-out captures; their held-out numbers are not fully independent.
+
+## Zeek engine and DNP3
+
+- **Zeek is not native on Windows.** The team's Windows machines use the `reconics-zeek` Docker image (`docker/zeek`); without
+  Docker or a Linux/macOS Zeek, `--engine zeek` is an error (exit 5) and `--engine auto` falls back to native with a note. The
+  Docker image could not be built in the Linux environment this work was done in (no Docker daemon); the same steps were run
+  natively, but the first `docker build` is untested.
+- **The ICSNPP DNP3, ENIP and S7comm packages have no release tags**; the engine is pinned to the commits tested. A newer
+  commit may change log fields. Zeek 8.0.9 was the only Zeek version tested.
+- **Banners are spoofable text.** `software.log` can name a vendor only through a short fixed table, at MEDIUM confidence, and
+  never gives a model. Anyone can put any text in a server banner. Client software (browsers, ssh clients) is ignored.
+- **Native DNP3 is presence-only.** It validates the link header and CRC, reads the application function code of the first
+  fragment of a payload and the master/outstation direction bit. It does not reassemble DNP3 transport segments, count the
+  fragments after the first link frame of a payload, or decode objects. Object-level detail needs `--engine zeek`.
+- **Operation detail needs Zeek.** The `operations` table (function, address, quantity, values) comes only from Zeek/ICSNPP.
+  Native mode records message kinds (`labels`). Addresses are the zero-based addresses on the wire, as Zeek reports them. For
+  DNP3, ICSNPP logs object type names (for example "Single-bit Binary Input") and index ranges, not group/variation numbers.
+  DNP3 `sampleValues` are empty except for the operation type of a control block. The master is taken from the ICSNPP object
+  logs when they exist, otherwise it is the TCP originator.
+- **Scan filtering.** A TCP connection whose SYN was never answered and that carried no data (native), or whose Zeek `conn_state`
+  is `S0`, `REJ`, `RSTOS0`, `SH`, or `RSTO` with no bytes exchanged, is a *scan attempt*: counted in `scanAttempts`, not drawn
+  unless `--keep-scans`. UDP has no handshake, so UDP scans are not recognised. Native and Zeek count slightly differently
+  (a SYN-ACK followed by a reset counts only in Zeek's `RSTO` rule), so a merged flow keeps the larger number. To stay bounded,
+  the scan table holds 100,000 targets; further attempts are counted in the total (`source.zeek.scanAttemptsUncounted`), but
+  attach to no flow. A host that only answered scan probes is not an asset.
+- **Direction of undecoded flows is a guess.** For `unknown` flows the client is the SYN sender; with no SYN in the capture, and
+  for UDP, the side with the higher port number. In native mode a host pair only draws an edge when both hosts are assets, which
+  needs an ARP sender or a decoded message; with Zeek every host in `conn.log` is an asset.
+- **Undecoded `messages` mean different things per engine.** Natively: data-carrying packets. From Zeek: total packets (its
+  `conn.log` has no payload-packet count). Decoded protocols count decoded messages; a merged flow takes the larger count.
+- **Flow cap.** At most 5,000 flows per capture; the busiest are kept. At most 50 operations per flow (the busiest by count)
+  and 8 sample values per operation.

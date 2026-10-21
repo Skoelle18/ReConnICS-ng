@@ -124,4 +124,36 @@ class FlowTableTest {
         // the renamed flow is still findable under its new protocol
         assertSame(nat.flow("10.0.0.5", "10.0.0.9", "modbus", "502/tcp"), nat.match("10.0.0.9", "10.0.0.5", "502/tcp"));
     }
+
+    @Test
+    void twoIdentifiedProtocolsOnOnePairAndPortAreNeverMerged() {
+        // the 4SICS case: an S7 probe and a DNP3 master both talk to 192.168.88.95:20000
+        FlowTable nat = new FlowTable();
+        nat.flow("192.168.2.166", "192.168.88.95", "s7comm", "20000/tcp").messages(1).source("native");
+        nat.flow("192.168.2.166", "192.168.88.95", "dnp3", "20000/tcp").messages(30).source("native");
+        FlowTable zk = new FlowTable();
+        zk.flow("192.168.2.166", "192.168.88.95", "dnp3", "20000/tcp").messages(3).operation("FC1 read", "read", "Class 1 Data", null, null, 7, List.of()).source("zeek");
+        nat.mergeFrom(zk);
+        var l = nat.toList();
+        assertEquals(2, l.size(), l.toString());
+        var dnp3 = l.stream().filter(f -> "dnp3".equals(f.get("protocol"))).findFirst().orElseThrow();
+        var s7 = l.stream().filter(f -> "s7comm".equals(f.get("protocol"))).findFirst().orElseThrow();
+        assertNotNull(dnp3.get("operations"), "the operations went to the DNP3 flow");
+        assertNull(s7.get("operations"), "and not to the S7 one");
+        assertEquals("zeek+native", dnp3.get("source"));
+        assertEquals("native", s7.get("source"));
+        // a Zeek flow of a third protocol on the same pair and port is its own flow
+        FlowTable more = new FlowTable();
+        more.flow("192.168.2.166", "192.168.88.95", "modbus", "20000/tcp").messages(2);
+        nat.mergeFrom(more);
+        assertEquals(3, nat.toList().size());
+        // an unidentified native flow takes the identified one
+        FlowTable n2 = new FlowTable();
+        n2.flow("a", "b", "unknown", "9/tcp").messages(1);
+        FlowTable z2 = new FlowTable();
+        z2.flow("b", "a", "dnp3", "9/tcp").messages(1);
+        n2.mergeFrom(z2);
+        assertEquals(1, n2.toList().size());
+        assertEquals("dnp3", n2.toList().get(0).get("protocol"));
+    }
 }

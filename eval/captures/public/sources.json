@@ -124,5 +124,35 @@
   "sha256": "26cfe3df042a5d96fd680abf97c4998dd1ea8a396870a8aa2e98ba2ef056af93",
   "bytes": 93889,
   "list": "SOURCES-extra.md"
+ },
+ "dnp3_test_data_part1.pcap": {
+  "url": "https://media.githubusercontent.com/media/automayt/ICS-pcap/master/DNP3/digitalbond%20pcaps/dnp3_test_data_part1/dnp3_test_data_part1.pcap",
+  "sha256": "71779cac342a37b412df5bb6372ec22c35b5127ad2bfed4447d7ab6b92ebb4bf",
+  "bytes": 15838,
+  "list": "SOURCES-extra.md"
+ },
+ "dnp3_test_data_part2.pcap": {
+  "url": "https://media.githubusercontent.com/media/automayt/ICS-pcap/master/DNP3/digitalbond%20pcaps/dnp3_test_data_part2/dnp3_test_data_part2.pcap",
+  "sha256": "cb7de30363a64f1a6d3b7332f78d937a1f05677e546db0ad2790b2c481a7bc4b",
+  "bytes": 2976,
+  "list": "SOURCES-extra.md"
+ },
+ "DNP3-Read.pcap": {
+  "url": "https://media.githubusercontent.com/media/automayt/ICS-pcap/master/DNP3/DNP3-Read/DNP3-Read.pcap",
+  "sha256": "66f460ea8d274085f7b478a73bab987d79cfe062653fb36bdefc5fe942240fbe",
+  "bytes": 603,
+  "list": "SOURCES-extra.md"
+ },
+ "DNP3-SelectOperate.pcap": {
+  "url": "https://media.githubusercontent.com/media/automayt/ICS-pcap/master/DNP3/DNP3-SelectOperate/DNP3-SelectOperate.pcap",
+  "sha256": "9cc5c193218d78afba25fec251c4e91f682066f076225c6eaa642e8b32d34b7e",
+  "bytes": 936,
+  "list": "SOURCES-extra.md"
+ },
+ "4SICS-GeekLounge-151022.pcap": {
+  "url": "https://media.githubusercontent.com/media/automayt/ICS-pcap/master/Additional%20Captures/4SICS-GeekLounge-151022/4SICS-GeekLounge-151022.pcap",
+  "sha256": "82529c23906416dc73d7f1926a0d38b82527f1f2a7ff8c6f755ce3208feb9643",
+  "bytes": 209236002,
+  "list": "SOURCES-extra.md"
  }
 }

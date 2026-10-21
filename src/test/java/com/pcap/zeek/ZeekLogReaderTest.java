@@ -209,6 +209,15 @@ class ZeekLogReaderTest {
     }
 
     @Test
+    void connectionsOfDifferentProtocolsOnOnePortStayDifferentFlows() throws Exception {
+        Path dir = logs(conn("10.0.0.5", "10.0.0.9", 20000, "tcp", "SF", 10, 10, "dnp3_tcp") + conn("10.0.0.5", "10.0.0.9", 20000, "tcp", "SF", 4, 4, "cotp,s7comm")
+                + conn("10.0.0.5", "10.0.0.9", 20000, "tcp", "SF", 4, 4, "dnp3_tcp"));
+        var flows = new ZeekLogReader(false, false).read(dir).flows().toList();
+        assertEquals(List.of("dnp3", "s7comm"), flows.stream().map(f -> (String) f.get("protocol")).sorted().toList());
+        assertEquals(10L, flows.stream().filter(f -> "dnp3".equals(f.get("protocol"))).findFirst().orElseThrow().get("packets"), "two dnp3 connections of 5 packets each");
+    }
+
+    @Test
     void aScanAttemptOnAServedPortCountsOnThatFlow() throws Exception {
         Path dir = logs(conn("10.0.0.5", "10.0.0.9", 80, "tcp", "SF", 10, 10, "http") + conn("10.0.0.5", "10.0.0.9", 80, "tcp", "S0", 0, 0, null));
         var f = new ZeekLogReader(false, false).read(dir).flows().toList().get(0);

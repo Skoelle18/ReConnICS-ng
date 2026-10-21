@@ -23,7 +23,6 @@ so they can go straight into a `*.truth.json`.
 | `ICSHoneypod.pcap` (20 MB) | https://github.com/EmreEkin/ICS-Pcaps/tree/master/LocalPCAP | no licence; over 20 MB | 1 CIP GAA reply from a Micro850 2080-LC50-48QBB, rev 12.011, s/n 60D4229A |
 | `s72.pcap` (24 MB) | https://github.com/EmreEkin/ICS-Pcaps/tree/master/S7COMM | no licence; over 20 MB. It looks like a 4SICS-derived capture (192.168.88.x, 20 Oct 2015) | 1 SZL 0x0011 reply from an S7-1200, 6ES7 212-1BD30-0XB0, V1.0.1 (frame 94006) |
 | `openics/EIP-ControlProtocolChangeAttempt`, `-RebootorRestart`, `-SoftwareDownload`, `-SoftwareUpload`, `-FirmwareChange`, `-ChangePortConfigurationAttempt` | ITI repo (CC-BY-4.0) | They repeat what `iti_EIP-IPAddressChangeAttempt.pcap` already covers | routed slot0 1756-L61 GAA replies, plus 1756-ENBT GAA replies (192.168.10.120 / .121) |
-| `4SICS-GeekLounge-151022.pcap` (200 MB) | https://www.netresec.com/?page=PCAP4SICS | over the download budget, not checked | unknown (it may contain the S7-1200 SZL read seen in `s72.pcap`) |
 
 Checked and found to have **no** identity replies (discovery only): ITI `ModbusTCP/*`, `bro/modbus/*` (incl. modbus.pcap 9 MB),
 `Combined/Plant1.pcap`, `EthernetIP/EthernetIP-CIP.pcap`, `CIP/cip_only.pcap`, most `s7/*` (S7comm-plus or var reads only),
@@ -31,3 +30,21 @@ Checked and found to have **no** identity replies (discovery only): ITI `ModbusT
 `4SICS-GeekLounge-151020.pcap`, jayateertha043 `ModbusReadCoil.pcapng`, arkime `modbus.pcap`, and zeek `modbus-*` traces.
 `profinet/*` from ITI holds only layer 2 (no IPv4), so the checker reports it as invalid for this tool.
 Truth decoder: `eval/truth_decoder/decode.py` (independent, stdlib only) and `build_truth.py`. Per-file checker output was kept locally (not in the repo).
+
+## Added 22 Oct 2026 for the Zeek + ICSNPP benchmark (eval/README.md, "Engine benchmark")
+
+These are used only to compare the native decoders with the Zeek engine. They have **no truth file** and are not part of
+the identity scoring; `run_eval.py` runs them as crash/timing checks. Never committed; `python eval/captures/fetch_public.py
+--only NAME` downloads them and refuses a file whose SHA-256 differs from `sources.json`.
+
+All five come from the public mirror https://github.com/automayt/ICS-pcap (Git LFS, fetched through
+`media.githubusercontent.com`). **The mirror states no licence.** Its README credits digitalbond, 4SICS, netresec, scadahacker.com,
+the Wireshark sample captures, shodan.io, kargs.net and Oak Ridge datasets, without saying which file came from where, so the
+per-file origin below is the mirror's folder name, not something verified. Use for local evaluation; do not redistribute.
+
+| File (eval/captures/public/) | Size | Where in the mirror | Notes |
+|---|---|---|---|
+| `dnp3_test_data_part1.pcap` | 16 KB | `DNP3/digitalbond pcaps/dnp3_test_data_part1/` | Two masters (10.0.0.8, 10.0.0.9) and one outstation (10.0.0.3, TCP 20000): reads, writes, restarts, unsolicited responses. 93 DNP3 frames per tshark. |
+| `dnp3_test_data_part2.pcap` | 3 KB | `DNP3/digitalbond pcaps/dnp3_test_data_part2/` | Master 192.168.66.33 to outstation 192.168.66.34 with Control Relay Output Block operations (`dnp3_control.log`). 22 DNP3 frames. |
+| `DNP3-Read.pcap`, `DNP3-SelectOperate.pcap` | 0.6 / 0.9 KB | `DNP3/DNP3-Read/`, `DNP3/DNP3-SelectOperate/` | Hand-made loopback captures (127.0.0.1, MAC 01:02:03:04:05:06 as destination, which has the multicast bit set, so the edge is suppressed by the multicast rule). A handful of frames. |
+| `4SICS-GeekLounge-151022.pcap` | 209 MB | `Additional Captures/4SICS-GeekLounge-151022/` | The third day of the 4SICS ICS lab capture; original download page https://www.netresec.com/?page=PCAP4SICS (Netresec asks that CS3Sthlm be credited). About 943k TCP/UDP connections, mostly scan noise; Modbus, S7comm, ENIP, a few DNP3 frames, HTTP/SSH/FTP banners from Moxa and other devices. The mirror copy was used because netresec.com was not reachable from the benchmark machine. |

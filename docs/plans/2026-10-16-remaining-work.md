@@ -27,8 +27,9 @@ unmerged work.
 | Measured against labelled lab ground truth | Kit done: 13 synthetic scenarios + 13 public captures with independent truth. No real lab capture yet | eval/ |
 | Out of scope: active scanning, live capture | Respected by the tool | docs/ethics.md |
 
-Mismatch with the proposal: its comparison table says we use Zeek/ICSNPP logs as an input, but that adapter is not built. It
-gets fixed in W7 (reword) and listed in docs/limitations.md.
+Mismatch with the proposal: its comparison table said we use Zeek/ICSNPP logs as an input, but that adapter was not built.
+**Update 22 Oct 2026: built.** `--engine zeek|auto` and `--zeek-logs` run or read Zeek + ICSNPP and merge it with the native
+decoders; see [`2026-10-22-zeek-icsnpp.md`](2026-10-22-zeek-icsnpp.md), `docs/architecture.md` and `docs/limitations.md`.
 
 ## 2. The research question and the numbers we publish
 
@@ -159,7 +160,7 @@ Suggested fixes come as a PR from `yashash/fix-advisory`.
     Arsenal)
   - vendor alias table
   - scheduled sync
-  - Zeek/ICSNPP adapter
+  - ~~Zeek/ICSNPP adapter~~ (built 22 Oct 2026, see [`2026-10-22-zeek-icsnpp.md`](2026-10-22-zeek-icsnpp.md))
   - CI: fuzz tests as a PR gate (fixed seed, time and memory limit), Dependabot, pinned eval requirements
 
 ## 4. Schedule
