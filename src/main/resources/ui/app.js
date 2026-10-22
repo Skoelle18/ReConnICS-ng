@@ -29,7 +29,8 @@ const SITE_DEFAULTS = { lifecycle: 'In service' };
 const S = { inv: null, rank: [], site: {}, flows: [], caps: [], changes: [], index: null, search: '', level: 'ALL', kevOnly: false, unvalOnly: false,
   openCap: null, openAdv: null, tab: 'attrs', editing: false, staged: null,
   color: 'role', showAdv: true, layout: 'force', path: null,
-  hideUnknown: false, hideScans: false, protoOff: new Set() };
+  hideUnknown: false, hideScans: false, protoOff: new Set(),
+  capAssets: {}, assetCaps: new Map(), capOff: new Set() };
 
 // ------------------------------------------------------------------ helpers
 
@@ -82,6 +83,13 @@ function levelOf(a) { return a.match ? a.match.level : 'UNRUN'; }
 function nameOf(a) { return str(val(a, 'hostname')) || str(val(a, 'model')) || a.id; }
 function isValidated(a) { return siteOf(a).validated === 'yes'; }
 
+/** Capture ids that contributed this asset (server: captureAssets), and the file name a capture id belongs to. */
+const capturesOf = (a) => S.assetCaps.get(a.id) || [];
+const capFileName = (id) => { const c = S.caps.find((x) => x.id === id); return c ? c.file : id; };
+const capAllHidden = (ids) => !!(ids && ids.length) && ids.every((id) => S.capOff.has(id));
+/** A capture hidden from the graph removes only the nodes it exclusively contributed; a shared node stays. */
+const assetVisible = (a) => { const ids = capturesOf(a); return !ids.length || ids.some((id) => !S.capOff.has(id)); };
+
 function roleGroup(a) {
   const r = (str(val(a, 'role')) + ' ' + str(val(a, 'deviceType'))).toLowerCase();
   if (!r.trim()) return 'Unknown';
@@ -124,23 +132,28 @@ const fmtBytes = (n) => (n >= 1 << 30 ? (n / (1 << 30)).toFixed(1) + ' GB' : n >
 const opsSummary = (f, max) => (f.operations || []).slice().sort((a, b) => (b.count || 0) - (a.count || 0)).slice(0, max || 3)
   .map((o) => o.function + (o.address != null ? ' @' + o.address : '') + ' ×' + (o.count || 0)).join(' · ');
 /** Hidden by the filter toggles (not drawn at all); the query box only dims. */
-const flowHidden = (f) => (S.hideUnknown && protoKey(f.protocol) === 'unknown') || (S.hideScans && isScan(f)) || S.protoOff.has(protoKey(f.protocol));
-/** The query's proto: and rate> terms applied to one conversation. */
+const flowHidden = (f) => (S.hideUnknown && protoKey(f.protocol) === 'unknown') || (S.hideScans && isScan(f)) || S.protoOff.has(protoKey(f.protocol)) || capAllHidden(f.captures);
+/** The query's proto:, rate> and capture terms applied to one conversation. */
 const flowProtoIs = (f, p) => protoKey(f.protocol) === p || String(f.protocol).toLowerCase().includes(p);
+const capQueryHits = (q, ids) => {
+  if (!q.pcap && !q.capture) return true;
+  return (ids || []).some((id) => (!q.capture || id.toLowerCase() === q.capture || id.toLowerCase().endsWith(q.capture))
+    && (!q.pcap || capFileName(id).toLowerCase().includes(q.pcap)));
+};
 function flowMatchesQuery(f) {
   const q = parseQuery(S.search);
-  return (!q.proto || flowProtoIs(f, q.proto)) && (q.rate == null || flowRate(f) > q.rate);
+  return (!q.proto || flowProtoIs(f, q.proto)) && (q.rate == null || flowRate(f) > q.rate) && capQueryHits(q, f.captures);
 }
 const flowsOf = (a) => {
   const ip = str(val(a, 'ip')) || a.id.split('/')[0];
   return S.flows.filter((f) => f.client === ip || f.server === ip);
 };
 
-/** Free-text words (all must match) plus filters: level:exact proto:modbus role:plc rate>10 kev unvalidated. */
+/** Free-text words (all must match) plus filters: level:exact proto:modbus role:plc pcap:cell1 capture:c0001 rate>10 kev unvalidated. */
 function parseQuery(q) {
   const t = { text: [] };
   for (const w of String(q).toLowerCase().split(/\s+/).filter(Boolean)) {
-    const m = w.match(/^(level|proto|role):(.+)$/), r = w.match(/^rate>(\d+(?:\.\d+)?)$/);
+    const m = w.match(/^(level|proto|role|pcap|capture):(.+)$/), r = w.match(/^rate>(\d+(?:\.\d+)?)$/);
     if (r) t.rate = parseFloat(r[1]);
     else if (m) t[m[1]] = m[2]; else if (w === 'kev' || w === 'unvalidated') t[w] = true; else t.text.push(w);
   }
@@ -156,6 +169,7 @@ function matches(a) {
     && (!q.proto || str(val(a, 'protocols')).toLowerCase().includes(q.proto))
     && (q.rate == null || flowsOf(a).some(flowMatchesQuery))
     && (!q.role || (roleGroup(a) + ' ' + str(val(a, 'role'))).toLowerCase().includes(q.role))
+    && capQueryHits(q, capturesOf(a))
     && q.text.every((w) => hay.some((v) => v.includes(w)));
 }
 
@@ -188,6 +202,11 @@ const reviewCount = () => new Set(reviewGroups().flatMap((g) => g.items.map((i) 
 async function loadAll() {
   const [inv, caps, idx] = await Promise.all([api('GET', 'inventory'), api('GET', 'captures'), api('GET', 'index')]);
   S.inv = inv.inventory; S.rank = inv.rank; S.site = inv.site; S.flows = inv.flows || []; S.caps = caps; S.index = idx;
+  S.capAssets = inv.captureAssets || {};
+  S.assetCaps = new Map();
+  Object.entries(S.capAssets).forEach(([id, ids]) => (ids || []).forEach((a) => {
+    const list = S.assetCaps.get(a) || []; list.push(id); S.assetCaps.set(a, list);
+  }));
 }
 
 // ------------------------------------------------------------------ chrome
@@ -229,10 +248,33 @@ function filterPanel() {
     group('Colour nodes by', on('Role', S.color === 'role', () => { S.color = 'role'; }), on('Advisory risk', S.color === 'risk', () => { S.color = 'risk'; })),
     group('Advisories on the graph', on(S.showAdv ? 'Shown (EXACT, PROBABLE)' : 'Hidden', S.showAdv, () => { S.showAdv = !S.showAdv; })),
     group('Layout', on('Force', S.layout === 'force', () => { S.layout = 'force'; relayoutSoon(); }), on('Purdue levels', S.layout === 'purdue', () => { S.layout = 'purdue'; relayoutSoon(); })),
-    h('div', { class: 'muted small' }, 'Filters dim the non-matching assets and conversations on the graph.'));
+    doneCaps().length ? group('Captures on the graph', doneCaps().map((c) => on(c.file, !S.capOff.has(c.id), () => toggleCapture(c.id))))
+      : group('Captures on the graph', h('span', { class: 'muted small' }, 'No merged captures yet')),
+    h('div', { class: 'row' }, h('button', { class: 'btn sm', onclick: resetView }, 'Reset view')),
+    h('div', { class: 'muted small' }, 'Filters dim the non-matching assets and conversations on the graph. Capture buttons hide or show everything that capture contributed.'));
   if (had >= 0) p.querySelectorAll('button')[had].focus();
 }
 const relayoutSoon = () => { GR.pos.clear(); GR.sig = ''; GR.fitted = false; };
+const doneCaps = () => S.caps.filter((c) => c.state === 'done');
+function toggleCapture(id) { if (S.capOff.has(id)) S.capOff.delete(id); else S.capOff.add(id); }
+/** Show only one capture on the graph, replacing any other query. */
+function focusCapture(id) {
+  S.capOff.delete(id);
+  S.search = 'capture:' + id;
+  const q = $('q');
+  if (q) q.value = S.search;
+  if (location.hash !== '#/graph') location.hash = '#/graph'; else render();
+}
+/** Clear every view filter and selection; captures, edits and the change log stay untouched. */
+function resetView() {
+  S.search = ''; S.level = 'ALL'; S.kevOnly = false; S.unvalOnly = false;
+  S.hideUnknown = false; S.hideScans = false; S.protoOff = new Set(); S.capOff = new Set();
+  S.color = 'role'; S.showAdv = true; S.layout = 'force'; S.path = null; S.openCap = null; S.openAdv = null;
+  $('q').value = ''; $('start').value = ''; $('target').value = '';
+  lastRoute = '';
+  if (location.hash && location.hash !== '#/graph') location.hash = '#/graph';
+  else { relayoutSoon(); render(); }
+}
 
 function legendPanel() {
   const sw = (c, t) => h('span', { class: 'row legend' }, h('span', { class: 'dot', style: { background: c } }), t);
@@ -326,14 +368,16 @@ function captures() {
       h('div', { class: 'trow thead g-cap' }, h('span', {}, 'File'), h('span', {}, 'Status'), h('span', {}, 'Queued by'), h('span', {}, 'Result'), h('span', {}, 'SHA-256'), h('span', {})),
       S.caps.length === 0 ? h('div', { class: 'empty' }, 'Nothing queued yet.') : S.caps.slice().reverse().map((x) =>
         h('div', { class: 'trow g-cap' + (x.id === S.openCap ? ' sel' : '') },
-          h('span', {}, h('span', { class: 'cell-name wrap' }, x.file), h('span', { class: 'muted small' }, fmtSize(x.size) + ' · ' + fmtTime(x.at))),
-          h('span', {}, h('span', { class: 'badge st-' + x.state }, stateTxt[x.state])),
+          h('span', {}, h('span', { class: 'cell-name wrap' }, x.file), h('span', { class: 'muted small' }, fmtSize(x.size) + ' · ' + fmtTime(x.at)
+            + (x.state === 'done' ? ' · ' + (S.capAssets[x.id] || []).length + ((S.capAssets[x.id] || []).length === 1 ? ' device' : ' devices') : ''))),
+          h('span', { class: 'row' }, h('span', { class: 'badge st-' + x.state }, stateTxt[x.state]), S.capOff.has(x.id) ? h('span', { class: 'badge lv-NONE' }, 'Hidden') : null),
           h('span', {}, x.by),
           h('span', { class: 'small' }, x.state === 'done' && x.diff ? '+' + x.diff.new + ' new · ' + x.diff.changed + ' changed · ' + x.diff.notSeen + ' not seen'
             : x.state === 'failed' ? 'Exit ' + x.exit : x.state === 'running' ? 'Reading frames…' : 'Waiting for the worker'),
           h('span', { class: 'mono small muted', title: x.sha256 }, x.sha256.slice(0, 8) + '…' + x.sha256.slice(-4)),
           h('span', { class: 'row' },
             x.state === 'queued' || x.state === 'failed' ? h('button', { class: 'btn sm', onclick: () => removeCapture(x) }, 'Remove') : null,
+            x.state === 'done' ? h('button', { class: 'btn sm', onclick: () => { toggleCapture(x.id); render(); } }, S.capOff.has(x.id) ? 'Show' : 'Hide') : null,
             x.state === 'done' || x.state === 'failed' ? h('button', { class: 'btn sm', onclick: () => { S.openCap = x.id; render(); } }, 'Details') : null))))),
     c ? h('div', { class: 'card' }, h('div', { class: 'card-h' }, c.file, h('span', { class: 'badge st-' + c.state }, stateTxt[c.state])),
       c.state === 'done' && c.summary ? h('div', { class: 'card-b facts' },
@@ -345,7 +389,16 @@ function captures() {
           h('span', { class: 'badge ok' }, '+' + c.diff.new + ' new'), h('span', { class: 'badge warn' }, c.diff.changed + ' changed'), h('span', { class: 'badge lv-NONE' }, c.diff.notSeen + ' not seen'))))
         : c.state === 'failed' ? h('div', { class: 'card-b stack' }, h('div', {}, h('strong', {}, 'Exit ' + c.exit + '. '), c.error),
           h('div', { class: 'muted small' }, 'Classic PCAP and pcapng are read. For anything else, convert on this machine and queue it again, e.g.'),
-          h('div', { class: 'mono code' }, 'editcap -F pcap input.cap output.pcap')) : null) : null,
+          h('div', { class: 'mono code' }, 'editcap -F pcap input.cap output.pcap')) : null,
+      c.state === 'done' ? h('div', { class: 'card-b stack' },
+        h('div', { class: 'head' }, h('div', { class: 'muted small' }, c.kind === 'posted' ? 'Assets posted in this batch' : 'Devices contributed by this capture'),
+          h('button', { class: 'btn sm', onclick: () => focusCapture(c.id) }, 'Show only on graph')),
+        (S.capAssets[c.id] || []).length ? (S.capAssets[c.id] || []).map((id) => {
+          const a = byId(id);
+          return a ? h('a', { class: 'rv', href: '#/asset/' + encodeURIComponent(a.id) },
+            h('span', { class: 'cell-name' }, nameOf(a)), h('span', { class: 'mono muted small' }, a.id))
+            : h('div', { class: 'mono small muted' }, id);
+        }) : h('div', { class: 'empty' }, 'No assets recorded for this capture.')) : null) : null,
   ];
 }
 const fact = (label, value, mono) => h('div', {}, h('div', { class: 'muted small' }, label), h('div', { class: mono ? 'mono' : 'fact-v' }, value));
@@ -382,6 +435,9 @@ function asset(id) {
             h('span', { class: 'badge ' + (isValidated(a) ? 'ok' : 'lv-NONE') }, isValidated(a) ? 'Validated' : 'Pending validation')),
           h('div', { class: 'mono muted' }, a.id + ' · ' + (str(val(a, 'mac')) || 'no MAC (sub-unit or routed)')),
           a.subaddr ? h('div', { class: 'small muted' }, 'Sub-unit ' + a.subaddr + '. Inherits IP, protocols and ports from its parent.') : null,
+          h('div', { class: 'small row' }, h('span', { class: 'muted' }, 'Seen in:'), capturesOf(a).length
+            ? capturesOf(a).map((cid) => h('button', { class: 'btn sm', title: 'Show only this capture on the graph', onclick: () => focusCapture(cid) }, capFileName(cid)))
+            : h('span', { class: 'muted' }, 'no capture provenance')),
           a.match && a.match.matchedAs ? h('div', { class: 'small muted' }, 'Matched as ' + a.match.matchedAs + ' (from the Siemens order number).') : null),
         h('div', { class: 'row', style: { gap: '20px' } },
           fact('Completeness', c.filled + ' / 14'), h('div', {}, h('div', { class: 'muted small' }, 'Match ceiling'), levelBadge(c.matchCeiling)),
@@ -628,7 +684,7 @@ function flowLabel(f) {
 }
 
 function graphModel() {
-  const all = assets(), nodes = all.map((a) => ({ id: a.id, a })), edges = [];
+  const all = assets().filter(assetVisible), nodes = all.map((a) => ({ id: a.id, a })), edges = [];
   const ipOf = (a) => str(val(a, 'ip')) || a.id.split('/')[0];
   const owner = new Map();                                              // IP -> the asset that owns it (a unit/slot only when nothing else does)
   for (const a of all) if (!a.subaddr) owner.set(ipOf(a), a.id);
@@ -640,7 +696,7 @@ function graphModel() {
   });
   if (S.showAdv) {
     for (const r of advisoryRows()) {
-      const hits = r.hits.filter((x) => x.level === 'EXACT' || x.level === 'PROBABLE');   // vendor-only matches would hang every advisory on every device
+      const hits = r.hits.filter((x) => (x.level === 'EXACT' || x.level === 'PROBABLE') && assetVisible(x.a));   // vendor-only matches would hang every advisory on every device
       if (!hits.length) continue;
       nodes.push({ id: 'adv:' + r.id, adv: r });
       for (const x of hits) edges.push({ id: 'a:' + r.id + '>' + x.a.id, kind: 'adv', from: x.a.id, to: 'adv:' + r.id, label: x.level });

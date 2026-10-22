@@ -68,7 +68,10 @@ final class Site {
     /** Built inventory; null = stale. Cleared whenever a capture is merged or removed, an edit is saved or the index changes. */
     private Inventory cached;
     private List<Object> cachedFlows = List.of();    // conversations of the merged captures; built together with `cached`
+    /** Capture id -> inventory record ids it contributed; built with `cached`, so the UI can hide one capture's nodes. */
+    private Map<String, List<String>> cachedCaptureAssets = new LinkedHashMap<>();
     static final int MAX_FLOWS = 5_000, MAX_LABELS = 8, MAX_OPERATIONS = 50, MAX_SAMPLES = 8;
+    static final int MAX_CAPTURE_ASSETS = 5_000, MAX_FLOW_CAPTURES = 64;
     private static final Set<String> FLOW_SOURCES = Set.of("zeek", "native", "zeek+native"), OP_ACCESS = Set.of("read", "write", "control", "other");
     private AdvisoryMatcher matcher;                // for matcherFor; the index is immutable once loaded
     private AdvisoryIndex matcherFor;
@@ -308,13 +311,16 @@ final class Site {
         if (cached != null) return cached;
         List<Object> all = new ArrayList<>();
         Map<String, Map<String, Object>> flows = new LinkedHashMap<>();
+        Map<String, List<String>> captureAssets = new LinkedHashMap<>();
         for (var c : captures) {
             if (!"done".equals(c.get("state"))) continue;
             Path p = captureDir.resolve(c.get("id") + ".obs.json");
             if (!Files.exists(p)) continue;
             var doc = Json.obj(Json.parse(Files.readString(p)));
             all.addAll(Json.arr(doc.get("assets")));
-            addFlows(flows, doc.get("flows"));
+            addFlows(flows, doc.get("flows"), String.valueOf(c.get("id")));
+            List<String> ids = assetIds(doc);
+            if (!ids.isEmpty()) captureAssets.put(String.valueOf(c.get("id")), ids);
         }
         edits.forEach((id, fields) -> {
             Map<String, Object> e = new LinkedHashMap<>();
@@ -335,7 +341,57 @@ final class Site {
         if (matcherFor != idx) { matcher = new AdvisoryMatcher(Inventory.sanitize(idx)); matcherFor = idx; }
         inv.match(idx.meta, matcher, verified);
         cachedFlows = flowList(flows.values());
+        cachedCaptureAssets = recordIds(captureAssets, inv);
         return cached = inv;
+    }
+
+    /**
+     * The inventory record ids one capture's observations name, before merging with other captures. The id rules match
+     * {@link Inventory}: ip, ip/subaddr, or mac when there is no ip. Unknown or split sub-addresses are normalised away
+     * in {@link #recordIds} once the merged inventory exists.
+     */
+    private static List<String> assetIds(Map<String, Object> doc) {
+        Set<String> out = new LinkedHashSet<>();
+        for (Object o : Json.arr(doc.get("assets"))) {
+            Map<String, Object> a = Json.obj(o);
+            String ip = plain(a.get("ip")), mac = plain(a.get("mac")), sub = plain(a.get("subaddr")), id = plain(a.get("id"));
+            if (ip != null) out.add(sub != null && sub.matches("u\\d{1,3}|slot\\d{1,3}") ? ip + "/" + sub : ip);
+            else if (mac != null) out.add(mac.toLowerCase(Locale.ROOT).replace('-', ':'));
+            else if (id != null) out.add(id);
+            if (out.size() >= MAX_CAPTURE_ASSETS) break;
+        }
+        return List.copyOf(out);
+    }
+
+    private static String plain(Object v) {
+        if (v instanceof String s) return Inventory.clean(s, 64);
+        if (v instanceof Map<?, ?> m && Json.obj(m).get("value") instanceof String s) return Inventory.clean(s, 64);
+        return null;
+    }
+
+    /** Maps raw capture ids to the ids the merged inventory actually produced (a sub-unit can fold into its parent). */
+    private static Map<String, List<String>> recordIds(Map<String, List<String>> raw, Inventory inv) {
+        Set<String> ids = new HashSet<>();
+        Map<String, String> byMac = new HashMap<>();
+        for (var r : inv.records) {
+            ids.add(r.id);
+            var mac = r.f.get("mac");
+            if (mac != null && mac.value() instanceof String m) byMac.putIfAbsent(m.toLowerCase(Locale.ROOT), r.id);
+        }
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        for (var e : raw.entrySet()) {
+            Set<String> keep = new LinkedHashSet<>();
+            for (String id : e.getValue()) {
+                if (ids.contains(id)) keep.add(id);
+                else if (id.indexOf('/') > 0 && ids.contains(id.substring(0, id.indexOf('/')))) keep.add(id.substring(0, id.indexOf('/')));
+                else {
+                    String mac = byMac.get(id.toLowerCase(Locale.ROOT));
+                    if (mac != null) keep.add(mac);
+                }
+            }
+            if (!keep.isEmpty()) out.put(e.getKey(), List.copyOf(keep));
+        }
+        return out;
     }
 
     /**
@@ -344,7 +400,7 @@ final class Site {
      * fields stay absent when no capture reported them. The input is untrusted (a POSTed payload can carry anything):
      * strings are cleaned, counts clamped, sizes capped.
      */
-    private static void addFlows(Map<String, Map<String, Object>> into, Object list) {
+    private static void addFlows(Map<String, Map<String, Object>> into, Object list, String captureId) {
         for (Object o : Json.arr(list)) {
             var f = Json.obj(o);
             if (!(f.get("client") instanceof String c) || !(f.get("server") instanceof String s) || !(f.get("protocol") instanceof String pr)) continue;
@@ -384,6 +440,12 @@ final class Site {
                 String was = m.get("source") instanceof String x ? x : "";
                 boolean zeek = src.contains("zeek") || was.contains("zeek"), nat = src.contains("native") || was.contains("native");
                 m.put("source", zeek && nat ? "zeek+native" : zeek ? "zeek" : "native");
+            }
+            // Provenance is the capture that produced the flow, never something an untrusted posted payload can set.
+            if (!Objects.toString(captureId, "").isEmpty()) {
+                @SuppressWarnings("unchecked")
+                List<Object> cs = (List<Object>) m.computeIfAbsent("captures", k -> new ArrayList<Object>());
+                if (cs.size() < MAX_FLOW_CAPTURES && !cs.contains(captureId)) cs.add(captureId);
             }
             mergeOperations(m, f.get("operations"));
         }
@@ -457,6 +519,7 @@ final class Site {
         m.put("rank", InventoryReport.rank(inv).stream().map(r -> r.id).toList());
         m.put("site", site);
         m.put("flows", cachedFlows);
+        m.put("captureAssets", cachedCaptureAssets);
         return m;
     }
 

@@ -81,6 +81,7 @@ written before a key existed stay valid and old consumers ignore the keys they d
 | `operations` | What was asked of the server, aggregated by (function, object, address, quantity); see below. |
 | `scanAttempts` | Connections to the server that never completed a handshake. Absent when 0. |
 | `source` | Who produced the flow: `native`, `zeek`, or `zeek+native` when both reported it and the values were merged. |
+| `captures` | Console-side only (not analyzer output): capture ids that reported this flow, in merge order, after `GET /api/v1/inventory`. Used to hide one capture's edges. |
 
 ### Operations
 
