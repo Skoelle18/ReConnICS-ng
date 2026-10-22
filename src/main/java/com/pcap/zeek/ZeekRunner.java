@@ -76,7 +76,8 @@ public final class ZeekRunner {
             if (dir.isBlank()) {
                 continue;
             }
-            for (String ext : new String[]{"", ".exe", ".cmd", ".bat"}) {
+            // extensions first: Docker Desktop ships an extensionless shell script "docker" beside docker.exe that Windows cannot launch
+            for (String ext : new String[]{".exe", ".cmd", ".bat", ""}) {
                 Path p = Path.of(dir).resolve(name + ext);
                 if (Files.isRegularFile(p) && Files.isExecutable(p)) {
                     return Optional.of(p);

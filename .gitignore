@@ -3,6 +3,7 @@
 
 # Log file
 *.log
+!src/test/resources/**/*.log
 
 # BlueJ files
 *.ctxt
