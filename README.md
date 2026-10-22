@@ -221,8 +221,8 @@ Tour:
   conversations are labelled arrows (`Modbus FC43/14 request`, `ENIP ListIdentity`, `S7 SZL read request`), and EXACT/PROBABLE advisories hang off assets
   as triangles. Search panel top left (Start/Target node, shortest conversation path, filters), tool strip on the right (refresh, import PCAPs,
   export, re-layout, review queue, overview, settings, legend), zoom bottom right, filter query bar at the bottom (`level:exact kev proto:modbus`).
-  Click a node (or Tab to it and press Enter) for the asset panel, or click an edge for the conversation panel (protocol, rate, operations). There is no row-based inventory table: the graph is the inventory, and the filters (level, KEV, protocol, unknown/scan edges, `rate>N`) dim what does not match. `inventory.csv/json` and the report stay available from the export button.
-- **Capture queue**: upload a PCAP (or have another process `POST` one); each runs in turn and shows `new` / `changed` / `notSeen` counts.
+  Click a node (or Tab to it and press Enter) for the asset panel, or click an edge for the conversation panel (protocol, rate, operations). There is no row-based inventory table: the graph is the inventory, and the filters (level, KEV, protocol, unknown/scan edges, `pcap:cell1`, `capture:c0001`, `rate>N`) dim what does not match. `inventory.csv/json` and the report stay available from the export button.
+- **Capture queue**: upload a PCAP (or have another process `POST` one); each runs in turn and shows `new` / `changed` / `notSeen` counts and the devices it contributed. **Hide** removes a capture's exclusively contributed nodes from the graph without deleting the capture or its evidence; **Reset view** clears every filter and selection.
 - **Asset panel** (click a node): tabs **Attributes** (value, confidence, evidence per field), **Advisories** (EXACT / PROBABLE / POSSIBLE
   matches), **Conversations** (peers with rate and operations) and **History**. The overview ranks devices fix-first.
 - **Change log**: every capture merge and every edit, append-only (`firmware 20.011 -> 24.011` style rows).

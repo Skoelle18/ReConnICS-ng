@@ -242,6 +242,29 @@ class SiteServerTest {
         assertEquals(List.of("x"), Json.arr(write.get("sampleValues")), "only numbers and strings are kept as samples");
     }
 
+    // the UI can tell which capture contributed which node and edge, without reading the observations files
+    @Test
+    void captureProvenanceMapsAssetsAndFlows() throws Exception {
+        var first = send("POST", "/api/v1/captures?name=cell1.pcap", "application/octet-stream", acmePcap("1.9"), "X-Actor", "R. Analyst");
+        String id1 = (String) Json.obj(Json.parse(first.body())).get("id");
+        assertEquals("done", waitFor(id1).get("state"));
+        var second = send("POST", "/api/v1/captures?name=cell2.pcap", "application/octet-stream", acmePcap("2.1"), "X-Actor", "R. Analyst");
+        String id2 = (String) Json.obj(Json.parse(second.body())).get("id");
+        assertEquals("done", waitFor(id2).get("state"));
+
+        var inv = Json.obj(Json.parse(get("/api/v1/inventory").body()));
+        var byCapture = Json.obj(inv.get("captureAssets"));
+        assertEquals(Set.of("10.10.1.10", "10.10.1.31"), idSet(byCapture.get(id1)), byCapture.toString());
+        assertEquals(Set.of("10.10.1.10", "10.10.1.31"), idSet(byCapture.get(id2)), byCapture.toString());
+        var flows = Json.arr(inv.get("flows"));
+        assertEquals(1, flows.size(), flows.toString());
+        assertEquals(Set.of(id1, id2), idSet(Json.obj(flows.get(0)).get("captures")), flows.toString());
+    }
+
+    private static Set<String> idSet(Object o) {
+        return Json.arr(o).stream().map(String::valueOf).collect(java.util.stream.Collectors.toSet());
+    }
+
     // a merge logs which asset, which field and old -> new; the asset's History shows the same entries
     @Test
     void mergeLogsPerAssetFieldChanges() throws Exception {

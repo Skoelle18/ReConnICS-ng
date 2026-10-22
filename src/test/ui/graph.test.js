@@ -106,6 +106,49 @@ test('graph', async (t) => {
     } finally { app.close(); }
   });
 
+  await t.test('pcap: and capture: match the capture that contributed an asset and its edges', async () => {
+    const captureAssets = { c0001: ['10.0.1.40', '10.0.1.50'], c0002: ['10.0.1.10', '10.0.1.50'] };
+    const captures = [
+      { id: 'c0001', file: 'cell1.pcap', state: 'done', by: 'A', size: 1, at: '2026-10-19T10:00:00Z', sha256: 'a'.repeat(64), diff: { new: 1, changed: 0, notSeen: 0 } },
+      { id: 'c0002', file: 'cell2.pcap', state: 'done', by: 'A', size: 1, at: '2026-10-19T11:00:00Z', sha256: 'b'.repeat(64), diff: { new: 1, changed: 0, notSeen: 0 } },
+    ];
+    const flows = [
+      { client: '10.0.1.50', server: '10.0.1.40', protocol: 'modbus', port: '502/tcp', messages: 2, labels: {}, captures: ['c0001'] },
+      { client: '10.0.1.50', server: '10.0.1.10', protocol: 'ethernet-ip', port: '44818/tcp', messages: 1, labels: {}, captures: ['c0002'] },
+    ];
+    const app = await loadApp({ routes: defaultRoutes({ captureAssets, captures, flows }), hash: '#/graph' });
+    try {
+      const ask = async (q) => { app.$('#q').value = q; app.$('#q').dispatchEvent(new app.window.Event('input')); await settle(); };
+      await ask('pcap:cell1');
+      assert.equal(app.get('assets().filter(matches).map((a) => a.id).sort().join(",")'), '10.0.1.40,10.0.1.50', 'file-name substring matches both devices the capture saw');
+      assert.equal(edges(app).filter((e) => e.classList.contains('flow') && !e.classList.contains('dim')).map((e) => [...e.classList].find((c) => c.startsWith('p-'))).join(','), 'p-modbus',
+        'the conversation from another capture is dimmed too');
+      await ask('capture:c0002');
+      assert.equal(app.get('assets().filter(matches).map((a) => a.id).sort().join(",")'), '10.0.1.10,10.0.1.50');
+      assert.equal(app.get('parseQuery("capture:c0002").capture'), 'c0002');
+    } finally { app.close(); }
+  });
+
+  await t.test('hiding a capture removes only its nodes, and Reset view brings them back', async () => {
+    const captureAssets = { c0001: ['10.0.1.40', '10.0.1.20'], c0002: ['10.0.1.10', '10.0.1.40'] };
+    const captures = [
+      { id: 'c0001', file: 'cell1.pcap', state: 'done', by: 'A', size: 1, at: '2026-10-19T10:00:00Z', sha256: 'a'.repeat(64), diff: { new: 1, changed: 0, notSeen: 0 } },
+      { id: 'c0002', file: 'cell2.pcap', state: 'done', by: 'A', size: 1, at: '2026-10-19T11:00:00Z', sha256: 'b'.repeat(64), diff: { new: 1, changed: 0, notSeen: 0 } },
+    ];
+    const app = await loadApp({ routes: defaultRoutes({ captureAssets, captures }), hash: '#/graph' });
+    try {
+      app.get('S').capOff.add('c0001');
+      app.get('render()');
+      assert.equal(node(app, '10.0.1.20'), null, 'the capture-exclusive node is gone');
+      assert.ok(node(app, '10.0.1.40'), 'a node another capture also saw stays');
+      assert.ok(node(app, '10.0.1.10'), 'the other capture stays');
+      app.$$('#pop-filter button').find((b) => b.textContent === 'Reset view').click();
+      await settle();
+      assert.ok(node(app, '10.0.1.20'), 'Reset view clears the hidden captures');
+      assert.equal(app.get('S').capOff.size, 0);
+    } finally { app.close(); }
+  });
+
   await t.test('path button highlights the shortest conversation path, or says there is none', async () => {
     const app = await loadApp({ routes: defaultRoutes(), hash: '#/graph' });
     try {
