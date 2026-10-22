@@ -100,6 +100,11 @@ A small curated ODVA vendor-ID table is included for common IDs (checked against
   Docker or a Linux/macOS Zeek, `--engine zeek` is an error (exit 5) and `--engine auto` falls back to native with a note. The
   Docker image could not be built in the Linux environment this work was done in (no Docker daemon); the same steps were run
   natively, but the first `docker build` is untested.
+- **The Docker engine writes its logs inside the container first.** Zeek writes to `/work` on the container filesystem and
+  the entrypoint then copies the log set to the mounted `/out`. Writing directly to the host bind mount is far slower on
+  Windows (Docker Desktop round-trips every small write to the host): one 209 MB capture produced 1.8 GB of logs in ~3.3
+  minutes through the mount against ~2 seconds container-local. The container therefore needs roughly one log-set
+  (watch `modbus_detailed.log`) of free disk for the duration of a run; `docker run --rm` frees it.
 - **The ICSNPP DNP3, ENIP and S7comm packages have no release tags**; the engine is pinned to the commits tested. A newer
   commit may change log fields. Zeek 8.0.9 was the only Zeek version tested.
 - **Banners are spoofable text.** `software.log` can name a vendor only through a short fixed table, at MEDIUM confidence, and

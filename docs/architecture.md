@@ -50,7 +50,9 @@ engines are deterministic parsers, and the merge is rules and lookup tables.
 ```
 
 Zeek runs beside the native pass (`ZeekRunner`), from an argument list, in an empty working directory, with a timeout; in Docker
-mode with `--network none` and the capture's folder mounted read-only. Its logs are read by `ZeekLogReader`, which treats them as
+mode with `--network none` and the capture's folder mounted read-only. The container writes its logs to its own filesystem
+(`/work`) and copies them to the mounted `/out` in one pass, because small writes through a Windows bind mount are about two
+orders of magnitude slower (see `docs/limitations.md`). Its logs are read by `ZeekLogReader`, which treats them as
 untrusted input (64 KiB line cap, JSON depth and string limits, per-field validation and caps; bad rows are skipped and counted).
 
 ### Zeek logs: the real list
