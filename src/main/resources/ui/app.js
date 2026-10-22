@@ -666,6 +666,7 @@ function log() {
 // Assets are nodes, observed conversations (S.flows, client -> server) are directed edges, advisories hang off assets.
 // Plain SVG and a small force layout; no library, so nothing is fetched and the CSP stays default-src 'self'.
 const NODE_R = 18;
+const MERGE_AT = 3;   // more conversations than this from one host to another are drawn as a single edge that opens the client's asset panel
 const ICONS = {   // 24x24 line icons, drawn dark on the bright node colour
   PLC: 'M5 6h14v12H5z M9 10h6 M9 14h6', Workstation: 'M3 5h18v11H3z M8 20h8 M12 16v4', Network: 'M12 4v16 M4 12h16 M12 4l-3 3 M12 4l3 3 M12 20l-3-3 M12 20l3-3 M4 12l3-3 M4 12l3 3 M20 12l-3-3 M20 12l-3 3',
   Drive: 'M12 8a4 4 0 1 0 .01 0 M3 12h3 M18 12h3', 'Comms adapter': 'M4 12h16 M8 8l-4 4 4 4 M16 8l4 4-4 4',
@@ -690,10 +691,21 @@ function graphModel() {
   for (const a of all) if (!a.subaddr) owner.set(ipOf(a), a.id);
   for (const a of all) if (a.subaddr && !owner.has(ipOf(a))) owner.set(ipOf(a), a.id);
   for (const a of all) if (a.subaddr && owner.get(ipOf(a)) !== a.id) edges.push({ id: 'u:' + a.id, kind: 'unit', from: owner.get(ipOf(a)), to: a.id, label: a.subaddr });
+  const byPair = new Map();                                             // from>to -> its flows; a busy pair becomes one edge, not one per port
   S.flows.forEach((f, i) => {
     const from = owner.get(f.client), to = owner.get(f.server);
-    if (from && to && from !== to && !flowHidden(f)) edges.push({ id: 'f' + i, key: flowKey(f), kind: 'flow', from, to, f, n: f.messages || 0, label: flowLabel(f) });
+    if (!(from && to && from !== to) || flowHidden(f)) return;
+    const k = from + '\n' + to;
+    (byPair.get(k) || byPair.set(k, []).get(k)).push({ f, i, from, to });
   });
+  for (const g of byPair.values()) {
+    if (g.length <= MERGE_AT) { for (const { f, i, from, to } of g) edges.push({ id: 'f' + i, key: flowKey(f), kind: 'flow', from, to, f, n: f.messages || 0, label: flowLabel(f) }); continue; }
+    const fs = g.map((x) => x.f), labels = {}, byProto = {};
+    for (const f of fs) { for (const [k, c] of Object.entries(f.labels || {})) labels[k] = (labels[k] || 0) + c; byProto[f.protocol] = (byProto[f.protocol] || 0) + (f.messages || 0) + 1; }
+    const top = Object.keys(byProto).sort((a, b) => byProto[b] - byProto[a])[0], n = fs.reduce((a, f) => a + (f.messages || 0), 0), scans = fs.reduce((a, f) => a + (f.scanAttempts || 0), 0);
+    const f = { client: fs[0].client, server: fs[0].server, protocol: top, port: fs.length + ' ports', labels, messages: n, scanAttempts: scans };   // synthetic: only what the drawing reads
+    edges.push({ id: 'm' + g[0].i, key: null, kind: 'flow', from: g[0].from, to: g[0].to, f, n, members: fs, label: fs.length + ' conversations' });
+  }
   if (S.showAdv) {
     for (const r of advisoryRows()) {
       const hits = r.hits.filter((x) => (x.level === 'EXACT' || x.level === 'PROBABLE') && assetVisible(x.a));   // vendor-only matches would hang every advisory on every device
@@ -730,9 +742,13 @@ function relax(nodes, edges, iters, warm) {
       const f = K * K / d / d;
       dx[i] += x * f; dy[i] += y * f; dx[j] -= x * f; dy[j] -= y * f;
     }
+    const sprung = new Set();                                          // one spring per node pair, however many conversations they share
     for (const e of edges) {
       const i = ix.get(e.from), j = ix.get(e.to);
       if (i == null || j == null) continue;
+      const pk = i < j ? i + ',' + j : j + ',' + i;
+      if (sprung.has(pk)) continue;
+      sprung.add(pk);
       const x = P[i].x - P[j].x, y = P[i].y - P[j].y, d = Math.hypot(x, y) || 1, f = d / K * (e.kind === 'adv' ? 0.6 : 1);
       dx[i] -= x * f; dy[i] -= y * f; dx[j] += x * f; dy[j] += y * f;
     }
@@ -876,14 +892,14 @@ function drawGraph() {
   const els = { nodes: new Map(), edges: [] };
   const edgeEls = edges.map((e) => {
     const flow = e.kind === 'flow', pk = flow ? protoKey(e.f.protocol) : '';
-    const chosen = selEdge === e.key, hot = chosen || (pathE && pathE.has(e.id));
-    const dim = !(on.has(e.from) && on.has(e.to)) || (pathE && !hot) || (sel && !(e.from === sel || e.to === sel)) || (selEdge && !chosen) || (flow && !flowMatchesQuery(e.f));
+    const chosen = !!e.key && selEdge === e.key, hot = chosen || (pathE && pathE.has(e.id));
+    const dim = !(on.has(e.from) && on.has(e.to)) || (pathE && !hot) || (sel && !(e.from === sel || e.to === sel)) || (selEdge && !chosen) || (flow && !(e.members || [e.f]).some(flowMatchesQuery));
     const path = sv('path', { class: 'epath', fill: 'none', 'stroke-width': flow ? 1.5 + Math.min(5, Math.log10(e.n + 1) * 1.6) : 1.5,
       stroke: flow && !hot ? PROTO_COLOR[pk] : null, 'marker-end': 'url(#arr-' + (hot ? 'hot' : flow ? 'p-' + pk : e.kind) + ')' });
     const hit = flow ? sv('path', { class: 'ehit', fill: 'none' }) : null;      // a wide invisible stroke: a 2 px line is hard to click
     const label = sv('text', { class: 'elabel', 'text-anchor': 'middle', 'paint-order': 'stroke' }, e.label);
     els.edges.push({ e, path, hit, label });
-    const open = () => { if (GR.moved || GR.panned) { GR.moved = GR.panned = false; return; } location.hash = '#/edge/' + encodeURIComponent(e.key); };
+    const open = () => { if (GR.moved || GR.panned) { GR.moved = GR.panned = false; return; } location.hash = e.key ? '#/edge/' + encodeURIComponent(e.key) : '#/asset/' + encodeURIComponent(e.from); };   // a merged edge has no single conversation: show the client's list
     return sv('g', { class: 'edge ' + e.kind + (flow ? ' p-' + pk : '') + (dim ? ' dim' : '') + (hot ? ' hot' : '') + (flow && isScan(e.f) ? ' scan' : ''),
       role: flow ? 'button' : 'img', tabindex: flow ? '0' : null, 'data-key': flow ? e.key : null, 'aria-label': edgeLabel(e, byNode),
       onclick: flow ? open : null, onkeydown: flow ? (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); } } : null },
@@ -920,7 +936,7 @@ function placeGraph() {
   for (const [id, g] of GR.els.nodes) { const p = GR.pos.get(id); g.setAttribute('transform', 'translate(' + p.x + ' ' + p.y + ')'); }
   for (const { e, path, hit, label } of GR.els.edges) {
     const a = GR.pos.get(e.from), b = GR.pos.get(e.to), dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1, sgn = e.from < e.to ? 1 : -1;
-    const off = (e.idx - (e.cnt - 1) / 2) * 60 * 2;                       // control-point offset; the arc peaks at half of it
+    const off = (e.idx - (e.cnt - 1) / 2) * Math.min(120, 360 / Math.max(1, e.cnt - 1));   // control-point offset; the arc peaks at half of it; the whole fan stays within ±180 so a scanner's hundreds of ports are not a streak across the canvas
     const cx = (a.x + b.x) / 2 - dy / len * sgn * off, cy = (a.y + b.y) / 2 + dx / len * sgn * off;
     const d0 = Math.hypot(cx - a.x, cy - a.y) || 1, d1 = Math.hypot(b.x - cx, b.y - cy) || 1, r1 = NODE_R + (e.kind === 'adv' ? 9 : 5);
     const sx = a.x + (cx - a.x) / d0 * (NODE_R + 3), sy = a.y + (cy - a.y) / d0 * (NODE_R + 3), ex = b.x - (b.x - cx) / d1 * r1, ey = b.y - (b.y - cy) / d1 * r1;

@@ -60,16 +60,17 @@ java -jar target/reconnics-ng.jar analyze assets/modbus.pcap --post http://127.0
 | 6 | Output error (including refuse-overwrite) |
 | 7 | Schema validation failure |
 
-## Zeek engine (optional)
+## Zeek engine (recommended)
 
-The jar works on its own: **native mode is the default** and needs nothing installed. For protocol detail (which function code,
-which address, how many registers, which values), name the engine and let Zeek + the CISA [ICSNPP](https://github.com/cisagov/ICSNPP)
+**Run with the Zeek engine by default** (`--engine zeek`; the examples below do): it adds the protocol detail (which function code,
+which address, how many registers, which values) and the hosts only Zeek sees. The jar still works on its own: the bare flag default
+is `--engine native`, which needs nothing installed. Zeek + the CISA [ICSNPP](https://github.com/cisagov/ICSNPP)
 parsers read the same capture. The native decoders always run too, and the two results are merged (see
 [`docs/architecture.md`](docs/architecture.md)). Everything is deterministic parsing and lookup tables; nothing in the tool is AI.
 
 | Flag | Meaning |
 |---|---|
-| `--engine native` | The built-in decoders only. Default. |
+| `--engine native` | The built-in decoders only. The flag default when `--engine` is omitted. |
 | `--engine zeek` | Also run Zeek + ICSNPP and merge. **Exit code 5** if neither `zeek` on PATH nor the `reconics-zeek` Docker image exists. |
 | `--engine auto` | Zeek when available, otherwise native, with a `note:` on stderr. |
 | `--zeek-logs DIR` | Read JSON logs you already produced for this capture; Zeek is not run (implies `--engine zeek`). |
@@ -222,7 +223,7 @@ Tour:
   as triangles. Search panel top left (Start/Target node, shortest conversation path, filters), tool strip on the right (refresh, import PCAPs,
   export, re-layout, review queue, overview, settings, legend), zoom bottom right, filter query bar at the bottom (`level:exact kev proto:modbus`).
   Click a node (or Tab to it and press Enter) for the asset panel, or click an edge for the conversation panel (protocol, rate, operations). There is no row-based inventory table: the graph is the inventory, and the filters (level, KEV, protocol, unknown/scan edges, `pcap:cell1`, `capture:c0001`, `rate>N`) dim what does not match. `inventory.csv/json` and the report stay available from the export button.
-- **Capture queue**: upload a PCAP (or have another process `POST` one); each runs in turn and shows `new` / `changed` / `notSeen` counts and the devices it contributed. **Hide** removes a capture's exclusively contributed nodes from the graph without deleting the capture or its evidence; **Reset view** clears every filter and selection.
+- **Capture queue**: upload a PCAP (or have another process `POST` one); each runs in turn through the Zeek engine when Zeek is installed (native decoders otherwise; `-Dreconics.engine=NATIVE` forces native) and shows `new` / `changed` / `notSeen` counts and the devices it contributed. **Hide** removes a capture's exclusively contributed nodes from the graph without deleting the capture or its evidence; **Reset view** clears every filter and selection.
 - **Asset panel** (click a node): tabs **Attributes** (value, confidence, evidence per field), **Advisories** (EXACT / PROBABLE / POSSIBLE
   matches), **Conversations** (peers with rate and operations) and **History**. The overview ranks devices fix-first.
 - **Change log**: every capture merge and every edit, append-only (`firmware 20.011 -> 24.011` style rows).

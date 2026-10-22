@@ -46,6 +46,18 @@ test('graph', async (t) => {
     } finally { app.close(); }
   });
 
+  await t.test('many conversations between one pair merge into one edge that opens the client', async () => {
+    const many = Array.from({ length: 5 }, (_, i) => ({ client: '10.0.1.50', server: '10.0.1.40', protocol: 'unknown', port: (4000 + i) + '/udp', messages: 3 }));
+    const app = await loadApp({ routes: defaultRoutes({ flows: many }), hash: '#/graph' });
+    try {
+      const { edges: es } = app.get('graphModel()');
+      const flow = es.filter((e) => e.kind === 'flow');
+      assert.equal(flow.length, 1);
+      assert.equal(flow[0].label, '5 conversations');
+      assert.equal(flow[0].n, 15);
+    } finally { app.close(); }
+  });
+
   await t.test('gateway units and slots hang off their parent; advisories hang off matched assets', async () => {
     const app = await loadApp({ routes: defaultRoutes(), hash: '#/graph' });
     try {
