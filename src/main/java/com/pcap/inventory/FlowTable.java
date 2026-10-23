@@ -25,19 +25,20 @@ public final class FlowTable {
 
     private static final java.util.regex.Pattern HEX_FC = java.util.regex.Pattern.compile("Modbus FC=0x([0-9a-f]{1,2})( exception)?");
 
-    /** One row of {@code operations}: what was asked of the server, aggregated over (function, address, quantity). */
+    /** One row of {@code operations}: what was asked of the server, aggregated over (function, object, address, quantity, status). */
     public static final class Operation {
-        final String function, access, object;
+        final String function, access, object, status;
         final Long address, quantity;
         long count;
         final List<Object> samples = new ArrayList<>();
 
-        Operation(String function, String access, String object, Long address, Long quantity) {
+        Operation(String function, String access, String object, Long address, Long quantity, String status) {
             this.function = function;
             this.access = access;
             this.object = object;
             this.address = address;
             this.quantity = quantity;
+            this.status = status;
         }
 
         Map<String, Object> toMap() {
@@ -52,6 +53,9 @@ public final class FlowTable {
             }
             if (quantity != null) {
                 m.put("quantity", quantity);
+            }
+            if (status != null) {
+                m.put("status", status);
             }
             m.put("count", count);
             if (!samples.isEmpty()) {
@@ -124,18 +128,22 @@ public final class FlowTable {
             return this;
         }
 
-        /** Adds {@code n} calls of one operation; new (function, address, quantity) rows stop at {@link #MAX_OPERATIONS}. */
         public Flow operation(String function, String access, String object, Long address, Long quantity, long n, List<?> values) {
+            return operation(function, access, object, address, quantity, null, n, values);
+        }
+
+        /** Adds {@code n} calls of one operation; new (function, object, address, quantity, status) rows stop at {@link #MAX_OPERATIONS}. */
+        public Flow operation(String function, String access, String object, Long address, Long quantity, String status, long n, List<?> values) {
             if (function == null || function.isEmpty()) {
                 return this;
             }
-            String key = function + '|' + access + '|' + object + '|' + address + '|' + quantity;
+            String key = function + '|' + access + '|' + object + '|' + address + '|' + quantity + '|' + status;
             Operation o = operations.get(key);
             if (o == null) {
                 if (operations.size() >= MAX_OPERATIONS) {
                     return this;
                 }
-                operations.put(key, o = new Operation(function, access, object, address, quantity));
+                operations.put(key, o = new Operation(function, access, object, address, quantity, status));
             }
             o.count += Math.max(1, n);
             if (values != null) {
@@ -166,7 +174,7 @@ public final class FlowTable {
                     labels.merge(l, n, into ? Math::max : Long::sum);
                 }
             });
-            z.operations.values().forEach(o -> operation(o.function, o.access, o.object, o.address, o.quantity, o.count, o.samples));
+            z.operations.values().forEach(o -> operation(o.function, o.access, o.object, o.address, o.quantity, o.status, o.count, o.samples));
             scanAttempts = into ? Math.max(scanAttempts, z.scanAttempts) : scanAttempts + z.scanAttempts;
         }
 

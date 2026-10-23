@@ -54,7 +54,7 @@ class IngestSchemaValidatorTest {
                   "firstSeen":"2015-10-22T09:00:01Z","lastSeen":"2015-10-22T10:00:00.250Z",
                   "labels":{"FC3":1100,"FC16":100},
                   "operations":[{"function":"FC3 read holding registers","access":"read","address":40001,"quantity":10,
-                                 "count":1100,"sampleValues":[12,0,7]},
+                                 "count":1100,"sampleValues":[12,0,7],"status":"No error 0x00"},
                                 {"function":"FC1 READ","access":"read","object":"g30v1","count":3,"sampleValues":["on"]}],
                   "scanAttempts":0,"source":"zeek+native"}]""").isEmpty());
         assertTrue(flowErrors("""
@@ -78,6 +78,7 @@ class IngestSchemaValidatorTest {
         assertTrue(flowErrors("[" + base + "\"operations\":[{\"function\":\"FC3\",\"access\":\"delete\"}]}]").stream().anyMatch(e -> e.contains("access")));
         assertTrue(flowErrors("[" + base + "\"operations\":[{\"access\":\"read\"}]}]").stream().anyMatch(e -> e.contains("function")));
         assertTrue(flowErrors("[" + base + "\"operations\":[{\"function\":\"FC3\",\"sampleValues\":[1,2,3,4,5,6,7,8,9]}]}]").stream().anyMatch(e -> e.contains("sampleValues")));
+        assertTrue(flowErrors("[" + base + "\"operations\":[{\"function\":\"FC3\",\"status\":\"\"}]}]").stream().anyMatch(e -> e.contains("status")));
         String many = String.join(",", java.util.Collections.nCopies(51, "{\"function\":\"FC3\"}"));
         assertTrue(flowErrors("[" + base + "\"operations\":[" + many + "]}]").stream().anyMatch(e -> e.contains("operations exceeds")));
     }
@@ -89,7 +90,7 @@ class IngestSchemaValidatorTest {
         schema.get("properties").fieldNames().forEachRemaining(documented::add);
         var t = new com.pcap.inventory.FlowTable();
         t.flow("10.0.0.1", "10.0.0.2", "modbus", "502/tcp").message("Modbus FC=0x3").traffic(2, 20).seen(1_445_504_401_000_000L)
-                .scanAttempts(1).source("zeek").operation("FC3", "read", "g1v1", 1L, 2L, 1, List.of(1));
+                .scanAttempts(1).source("zeek").operation("FC3", "read", "g1v1", 1L, 2L, "ok", 1, List.of(1));
         java.util.Set<String> written = new java.util.TreeSet<>(t.toList(true).get(0).keySet());
         assertEquals(documented, written);
         var op = schema.get("properties").get("operations").get("items").get("properties");

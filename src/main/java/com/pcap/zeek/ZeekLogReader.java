@@ -44,7 +44,9 @@ import java.util.regex.Pattern;
  *   <tr><td>modbus.log, modbus_detailed.log</td><td>modbus message counts and the operations table</td></tr>
  *   <tr><td>modbus_read_device_identification.log</td><td>vendor, product code, revision</td></tr>
  *   <tr><td>dnp3.log, dnp3_objects.log, dnp3_control.log</td><td>dnp3 messages, operations, master/outstation</td></tr>
+ *   <tr><td>enip.log, cip.log</td><td>ENIP commands and CIP service operations</td></tr>
  *   <tr><td>cip_identity.log</td><td>vendor, product name, device type, revision, serial</td></tr>
+ *   <tr><td>cotp.log, s7comm.log, s7comm_read_szl.log, s7comm_plus.log</td><td>COTP kinds, S7 functions, SZL reads and S7plus operations</td></tr>
  *   <tr><td>s7comm_known_devices.log</td><td>module name and serial (no model or firmware: Zeek's SZL view is partial)</td></tr>
  *   <tr><td>software.log</td><td>server banners: a vendor from a fixed table at MEDIUM, the banner as evidence</td></tr>
  *   <tr><td>known_services.log</td><td>ports and service names a host answered on</td></tr>
@@ -60,6 +62,7 @@ public final class ZeekLogReader {
     static final int MAX_STAGED_OPS = 2_000;
     static final int MAX_IDENT_GROUPS = 4_096;
     static final int MAX_UNMATCHED_KEYS = 200_000;
+    private static final int MAX_STATUS = 64;
     private static final int MAX_VALUES_SCANNED = 16;
     private static final Pattern IPV4 = Pattern.compile("(?:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)");
     private static final Pattern HEX = Pattern.compile("(?:0[xX])?([0-9a-fA-F]{1,16})");
@@ -85,6 +88,8 @@ public final class ZeekLogReader {
     private final Map<String, Host> hosts = new LinkedHashMap<>();
     private final Map<String, IdentGroup> identGroups = new LinkedHashMap<>();
     private final Set<String> unmatchedSeen = new java.util.HashSet<>();
+    private final Set<String> s7SzlRows = new java.util.HashSet<>();
+    private final Map<String, Staged> pendingOps = new HashMap<>();
 
     /** @param icsOnly   no flows for traffic that is not a decoded ICS protocol (hosts still become assets)
      *  @param keepScans give scan-only conversations a flow of their own */
@@ -100,8 +105,11 @@ public final class ZeekLogReader {
     private record FlowRef(String client, String server, String protocol, String port) {
     }
 
+    private record Staged(String flowKey, String operationKey) {
+    }
+
     private static final class OpAgg {
-        String function, access, object;
+        String function, access, object, status;
         Long address, quantity;
         long count;
         final List<Object> samples = new ArrayList<>();
@@ -135,6 +143,8 @@ public final class ZeekLogReader {
         hosts.clear();
         identGroups.clear();
         unmatchedSeen.clear();
+        s7SzlRows.clear();
+        pendingOps.clear();
         if (dir == null || !Files.isDirectory(dir)) {
             throw new ZeekException(ZeekException.Kind.ENGINE, "the Zeek log directory does not exist: " + dir);
         }
@@ -144,6 +154,12 @@ public final class ZeekLogReader {
         each(dir, "dnp3.log", this::dnp3);
         each(dir, "modbus.log", this::modbus);
         each(dir, "modbus_detailed.log", this::modbusDetailed);
+        each(dir, "s7comm_read_szl.log", this::s7Szl);
+        each(dir, "s7comm.log", this::s7comm);
+        each(dir, "s7comm_plus.log", this::s7plus);
+        each(dir, "cotp.log", this::cotp);
+        each(dir, "enip.log", this::enip);
+        each(dir, "cip.log", this::cip);
         emitOperations();
         each(dir, "conn.log", this::conn);
         emitConns();
@@ -227,6 +243,43 @@ public final class ZeekLogReader {
         }
         String s = v.asText();
         return s.length() > MAX_STR ? s.substring(0, MAX_STR) : s;
+    }
+
+    /** A text or integral field as text: pdu_reference and some ids are numeric in the ICSNPP schemas. */
+    private static String scalar(JsonNode n, String k) {
+        JsonNode v = n.get(k);
+        if (v == null || v.isNull()) {
+            return null;
+        }
+        if (v.isTextual()) {
+            String s = v.asText();
+            return s.length() > MAX_STR ? s.substring(0, MAX_STR) : s;
+        }
+        if (v.isIntegralNumber() && v.canConvertToLong()) {
+            return Long.toString(v.asLong());
+        }
+        return null;
+    }
+
+    private static Long numberOrHex(JsonNode n, String k) {
+        JsonNode v = n.get(k);
+        if (v == null || v.isNull()) {
+            return null;
+        }
+        if (v.isIntegralNumber() && v.canConvertToLong() && v.asLong() >= 0) {
+            return Math.min(v.asLong(), 1_000_000_000_000L);
+        }
+        if (v.isTextual()) {
+            var m = HEX.matcher(v.asText());
+            if (m.matches()) {
+                try {
+                    return Math.min(Long.parseLong(m.group(1), 16), 1_000_000_000_000L);
+                } catch (NumberFormatException e) {
+                    return null;
+                }
+            }
+        }
+        return null;
     }
 
     private static long num(JsonNode n, String k, long dflt) {
@@ -419,8 +472,17 @@ public final class ZeekLogReader {
             return true;
         }
         int fc = ZeekNames.modbusCode(func);
-        boolean exc = func.endsWith("_EXCEPTION") || n.get("exception") != null;
-        f.message("Modbus " + (fc < 0 ? cap(func, 40) : "FC" + fc) + (exc ? " exception" : "")).seen(micros(n, "ts")).source("zeek");
+        boolean exc = func.endsWith("_EXCEPTION") || n.get("exception") != null || text(n, "exception_code") != null;
+        String label = "Modbus " + (fc < 0 ? cap(func, 40) : "FC" + fc) + (exc ? " exception" : "");
+        f.message(label).seen(micros(n, "ts")).source("zeek");
+        String excCode = text(n, "exception_code");
+        if (exc && excCode != null && func.endsWith("_EXCEPTION")) {
+            String base = func.substring(0, func.length() - "_EXCEPTION".length());
+            String access = ZeekNames.modbusAccess(base);
+            stage(o, r, "modbus", rp + "/tcp", ZeekNames.modbusFunction(base), access,
+                    cap(text(n, "request_subfunction_code"), 32), numOrNull(n, "address"), numOrNull(n, "quantity"),
+                    List.of(), cap(excCode, MAX_STATUS));
+        }
         return true;
     }
 
@@ -452,7 +514,10 @@ public final class ZeekLogReader {
             unmatchedSeen.add(key);
         }
         String access = ZeekNames.modbusAccess(func);
-        JsonNode vals = n.get("write".equals(access) ? "request_values" : "response_values");
+        JsonNode vals = n.get("write".equals(access) || "WRITE".equals(func.toUpperCase(java.util.Locale.ROOT).substring(0, Math.min(5, func.length()))) ? "request_values" : "response_values");
+        if (vals == null || !vals.isArray()) {
+            vals = n.get("write".equals(access) ? "response_values" : "request_values");
+        }
         List<Object> samples = new ArrayList<>();
         if (vals != null && vals.isArray()) {
             for (int i = 0; i < vals.size() && i < MAX_VALUES_SCANNED && samples.size() < FlowTable.MAX_SAMPLES; i++) {
@@ -462,7 +527,16 @@ public final class ZeekLogReader {
                 }
             }
         }
-        stage(o, r, "modbus", rp + "/tcp", ZeekNames.modbusFunction(func), access, null, numOrNull(n, "address"), numOrNull(n, "quantity"), samples);
+        String obj = cap(text(n, "request_subfunction_code"), 32);
+        String status = cap(text(n, "exception_code"), MAX_STATUS);
+        if (status == null) {
+            String resp = text(n, "exception");
+            if (resp != null) {
+                status = cap(resp, MAX_STATUS);
+            }
+        }
+        stage(o, r, "modbus", rp + "/tcp", ZeekNames.modbusFunction(func), access,
+                obj, numOrNull(n, "address"), numOrNull(n, "quantity"), samples, status);
         return true;
     }
 
@@ -487,8 +561,22 @@ public final class ZeekLogReader {
             masterOfUid.putIfAbsent(uid, master);
         }
         Long low = numOrNull(n, "range_low"), count = numOrNull(n, "object_count");
+        if (count == null) {
+            count = numOrNull(n, "count");
+        }
+        String obj = cap(text(n, "object_type"), 32);
+        String var = text(n, "variation");
+        String grp = text(n, "group");
+        if (var != null && !var.isBlank() && obj != null && !obj.isBlank()) {
+            obj = cap(obj + " v" + var, 32);
+        } else if (var != null && !var.isBlank() && obj == null) {
+            obj = cap("g" + (grp == null ? "" : grp) + "v" + var, 32);
+        } else if (grp != null && !grp.isBlank() && obj != null && !obj.isBlank() && var == null) {
+            obj = cap(obj + " g" + grp, 32);
+        }
+        String status = cap(text(n, "status"), MAX_STATUS);
         stage(master, outstation, "dnp3", outPort + "/tcp", dnp3Function(name), ZeekNames.dnp3Access(name),
-                cap(text(n, "object_type"), 32), low, count, List.of());
+                obj, low, count, List.of(), status);
         return true;
     }
 
@@ -509,8 +597,9 @@ public final class ZeekLogReader {
         if (op != null) {
             samples.add(cap(op, 32));
         }
+        String status = cap(text(n, "status"), MAX_STATUS);
         stage(master, outstation, "dnp3", (req ? dp : sp) + "/tcp", dnp3Function(name), "control",
-                cap(text(n, "block_type"), 32), numOrNull(n, "index_number"), 1L, samples);
+                cap(text(n, "block_type"), 32), numOrNull(n, "index_number"), 1L, samples, status);
         return true;
     }
 
@@ -537,21 +626,278 @@ public final class ZeekLogReader {
             }
         }
         if (req != null) {                                   // the request itself is an operation even when it carried no objects
-            stage(client, server, "dnp3", (origIsMaster ? rp : op) + "/tcp", dnp3Function(req), ZeekNames.dnp3Access(req), null, null, null, List.of());
+            stage(client, server, "dnp3", (origIsMaster ? rp : op) + "/tcp", dnp3Function(req), ZeekNames.dnp3Access(req), null, null, null, List.of(), null);
         }
         return true;
     }
 
     private static String dnp3Function(String name) {
         int fc = Dnp3Parser.functionCode(name);
+        if (name == null) {
+            return "DNP3";
+        }
         String lower = name.toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
         return fc < 0 ? cap(lower, 40) : "FC" + fc + " " + lower;
     }
 
+    // ------------------------------------------------------------------ s7 / cotp / enip / cip
+
+    private static boolean originator(JsonNode n) {
+        JsonNode v = n.get("is_orig");
+        if (v != null && v.isBoolean()) {
+            return v.asBoolean();
+        }
+        String d = text(n, "direction");
+        return d == null || "request".equalsIgnoreCase(d);
+    }
+
+    private static boolean s7Request(JsonNode n) {
+        String m = text(n, "method");
+        return m != null ? "request".equalsIgnoreCase(m) : originator(n);
+    }
+
+    private static String stripDirection(String s) {
+        if (s == null) {
+            return null;
+        }
+        for (String p : new String[]{"Request: ", "Response: "}) {
+            if (s.startsWith(p)) {
+                return s.substring(p.length());
+            }
+        }
+        return s;
+    }
+
+    private static String s7Function(JsonNode n) {
+        String fn = stripDirection(text(n, "function_name"));
+        String sub = text(n, "subfunction_name");
+        if (fn == null || fn.isBlank()) {
+            fn = text(n, "rosctr_name");
+        }
+        if (fn == null || fn.isBlank()) {
+            fn = "message";
+        }
+        if (sub != null && !sub.isBlank() && !fn.toLowerCase(java.util.Locale.ROOT).contains(sub.toLowerCase(java.util.Locale.ROOT))) {
+            fn = fn + " " + sub;
+        }
+        return cap("S7 " + fn, 64);
+    }
+
+    private static String s7Status(JsonNode n) {
+        String cls = text(n, "error_class"), code = text(n, "error_code");
+        if (cls != null && code != null) {
+            return cap(cls + " " + code, MAX_STATUS);
+        }
+        return cap(cls != null ? cls : code, MAX_STATUS);
+    }
+
+    private static String s7SzlStatus(JsonNode n) {
+        String name = text(n, "return_code_name"), code = text(n, "return_code");
+        if (name != null && code != null) {
+            return cap(name + " " + code, MAX_STATUS);
+        }
+        return cap(name != null ? name : code, MAX_STATUS);
+    }
+
+    private static String cipStatus(JsonNode n) {
+        String name = text(n, "cip_status"), code = text(n, "cip_status_code");
+        if (name != null && code != null) {
+            return cap(name + " " + code, MAX_STATUS);
+        }
+        return cap(name != null ? name : code, MAX_STATUS);
+    }
+
+    private boolean s7comm(JsonNode n) {
+        String o = ip4(text(n, "id.orig_h")), r = ip4(text(n, "id.resp_h"));
+        int rp = port(n, "id.resp_p");
+        if (o == null || r == null || rp < 0) {
+            return false;
+        }
+        FlowTable.Flow f = flows.flow(o, r, "s7comm", rp + "/tcp");
+        if (f == null) {
+            stats.flowsDroppedOverCap++;
+            return true;
+        }
+        String uid = text(n, "uid"), pdu = scalar(n, "pdu_reference");
+        String pendingKey = uid == null || pdu == null ? null : uid + '|' + pdu;
+        if (pendingKey != null && s7SzlRows.contains(pendingKey)) {
+            return true;                                  // already counted from s7comm_read_szl.log
+        }
+        String function = s7Function(n);
+        boolean response = !originator(n);
+        f.source("zeek").seen(micros(n, "ts")).message(function + (response ? " response" : ""));
+        if (response) {
+            if (pendingKey != null) {
+                setStatus(pendingOps.get("s7|" + pendingKey), s7Status(n));
+            }
+            return true;
+        }
+        Staged s = stage(o, r, "s7comm", rp + "/tcp", function, ZeekNames.s7Access(function),
+                cap(text(n, "subfunction_name"), 32), null, null, List.of(), null);
+        if (pendingKey != null && s != null && pendingOps.size() < MAX_UNMATCHED_KEYS) {
+            pendingOps.put("s7|" + pendingKey, s);
+        }
+        return true;
+    }
+
+    private boolean s7Szl(JsonNode n) {
+        String o = ip4(text(n, "id.orig_h")), r = ip4(text(n, "id.resp_h"));
+        int rp = port(n, "id.resp_p");
+        if (o == null || r == null || rp < 0) {
+            return false;
+        }
+        FlowTable.Flow f = flows.flow(o, r, "s7comm", rp + "/tcp");
+        if (f == null) {
+            stats.flowsDroppedOverCap++;
+            return true;
+        }
+        String uid = text(n, "uid"), pdu = scalar(n, "pdu_reference");
+        String pendingKey = uid == null || pdu == null ? null : uid + '|' + pdu;
+        if (pendingKey != null && s7SzlRows.size() < MAX_UNMATCHED_KEYS) {
+            s7SzlRows.add(pendingKey);
+        }
+        boolean response = !s7Request(n);
+        f.source("zeek").seen(micros(n, "ts")).message("S7 Read SZL" + (response ? " response" : ""));
+        if (response) {
+            if (pendingKey != null) {
+                setStatus(pendingOps.get("szl|" + pendingKey), s7SzlStatus(n));
+            }
+            return true;
+        }
+        String name = text(n, "szl_id_name"), id = text(n, "szl_id");
+        String object = cap((name == null || name.isBlank() ? "SZL" : name) + (id == null ? "" : " " + id), 32);
+        Staged s = stage(o, r, "s7comm", rp + "/tcp", "S7 Read SZL", "read", object, 0L, null, List.of(), null);
+        if (pendingKey != null && s != null && pendingOps.size() < MAX_UNMATCHED_KEYS) {
+            pendingOps.put("szl|" + pendingKey, s);
+        }
+        return true;
+    }
+
+    private boolean s7plus(JsonNode n) {
+        String o = ip4(text(n, "id.orig_h")), r = ip4(text(n, "id.resp_h"));
+        int rp = port(n, "id.resp_p");
+        if (o == null || r == null || rp < 0) {
+            return false;
+        }
+        FlowTable.Flow f = flows.flow(o, r, "s7comm", rp + "/tcp");
+        if (f == null) {
+            stats.flowsDroppedOverCap++;
+            return true;
+        }
+        String fn = stripDirection(text(n, "function_name"));
+        if (fn == null || fn.isBlank()) {
+            fn = text(n, "function_code");
+        }
+        if (fn == null || fn.isBlank()) {
+            fn = "message";
+        }
+        boolean response = !originator(n);
+        f.source("zeek").seen(micros(n, "ts")).message(cap("S7plus " + fn + (response ? " response" : ""), 64));
+        if (!response) {
+            stage(o, r, "s7comm", rp + "/tcp", cap("S7plus " + fn, 64), ZeekNames.s7Access(fn),
+                    null, null, null, List.of(), s7Status(n));
+        }
+        return true;
+    }
+
+    private boolean cotp(JsonNode n) {
+        String o = ip4(text(n, "id.orig_h")), r = ip4(text(n, "id.resp_h"));
+        int rp = port(n, "id.resp_p");
+        String pdu = text(n, "pdu_name");
+        if (o == null || r == null || rp < 0 || pdu == null || pdu.isBlank()) {
+            return false;
+        }
+        FlowTable.Flow f = flows.flow(o, r, "s7comm", rp + "/tcp");
+        if (f == null) {
+            stats.flowsDroppedOverCap++;
+            return true;
+        }
+        f.source("zeek").seen(micros(n, "ts")).labelCount("COTP " + pdu, 1);
+        return true;
+    }
+
+    private boolean enip(JsonNode n) {
+        String o = ip4(text(n, "id.orig_h")), r = ip4(text(n, "id.resp_h"));
+        int rp = port(n, "id.resp_p");
+        String command = text(n, "enip_command");
+        if (o == null || r == null || rp < 0 || command == null || command.isBlank()) {
+            return false;
+        }
+        FlowTable.Flow f = flows.flow(o, r, "ethernet-ip", rp + "/tcp");
+        if (f == null) {
+            stats.flowsDroppedOverCap++;
+            return true;
+        }
+        boolean request = originator(n);
+        String function = cap("ENIP " + command, 64);
+        f.source("zeek").seen(micros(n, "ts")).message(function);
+        if (request) {
+            stage(o, r, "ethernet-ip", rp + "/tcp", function, ZeekNames.enipAccess(command),
+                null, null, null, List.of(), cap(text(n, "enip_status"), MAX_STATUS));
+        }
+        return true;
+    }
+
+    private boolean cip(JsonNode n) {
+        String o = ip4(text(n, "id.orig_h")), r = ip4(text(n, "id.resp_h"));
+        int rp = port(n, "id.resp_p");
+        String service = text(n, "cip_service");
+        if (service == null) {
+            service = text(n, "cip_service_code");
+        }
+        if (o == null || r == null || rp < 0 || service == null || service.isBlank()) {
+            return false;
+        }
+        FlowTable.Flow f = flows.flow(o, r, "ethernet-ip", rp + "/tcp");
+        if (f == null) {
+            stats.flowsDroppedOverCap++;
+            return true;
+        }
+        String direction = text(n, "direction");
+        boolean response = direction != null ? "response".equalsIgnoreCase(direction) : !originator(n);
+        f.source("zeek").seen(micros(n, "ts")).labelCount("CIP " + service + (response ? " response" : ""), 1);
+        String uid = text(n, "uid"), seq = scalar(n, "cip_sequence_count");
+        String pendingKey = uid == null || seq == null ? null : uid + '|' + seq;
+        if (response) {
+            if (pendingKey != null) {
+                setStatus(pendingOps.get("cip|" + pendingKey), cipStatus(n));
+            }
+            return true;
+        }
+        String object;
+        String cls = text(n, "class_name"), cid = text(n, "class_id");
+        if (cls != null && !cls.isBlank()) {
+            object = cls;
+        } else {
+            object = cid == null ? null : "class " + cid;
+        }
+        String attr = text(n, "attribute_id");
+        if (object != null && attr != null && !"0x00".equals(attr)) {
+            object = object + " attr " + attr;
+        }
+        long count = Math.min(1_000, Math.max(1, num(n, "occurrence_count", 1)));
+        Staged s = stage(o, r, "ethernet-ip", rp + "/tcp", cap("CIP " + service, 64), ZeekNames.cipAccess(service),
+                cap(object, 32), numberOrHex(n, "instance_id"), null, count, List.of(), null);
+        if (pendingKey != null && s != null && pendingOps.size() < MAX_UNMATCHED_KEYS) {
+            pendingOps.put("cip|" + pendingKey, s);
+        }
+        return true;
+    }
+
     // ------------------------------------------------------------------ operations staging
 
-    private void stage(String client, String server, String protocol, String port, String function, String access, String object,
-                       Long address, Long quantity, List<Object> samples) {
+    private Staged stage(String client, String server, String protocol, String port, String function, String access, String object,
+                         Long address, Long quantity, List<Object> samples) {
+        return stage(client, server, protocol, port, function, access, object, address, quantity, 1, samples, null);
+    }
+
+    private Staged stage(String client, String server, String protocol, String port, String function, String access, String object,
+                         Long address, Long quantity, List<Object> samples, String status) {
+        return stage(client, server, protocol, port, function, access, object, address, quantity, 1, samples, status);
+    }
+
+    private Staged stage(String client, String server, String protocol, String port, String function, String access, String object,
+                         Long address, Long quantity, long count, List<Object> samples, String status) {
         String fk = client + '>' + server + '>' + protocol + '>' + port;
         Map<String, OpAgg> ops = staged.get(fk);
         if (ops == null) {
@@ -559,11 +905,12 @@ public final class ZeekLogReader {
             staged.put(fk, ops);
             stagedFlow.put(fk, new FlowRef(client, server, protocol, port));
         }
-        String ok = function + '|' + access + '|' + object + '|' + address + '|' + quantity;
+        String base = function + '|' + access + '|' + object + '|' + address + '|' + quantity;
+        String ok = base + '|' + status;
         OpAgg a = ops.get(ok);
         if (a == null) {
             if (ops.size() >= MAX_STAGED_OPS) {
-                return;
+                return null;
             }
             ops.put(ok, a = new OpAgg());
             a.function = function;
@@ -571,12 +918,43 @@ public final class ZeekLogReader {
             a.object = object;
             a.address = address;
             a.quantity = quantity;
+            a.status = status;
         }
-        a.count++;
+        a.count += Math.max(1, count);
         for (Object s : samples) {
             if (a.samples.size() < FlowTable.MAX_SAMPLES) {
                 a.samples.add(s);
             }
+        }
+        return new Staged(fk, base);
+    }
+
+    /** Re-keys a staged request once its response supplies the decoded status. */
+    private void setStatus(Staged s, String status) {
+        if (s == null || status == null) {
+            return;
+        }
+        Map<String, OpAgg> ops = staged.get(s.flowKey());
+        if (ops == null) {
+            return;
+        }
+        OpAgg a = ops.remove(s.operationKey() + "|null");
+        if (a == null) {
+            return;
+        }
+        a.status = status;
+        String key = s.operationKey() + '|' + status;
+        OpAgg b = ops.get(key);
+        if (b == null) {
+            ops.put(key, a);
+            return;
+        }
+        b.count += a.count;
+        for (Object v : a.samples) {
+            if (b.samples.size() >= FlowTable.MAX_SAMPLES) {
+                break;
+            }
+            b.samples.add(v);
         }
     }
 
@@ -593,7 +971,7 @@ public final class ZeekLogReader {
             List<OpAgg> all = new ArrayList<>(e.getValue().values());
             all.sort((a, b) -> Long.compare(b.count, a.count));
             for (OpAgg a : all.subList(0, Math.min(all.size(), FlowTable.MAX_OPERATIONS))) {
-                f.operation(a.function, a.access, a.object, a.address, a.quantity, a.count, a.samples);
+                f.operation(a.function, a.access, a.object, a.address, a.quantity, a.status, a.count, a.samples);
             }
         }
     }

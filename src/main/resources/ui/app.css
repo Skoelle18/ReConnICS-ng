@@ -148,7 +148,7 @@ button.trow { cursor: pointer; }
 button.trow:hover { background: var(--hover); }
 .trow.sel { background: var(--accent-tint); }
 .thead { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; background: var(--panel2); }
-.g-op { grid-template-columns: minmax(120px, 2fr) 64px 64px 44px 56px minmax(60px, 1.2fr); min-width: 0; }
+.g-op { grid-template-columns: minmax(120px, 2fr) 64px 64px 44px 56px minmax(60px, 1.2fr) minmax(70px, 1fr); min-width: 0; }
 main.panel .g-op { gap: 6px; }
 .chip.proto { cursor: pointer; }
 .chip.proto:focus-within { outline: 2px solid var(--accent); }

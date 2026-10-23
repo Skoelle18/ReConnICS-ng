@@ -502,12 +502,13 @@ function edgePanel(key) {
       h('div', { class: 'card-b small wrap' }, Object.entries(f.labels).map(([k, n]) => k + ' ×' + n).join(' · '))) : null,
     h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Operations', h('span', { class: 'muted small' }, ops.length ? ops.length + (ops.length === 1 ? ' row' : ' rows') + ', busiest first' : '')),
       ops.length ? h('div', { class: 'scroll' },
-        h('div', { class: 'trow thead g-op' }, ['Function', 'Access', 'Address', 'Qty', 'Count', 'Sample values'].map((t) => h('span', {}, t))),
+        h('div', { class: 'trow thead g-op' }, ['Function', 'Access', 'Address', 'Qty', 'Count', 'Sample values', 'Status'].map((t) => h('span', {}, t))),
         ops.slice().sort((a, b) => (b.count || 0) - (a.count || 0)).map((o) => h('div', { class: 'trow g-op' },
           h('span', { class: 'small wrap' }, o.function, o.object ? h('span', { class: 'mono muted' }, ' ' + o.object) : null),
           h('span', {}, h('span', { class: 'badge ' + (o.access === 'write' || o.access === 'control' ? 'warn' : 'lv-NONE') }, o.access || 'other')),
           h('span', { class: 'mono small' }, o.address != null ? o.address : '—'), h('span', { class: 'mono small' }, o.quantity != null ? o.quantity : '—'),
-          h('span', { class: 'mono' }, o.count != null ? o.count : ''), h('span', { class: 'mono small wrap' }, (o.sampleValues || []).map(String).join(', ') || '—'))))
+          h('span', { class: 'mono' }, o.count != null ? o.count : ''), h('span', { class: 'mono small wrap' }, (o.sampleValues || []).map(String).join(', ') || '—'),
+          h('span', { class: 'small wrap' }, o.status || '—'))))
         : h('div', { class: 'card-b small muted' }, 'No operation detail for this conversation. Function, address, quantity and values come from the Zeek + ICSNPP engine (analyze --engine zeek); the native decoders record message kinds only.')),
   ].filter(Boolean);
 }

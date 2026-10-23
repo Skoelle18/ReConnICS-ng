@@ -29,9 +29,10 @@
         "properties": {
           "function": {"type": "string", "maxLength": 64},
           "access": {"enum": ["read", "write", "control", "other"]},
-          "object": {"type": "string", "maxLength": 32, "description": "DNP3 object group/variation, for example g30v1"},
+          "object": {"type": "string", "maxLength": 32, "description": "DNP3 object group/variation, S7 SZL object or CIP class, for example g30v1"},
           "address": {"$ref": "#/$defs/count"},
           "quantity": {"$ref": "#/$defs/count"},
+          "status": {"type": "string", "maxLength": 64, "description": "Decoded result status, for example No error 0x00 or Success 0xff"},
           "count": {"$ref": "#/$defs/count"},
           "sampleValues": {
             "type": "array",

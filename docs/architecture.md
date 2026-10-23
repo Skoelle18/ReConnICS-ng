@@ -71,9 +71,9 @@ Written on the benchmark captures with `docker/zeek/reconics.zeek` on **Zeek 8.0
 | `modbus_read_device_identification.log` | ICSNPP modbus (needs Zeek ≥ 6.1) | yes | vendor / product code / revision, with the same object-id mapping as `ModbusIdentityParser` |
 | `dnp3.log` | Zeek's own DNP3 analyzer | yes | message counts, function codes |
 | `dnp3_objects.log`, `dnp3_control.log` | ICSNPP dnp3 | yes | object-level operations, control relay output blocks, who is master |
-| `enip.log`, `cip.log` | ICSNPP enip | no | (not needed for identity) |
+| `enip.log`, `cip.log` | ICSNPP enip | yes | ENIP commands and CIP services become operations/message kinds (request/response, class/service/path) with decoded status |
 | `cip_identity.log` | ICSNPP enip | yes | vendor id, device type, product code, revision, serial, product name |
-| `cotp.log`, `s7comm.log`, `s7comm_read_szl.log`, `s7comm_plus.log` | ICSNPP s7comm | no | `s7comm_read_szl.log` records which SZL was read, **not its contents** |
+| `cotp.log`, `s7comm.log`, `s7comm_read_szl.log`, `s7comm_plus.log` | ICSNPP s7comm | yes | S7/COTP/SZL/S7plus decoded into operations/message kinds with request/response status; `s7comm_read_szl.log` still records which SZL was read, **not its contents** |
 | `s7comm_known_devices.log` | ICSNPP s7comm | yes | module name and module serial only; model and firmware come only from the native S7 decoder |
 | `dns`, `dhcp`, `http`, `ssl`, `ssh`, `ftp`, `ntp`, `snmp`, `kerberos`, `ldap`, `ntlm`, `smb_mapping`, `dce_rpc`, `x509` `.log` | Zeek base protocols | no | |
 

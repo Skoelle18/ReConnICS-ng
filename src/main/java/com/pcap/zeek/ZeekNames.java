@@ -21,6 +21,9 @@ final class ZeekNames {
 
     /** "READ_HOLDING_REGISTERS" -> 3; the {@code _EXCEPTION} suffix of an error response is ignored; -1 when unknown. */
     static int modbusCode(String func) {
+        if (func == null) {
+            return -1;
+        }
         String f = func.endsWith("_EXCEPTION") ? func.substring(0, func.length() - "_EXCEPTION".length()) : func;
         return MODBUS_FC.getOrDefault(f, -1);
     }
@@ -42,15 +45,60 @@ final class ZeekNames {
         return f.startsWith("READ") ? "read" : "other";
     }
 
+    /** read / write / control / other for an ENIP command name or code. */
+    static String enipAccess(String command) {
+        String c = command == null ? "" : command.toUpperCase(Locale.ROOT);
+        if (c.contains("LIST") || c.contains("IDENTITY")) {
+            return "read";
+        }
+        if (c.contains("REGISTER") || c.contains("UNREGISTER")) {
+            return "control";
+        }
+        return "other";
+    }
+
+    /** read / write / control / other for a CIP service name. */
+    static String cipAccess(String service) {
+        String s = service == null ? "" : service.toUpperCase(Locale.ROOT);
+        if (s.startsWith("GET") || s.startsWith("READ") || s.startsWith("LIST") || s.startsWith("FIND")
+                || s.startsWith("DISCOVER") || s.startsWith("QUERY")) {
+            return "read";
+        }
+        if (s.startsWith("SET") || s.startsWith("WRITE") || s.startsWith("CREATE") || s.startsWith("DELETE")
+                || s.startsWith("RESET") || s.startsWith("START") || s.startsWith("STOP")) {
+            return "write";
+        }
+        return "other";
+    }
+
+    /** read / write / control / other for an S7 function/subfunction name. */
+    static String s7Access(String function) {
+        String f = function == null ? "" : function.toUpperCase(Locale.ROOT);
+        if (f.contains("READ") || f.contains("UPLOAD")) {
+            return "read";
+        }
+        if (f.contains("WRITE") || f.contains("DOWNLOAD") || f.contains("DELETE") || f.contains("PROGRAM")) {
+            return "write";
+        }
+        if (f.contains("SETUP") || f.contains("START") || f.contains("STOP") || f.contains("CONTROL")) {
+            return "control";
+        }
+        return "other";
+    }
+
     /** read / write / control / other for a DNP3 application function name. */
     static String dnp3Access(String name) {
-        return switch (name) {
+        if (name == null) {
+            return "other";
+        }
+        String n = name.toUpperCase(java.util.Locale.ROOT);
+        return switch (n) {
             case "READ", "RESPONSE", "UNSOLICITED_RESPONSE" -> "read";
             case "WRITE" -> "write";
             case "SELECT", "OPERATE", "DIRECT_OPERATE", "DIRECT_OPERATE_NR", "COLD_RESTART", "WARM_RESTART", "INITIALIZE_DATA",
                  "INITIALIZE_APPL", "START_APPL", "STOP_APPL", "SAVE_CONFIG", "ACTIVATE_CONFIG", "ENABLE_UNSOLICITED",
                  "DISABLE_UNSOLICITED", "ASSIGN_CLASS", "FREEZE_CLEAR", "FREEZE_CLEAR_NR", "IMMED_FREEZE", "IMMED_FREEZE_NR",
-                 "FREEZE_AT_TIME", "FREEZE_AT_TIME_NR" -> "control";
+                 "FREEZE_AT_TIME", "FREEZE_AT_TIME_NR", "DELAY_MEASURE", "RECORD_CURRENT_TIME" -> "control";
             default -> "other";
         };
     }
@@ -59,7 +107,8 @@ final class ZeekNames {
     private static final Map<String, String> SERVICE = Map.ofEntries(
             Map.entry("modbus", "modbus"), Map.entry("dnp3", "dnp3"), Map.entry("dnp3_tcp", "dnp3"), Map.entry("dnp3_udp", "dnp3"),
             Map.entry("enip", "ethernet-ip"), Map.entry("cip", "ethernet-ip"), Map.entry("s7comm", "s7comm"),
-            Map.entry("s7comm_plus", "s7comm"), Map.entry("s7comm-plus", "s7comm"), Map.entry("snmp", "snmp"));
+            Map.entry("s7comm_plus", "s7comm"), Map.entry("s7comm-plus", "s7comm"), Map.entry("cotp", "s7comm"),
+            Map.entry("snmp", "snmp"));
 
     /** The ICS wire names; a flow of one of these counts as an ICS edge in the benchmark, anything else is "unknown". */
     static final List<String> ICS = List.of("modbus", "dnp3", "ethernet-ip", "s7comm", "snmp");

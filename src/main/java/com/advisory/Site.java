@@ -463,6 +463,7 @@ final class Site {
             if (fn.isEmpty()) continue;
             String access = op.get("access") instanceof String a && OP_ACCESS.contains(a) ? a : "other";
             String obj = op.get("object") instanceof String ob ? Inventory.clean(ob, 32) : "";
+            String status = op.get("status") instanceof String st ? Inventory.clean(st, 64) : "";
             Double addr = op.get("address") instanceof Double ? count(op.get("address")) : null, qty = op.get("quantity") instanceof Double ? count(op.get("quantity")) : null;
             String key = fn + '|' + access + '|' + obj + '|' + addr + '|' + qty;
             var e = ops.get(key);
@@ -473,8 +474,12 @@ final class Site {
                 if (!obj.isEmpty()) e.put("object", obj);
                 if (addr != null) e.put("address", addr);
                 if (qty != null) e.put("quantity", qty);
+                if (!status.isEmpty()) e.put("status", status);
                 e.put("count", 0.0);
                 ops.put(key, e);
+            }
+            if (e.get("status") == null && !status.isEmpty()) {
+                e.put("status", status);
             }
             e.put("count", Math.min(1e12, (double) e.get("count") + Math.max(1, count(op.get("count")))));
             List<Object> samples = (List<Object>) e.computeIfAbsent("sampleValues", k -> new ArrayList<Object>());

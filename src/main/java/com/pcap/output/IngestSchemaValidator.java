@@ -161,6 +161,14 @@ public final class IngestSchemaValidator {
                     errors.add(oat + "." + k + " must be a non-negative integer");
                 }
             }
+            if (o.has("status")) {
+                String status = text(o, "status");
+                if (status == null) {
+                    errors.add(oat + ".status must be a non-empty string");
+                } else if (status.length() > 64) {
+                    errors.add(oat + ".status exceeds 64 characters");
+                }
+            }
             if (o.has("sampleValues")) {
                 JsonNode v = o.get("sampleValues");
                 if (!v.isArray()) {

@@ -60,9 +60,9 @@ written before a key existed stay valid and old consumers ignore the keys they d
   "firstSeen": "2015-10-22T09:00:01Z", "lastSeen": "2015-10-22T10:00:00Z",
   "labels": {"Modbus FC3": 1100, "Modbus FC16": 100},
   "operations": [
-    {"function": "FC3 read holding registers", "access": "read", "address": 40001, "quantity": 10,
-     "count": 1100, "sampleValues": [12, 0, 7]}
-  ],
+      {"function": "FC3 read holding registers", "access": "read", "address": 40001, "quantity": 10,
+       "count": 1100, "sampleValues": [12, 0, 7], "status": "No error 0x00"}
+    ],
   "scanAttempts": 0,
   "source": "zeek+native"
 }
@@ -78,7 +78,7 @@ written before a key existed stay valid and old consumers ignore the keys they d
 | `packets`, `bytes` | Traffic counters. Zeek: the whole connection(s), both directions, payload bytes. Native: only the packets that carried a counted message. |
 | `firstSeen`, `lastSeen` | ISO-8601 UTC, millisecond precision only when non-zero. The console derives the message rate (messages per minute) from the two. |
 | `labels` | Message kinds (decoder detail without per-message numbers; Modbus function codes in decimal), at most 8 per flow. |
-| `operations` | What was asked of the server, aggregated by (function, object, address, quantity); see below. |
+| `operations` | What was asked of the server, aggregated by (function, object, address, quantity, status); see below. |
 | `scanAttempts` | Connections to the server that never completed a handshake. Absent when 0. |
 | `source` | Who produced the flow: `native`, `zeek`, or `zeek+native` when both reported it and the values were merged. |
 | `captures` | Console-side only (not analyzer output): capture ids that reported this flow, in merge order, after `GET /api/v1/inventory`. Used to hide one capture's edges. |
