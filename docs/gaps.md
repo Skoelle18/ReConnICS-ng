@@ -23,7 +23,7 @@ longer rebuilds the inventory. If a new empty-UI report comes in, check these fi
 | First run needs `keygen` + `build-index` (about 3 minutes, no bundled index) | Without an index the UI works but shows no advisories; users must fetch CSAF first | Ship a signed index as a release asset (the signed-index workflow produces one) and let the console import it on first start |
 | Multi-IP MAC heuristic drops MACs | A host with two IPs on one NIC is emitted as two assets without a MAC (it looks like a router) | Keep the MAC on the IP seen in ARP for that MAC, or let the user mark a gateway list |
 | Whole-inventory rebuild on every change | A merge still re-matches every asset (about 2 s at 171 assets against 26,871 rows); the UI blocks on that lock while it runs | Match only the assets a merge touched, and keep per-asset results across edits |
-| Posted (`--post`) entries cannot be removed | A wrong post stays in the queue and inventory; only a restart with the entry file deleted clears it | Allow `DELETE /captures/{id}` for `posted` entries and rebuild |
+| Posted (`--post`) entries are removed like merged captures | (done: DELETE on a merged or posted entry rebuilds the inventory without it) | - |
 
 ## P2
 

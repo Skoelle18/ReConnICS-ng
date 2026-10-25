@@ -301,6 +301,39 @@ class SiteServerTest {
     }
 
     @Test
+    void removingAMergedCaptureDropsOnlyWhatItAloneContributed() throws Exception {
+        String a = (String) Json.obj(Json.parse(send("POST", "/api/v1/captures?name=a.pcap", "application/octet-stream", acmePcap("1.9", "10.10.1.10")).body())).get("id");
+        assertEquals("done", waitFor(a).get("state"));
+        String b = (String) Json.obj(Json.parse(send("POST", "/api/v1/captures?name=b.pcap", "application/octet-stream", acmePcap("2.1", "10.10.1.11")).body())).get("id");
+        assertEquals("done", waitFor(b).get("state"));
+        assertEquals(200, send("PATCH", "/api/v1/assets/10.10.1.11", "application/json", "{\"criticality\":\"high\"}".getBytes(StandardCharsets.UTF_8)).statusCode());
+
+        var r = send("DELETE", "/api/v1/captures/" + a, null, null, "X-Actor", "R. Analyst");
+        assertEquals(200, r.statusCode(), r.body());
+        var out = Json.obj(Json.parse(r.body()));
+        assertEquals(1.0, out.get("assetsDropped"), "10.10.1.10 was only in a.pcap");
+        assertEquals(1.0, out.get("assetsKeptSeenElsewhere"), "the PLC is also in b.pcap");
+        var inv = Json.obj(Json.parse(get("/api/v1/inventory").body()));
+        var ids = Json.arr(Json.obj(inv.get("inventory")).get("assets")).stream().map(x -> Json.obj(x).get("id")).toList();
+        assertFalse(ids.contains("10.10.1.10"));
+        assertTrue(ids.containsAll(List.of("10.10.1.31", "10.10.1.11")));
+        assertEquals(List.of(b), Json.obj(inv.get("captureAssets")).keySet().stream().toList(), "a.pcap provenance is gone, b.pcap's stays");
+        assertFalse(Files.exists(tmp.resolve("site/captures/" + a + ".pcap")));
+        assertEquals(404, send("DELETE", "/api/v1/captures/" + a, null, null).statusCode());
+
+        // b.pcap alone saw 10.10.1.11, but a person edited it: the edit is not deleted, so the asset stays
+        out = Json.obj(Json.parse(send("DELETE", "/api/v1/captures/" + b, null, null).body()));
+        assertEquals(1.0, out.get("assetsDropped"));
+        assertEquals(1.0, out.get("assetsKeptWithEdits"));
+        inv = Json.obj(Json.parse(get("/api/v1/inventory").body()));
+        ids = Json.arr(Json.obj(inv.get("inventory")).get("assets")).stream().map(x -> Json.obj(x).get("id")).toList();
+        assertEquals(List.of("10.10.1.11"), ids);
+        assertEquals("high", Json.obj(asset(inv, "10.10.1.11").get("criticality")).get("value"));
+        assertTrue(Json.arr(Json.parse(get("/api/v1/changes").body())).stream().map(Json::obj)
+                .anyMatch(c -> "(site)".equals(c.get("asset")) && c.get("to").toString().contains("removed")), "the removal is in the change log");
+    }
+
+    @Test
     void indexImportVerifiesBeforeSwapping() throws Exception {
         Path fresh = tmp.resolve("fresh.json");
         writeIndex(fresh, "2026-10-16T00:00:00Z");

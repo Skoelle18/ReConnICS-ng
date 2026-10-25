@@ -379,6 +379,7 @@ function captures() {
           h('span', { class: 'mono small muted', title: x.sha256 }, x.sha256.slice(0, 8) + '…' + x.sha256.slice(-4)),
           h('span', { class: 'row' },
             x.state === 'queued' || x.state === 'failed' ? h('button', { class: 'btn sm', onclick: () => removeCapture(x) }, 'Remove') : null,
+            x.state === 'done' ? h('button', { class: 'btn sm', title: 'Delete this capture and the assets only it contributed', onclick: () => removeCapture(x) }, 'Remove assets') : null,
             x.state === 'done' ? h('button', { class: 'btn sm', onclick: () => { toggleCapture(x.id); render(); } }, S.capOff.has(x.id) ? 'Show' : 'Hide') : null,
             x.state === 'done' || x.state === 'failed' ? h('button', { class: 'btn sm', onclick: () => { S.openCap = x.id; render(); } }, 'Details') : null))))),
     c ? h('div', { class: 'card' }, h('div', { class: 'card-h' }, c.file, h('span', { class: 'badge st-' + c.state }, stateTxt[c.state])),
@@ -415,8 +416,16 @@ async function upload(files) {
   }
   await refresh();
 }
+/** Queued and failed captures just leave the queue; a merged one also takes out the assets only it saw (after a confirm that says so). */
 async function removeCapture(c) {
-  try { await api('DELETE', 'captures/' + encodeURIComponent(c.id)); toast('Removed ' + c.file); } catch (e) { toast(e.message); }
+  const n = (S.capAssets[c.id] || []).length;
+  if (c.state === 'done' && !window.confirm('Remove ' + c.file + ' and its ' + n + (n === 1 ? ' device' : ' devices') + ' from the inventory?\n\n'
+    + 'Devices also seen in another capture stay. Devices with human edits stay with just those edits. Everything else only this capture saw is dropped, '
+    + 'the stored PCAP and its analysis are deleted from this site, and it cannot be undone. The removal is written to the change log.')) return;
+  try {
+    const r = await api('DELETE', 'captures/' + encodeURIComponent(c.id));
+    toast(r ? 'Removed ' + c.file + ': ' + r.assetsDropped + ' dropped, ' + r.assetsKeptSeenElsewhere + ' kept (seen in other captures), ' + r.assetsKeptWithEdits + ' kept (human edits)' : 'Removed ' + c.file);
+  } catch (e) { toast(e.message); }
   await refresh();
 }
 

@@ -156,12 +156,45 @@ final class Site {
         return l;
     }
 
-    synchronized void removeCapture(String id) throws IOException {
+    /**
+     * Removes one capture. A merged one takes its contribution with it, because the inventory is rebuilt from the
+     * remaining captures: an asset also seen in another capture stays (only this capture's provenance goes), an asset
+     * seen nowhere else is dropped unless a person edited it (edits are never deleted, so it stays with just those
+     * fields). Returns what happened for a merged capture, null for a queued or failed one (nothing was merged).
+     */
+    synchronized Map<String, Object> removeCapture(String id, String actor) throws IOException {
         var c = find(id);
-        if (!Set.of("queued", "failed").contains(c.get("state"))) throw new Conflict("only queued or failed captures can be removed");
+        boolean done = "done".equals(c.get("state"));
+        if (!done && !Set.of("queued", "failed").contains(c.get("state"))) throw new Conflict("only merged, queued or failed captures can be removed");
+        List<String> mine = List.of();
+        if (done) {
+            inventory();                                          // refreshes cachedCaptureAssets
+            mine = cachedCaptureAssets.getOrDefault(id, List.of());
+        }
         captures.remove(c);
         cached = null;
         for (String ext : List.of(".pcap", ".json", ".obs.json")) Files.deleteIfExists(captureDir.resolve(id + ext));
+        if (!done) return null;
+        Set<String> after = inventory().records.stream().map(r -> r.id).collect(java.util.stream.Collectors.toSet());
+        Set<String> elsewhere = new HashSet<>();
+        cachedCaptureAssets.values().forEach(elsewhere::addAll);
+        List<String> dropped = new ArrayList<>(), kept = new ArrayList<>(), edited = new ArrayList<>();
+        for (String a : mine) {
+            if (!after.contains(a)) dropped.add(a);
+            else if (elsewhere.contains(a)) kept.add(a);
+            else edited.add(a);                                   // nothing else saw it: only a human edit keeps it
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("removed", id);
+        out.put("file", c.get("file"));
+        out.put("assetsDropped", (double) dropped.size());
+        out.put("assetsKeptSeenElsewhere", (double) kept.size());
+        out.put("assetsKeptWithEdits", (double) edited.size());
+        String src = "capture " + id;
+        int budget = MAX_MERGE_LOG;
+        for (String a : dropped) if (budget-- > 0) log(actor, a, "(asset)", "", "removed with " + c.get("file"), src);
+        log(actor, "(site)", "capture", "", c.get("file") + " removed: " + Json.write(out), src);
+        return out;
     }
 
     private Map<String, Object> find(String id) {

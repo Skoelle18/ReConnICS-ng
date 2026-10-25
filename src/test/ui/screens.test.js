@@ -145,6 +145,28 @@ test('other screens', async (t) => {
     } finally { app.close(); }
   });
 
+  await t.test('"Remove assets" on a merged capture asks first, then deletes it and reports what stayed', async () => {
+    const captures = [{ id: 'c1', file: 'cell1.pcap', size: 900, at: '2026-10-18T10:00:00Z', by: 'Vineeth', state: 'done',
+      sha256: 'c'.repeat(64), summary: { frames: 10, malformed: 0, protocols: { modbus: 1 }, identityFields: 1, devices: 2 }, diff: { new: 2, changed: 0, notSeen: 0 } }];
+    const routes = defaultRoutes({ captures, captureAssets: { c1: ['10.0.1.40', '10.0.1.50'] } });
+    routes['DELETE captures/c1'] = { removed: 'c1', file: 'cell1.pcap', assetsDropped: 1, assetsKeptSeenElsewhere: 1, assetsKeptWithEdits: 0 };
+    const app = await loadApp({ routes, hash: '#/captures' });
+    try {
+      const btn = () => app.$$('#main button').find((b) => b.textContent === 'Remove assets');
+      let asked = '';
+      app.window.confirm = (m) => { asked = m; return false; };
+      btn().click();
+      await settle();
+      assert.match(asked, /2 devices.*also seen in another capture stay.*human edits/s);
+      assert.equal(app.calls.filter((c) => c.method === 'DELETE').length, 0, 'declining deletes nothing');
+      app.window.confirm = () => true;
+      btn().click();
+      await settle();
+      assert.equal(app.calls.filter((c) => c.method === 'DELETE').length, 1);
+      assert.match(app.text('#toast'), /1 dropped, 1 kept \(seen in other captures\), 0 kept \(human edits\)/);
+    } finally { app.close(); }
+  });
+
   await t.test('a posted-via-API capture shows its source instead of frame counts', async () => {
     const captures = [{ id: 'c1', file: 'posted via API', kind: 'posted', size: 900, at: '2026-10-18T10:00:00Z', by: 'Probe', state: 'done',
       sha256: 'b'.repeat(64), summary: { frames: 0, malformed: 0, protocols: {}, identityFields: 0, devices: 3 }, diff: { new: 3, changed: 0, notSeen: 0 } }];

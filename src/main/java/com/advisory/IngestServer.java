@@ -155,8 +155,9 @@ final class IngestServer {
                 if (tooLong(ex, Site.MAX_PCAP)) { error(ex, 413, "capture too large"); return true; }
                 send(ex, 202, Json.write(site.addCapture(ex.getRequestBody(), query(ex, "name"), actor)));
             } else if (method.equals("DELETE") && path.startsWith("/api/v1/captures/")) {
-                site.removeCapture(path.substring("/api/v1/captures/".length()));
-                send(ex, 204, null);
+                var gone = site.removeCapture(path.substring("/api/v1/captures/".length()), actor);
+                if (gone == null) send(ex, 204, null);
+                else send(ex, 200, Json.write(gone));              // a merged capture: what left the inventory and what stayed
             } else if (method.equals("GET") && path.equals("/api/v1/inventory")) send(ex, 200, Json.write(site.inventoryJson()));
             else if (method.equals("PATCH") && path.startsWith("/api/v1/assets/")) {
                 if (!contentType(ex, "application/json")) { error(ex, 415, "Content-Type must be application/json"); return true; }
