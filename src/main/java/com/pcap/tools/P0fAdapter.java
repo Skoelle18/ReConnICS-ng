@@ -15,7 +15,7 @@ import java.util.Optional;
 /**
  * p0f v3 reading a capture: {@code p0f -r FILE -o LOG} ("reads pcap captures from the specified file", "appends grep-friendly
  * log data", p0f README). A log line is {@code [date time] name=value|name=value|...}. For the modules {@code syn} (the
- * client's SYN) and {@code synack} (the server's SYN+ACK) the line carries {@code subj=cli|srv} (who is fingerprinted),
+ * client's SYN) and {@code syn+ack} (the server's SYN+ACK; p0f 3.09b spells it with a plus) the line carries {@code subj=cli|srv} (who is fingerprinted),
  * {@code cli=IP/port}, {@code srv=IP/port}, {@code os=...} and {@code raw_sig=...}.
  *
  * <p>p0f 3.09b dates from 2012 and the project has no later release; it is used as is and said so in the console. A guess is
@@ -68,7 +68,7 @@ public final class P0fAdapter implements Adapter {
         return Adapter.group1("p0f\\s+(\\d[\\w.]*)", line);
     }
 
-    /** The most frequent OS name per fingerprinted host, from {@code syn} / {@code synack} lines; {@code ???} (no match) is skipped. */
+    /** The most frequent OS name per fingerprinted host, from {@code syn} / {@code syn+ack} lines; {@code ???} (no match) is skipped. */
     static List<Findings.HostOs> parse(BufferedReader r) throws IOException {
         Map<String, Map<String, Integer>> byHost = new LinkedHashMap<>();
         Map<String, String> sigOf = new HashMap<>(), modOf = new HashMap<>();
@@ -85,7 +85,7 @@ public final class P0fAdapter implements Adapter {
                 }
             }
             String mod = kv.get("mod"), os = kv.get("os"), subj = kv.get("subj");
-            if (!("syn".equals(mod) || "synack".equals(mod)) || os == null || os.isBlank() || os.contains("???") || subj == null) {
+            if (!("syn".equals(mod) || "syn+ack".equals(mod)) || os == null || os.isBlank() || os.contains("???") || subj == null) {
                 continue;
             }
             String addr = kv.get("cli".equals(subj) ? "cli" : "srv");

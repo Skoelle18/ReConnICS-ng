@@ -116,7 +116,7 @@ the console's capture queue uses the automatic mode. Environment: `RECONICS_SURI
 ### p0f v3 (optional)
 
 - `p0f -r <pcap> -o <log>` (with `-f p0f.fp` inside the Docker image). The log is one line per observation,
-  `[date] mod=syn|cli=ip/port|srv=ip/port|subj=cli|os=...|raw_sig=...` (format from the p0f README). Only `syn` and `synack`
+  `[date] mod=syn|cli=ip/port|srv=ip/port|subj=cli|os=...|raw_sig=...` (format from the p0f README). Only `syn` and `syn+ack`
   lines with a real `os=` are used; `os=???` (no signature match) is skipped. The most frequent OS name per host wins.
 - Merge: an `os` field on the asset, confidence LOW, evidence naming p0f, its version, the p0f module and packet count, and
   the raw signature. A decoded OS/firmware (from an ICS identity message) is never replaced by the guess. It is never used for

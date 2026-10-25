@@ -97,7 +97,31 @@ public final class Exec {
         return p.exitValue();
     }
 
-    /** First non-blank line of a short command's combined output (a {@code --version}), control characters flattened, or "". */
+    private static final java.util.regex.Pattern VERSION_LIKE = java.util.regex.Pattern.compile("\\d+\\.\\d+");
+
+    /** See {@link #firstLine}: the line of {@code output} that names the version. */
+    static String versionLine(String output) {
+        String first = null;
+        for (String line : output.split("\\R")) {
+            if (line.isBlank()) {
+                continue;
+            }
+            String v = line.strip().replaceAll("\\p{Cntrl}", " ");
+            v = v.length() > 80 ? v.substring(0, 80) : v;
+            if (VERSION_LIKE.matcher(v).find()) {
+                return v;
+            }
+            first = first == null ? v : first;
+        }
+        return first == null ? "" : first;
+    }
+
+    /**
+     * The line of a short command's combined output (a {@code --version}) that names the version: the first one with a number like
+     * 4.4.19, else the first non-blank line. Control characters are flattened; "" when there is no output. stderr is merged in, and
+     * real tools put noise before the banner: tshark/capinfos warn "Running as user root" (the container is root), and p0f has no
+     * version option, so {@code p0f -h} prints a getopt complaint and a usage block as well as its banner, in either order.
+     */
     public static String firstLine(List<String> cmd, Duration timeout) {
         try {
             Path out = Files.createTempFile("reconics-ver", ".txt");
@@ -107,13 +131,7 @@ public final class Exec {
                     p.destroyForcibly();
                     return "";
                 }
-                for (String line : read(out, 8 * 1024).split("\\R")) {
-                    if (!line.isBlank()) {
-                        String v = line.strip().replaceAll("\\p{Cntrl}", " ");
-                        return v.length() > 80 ? v.substring(0, 80) : v;
-                    }
-                }
-                return "";
+                return versionLine(read(out, 8 * 1024));
             } finally {
                 Files.deleteIfExists(out);
             }

@@ -13,9 +13,10 @@ import java.util.Optional;
 /**
  * nDPI's example reader as a classifier for conversations nothing else could name.
  *
- * <p>{@code ndpiReader -q -i FILE -C OUT.csv}: {@code -i} reads a capture, {@code -C} writes one pipe separated line per flow
- * (both from ndpiReader's own help text, example/ndpiReader.c). The first line is the header, starting with
- * {@code #flow_id|protocol|first_seen|...}; columns are looked up by name because their number differs between nDPI releases.
+ * <p>{@code ndpiReader -q -i FILE -C OUT.csv}: {@code -i} reads a capture, {@code -C} writes one comma separated line per flow
+ * (nDPI 4.2.0 in the reconics-tools image; the source comment says "pipe" but the file is comma separated). The first line is the
+ * header, starting with {@code #flow_id,protocol,first_seen,...}; columns are looked up by name because their number differs
+ * between nDPI releases.
  * Used: {@code protocol} (IP protocol number), {@code src_ip}, {@code src_port}, {@code dst_ip}, {@code dst_port},
  * {@code ndpi_proto} (for example {@code TLS.Google}, or {@code Unknown}) and the per-direction packet counts.
  *
@@ -67,7 +68,7 @@ public final class NdpiAdapter implements Adapter {
             if (line.isBlank()) {
                 continue;
             }
-            String[] c = line.split("\\|", -1);
+            String[] c = line.split(",", -1);
             if (line.startsWith("#")) {
                 col.clear();
                 c[0] = c[0].substring(1);
