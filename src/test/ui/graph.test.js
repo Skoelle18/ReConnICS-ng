@@ -403,6 +403,17 @@ test('edges', async (t) => {
     } finally { app.close(); }
   });
 
+  await t.test('an undecoded flow shows its port-inferred hint as a hint, and keeps the grey unknown colour', async () => {
+    const flows = [{ client: '10.0.1.50', server: '10.0.1.60', protocol: 'unknown', port: '22/tcp', transport: 'tcp', messages: 4, portHint: 'ssh', labels: {} }];
+    const app = await loadApp({ routes: defaultRoutes({ flows }), hash: '#/edge/' + encodeURIComponent('10.0.1.50>10.0.1.60>unknown>22/tcp') });
+    try {
+      assert.match(app.text(), /Carried but not decoded.*Port 22\/tcp is usually ssh \(a hint from the port number only/);
+      await app.go('#/graph');
+      assert.equal(app.$$('#graph .edge.flow')[0].querySelector('text').textContent, '22/tcp ssh?');
+      assert.ok(app.$$('#graph .edge.flow')[0].classList.contains('p-unknown'));
+    } finally { app.close(); }
+  });
+
   await t.test('a conversation that is not in the inventory says so instead of failing', async () => {
     const app = await richApp('#/edge/nope');
     try {

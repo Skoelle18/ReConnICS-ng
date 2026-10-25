@@ -106,7 +106,8 @@ class ZeekMergeTest {
         assertNull(web.model);
         @SuppressWarnings("unchecked") var bases = (List<String>) web.attributes.get("detectionBases");
         assertEquals(List.of("ZEEK_CONN"), bases);
-        assertEquals("server", web.attributes.get("role"));
+        assertEquals("web server (port-inferred)", web.attributes.get("role"), "a host that only served HTTP is not an ICS server");
+        assertEquals("port-inferred", web.attributes.get("roleBasis"));
         // a host with no service name at all is "unknown"
         log("conn.log", "{\"ts\":1760000010.0,\"id.orig_h\":\"10.0.1.100\",\"id.resp_h\":\"10.0.9.8\",\"id.resp_p\":9999,\"proto\":\"tcp\",\"orig_bytes\":5,\"resp_bytes\":5,\"conn_state\":\"SF\",\"orig_pkts\":2,\"resp_pkts\":2}");
         assertEquals(List.of("unknown"), asset(merged(), "10.0.9.8").protocols);

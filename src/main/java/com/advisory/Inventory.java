@@ -196,7 +196,8 @@ final class Inventory {
         }
         // reconnics-ng writes its direction hint as attributes.role (data-contract.md); a top-level role wins.
         if (!entry.containsKey("role") && Json.obj(entry.get("attributes")).get("role") instanceof String ar) {
-            try { parseField(o, "role", Map.of("value", ar, "confidence", "LOW", "evidence", "reconnics-ng attributes.role")); }
+            String basis = Json.obj(entry.get("attributes")).get("roleBasis") instanceof String rb ? " (" + clean(rb, 32) + ")" : "";
+            try { parseField(o, "role", Map.of("value", ar, "confidence", "LOW", "evidence", "reconnics-ng attributes.role" + basis)); }
             catch (IllegalArgumentException x) { reject(idx, "role", x.getMessage()); }
         }
         if (!o.f.containsKey("serial") && Json.obj(entry.get("attributes")).get("serialNumbers") instanceof List<?> sn

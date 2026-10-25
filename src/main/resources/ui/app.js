@@ -96,7 +96,7 @@ function roleGroup(a) {
   if (/plc|controller|cpu|cip:0x0e/.test(r)) return 'PLC';
   if (/drive|cip:0x0?2\b|0x13|0x25/.test(r)) return 'Drive';
   if (/adapter|0x0c/.test(r)) return 'Comms adapter';
-  if (/switch|gateway|router/.test(r)) return 'Network';
+  if (/switch|gateway|router|dns server|dhcp server|ntp server|syslog server|vpn gateway/.test(r)) return 'Network';
   if (/hmi|workstation|ews|client|initiator/.test(r)) return 'Workstation';
   return 'Other';
 }
@@ -478,7 +478,7 @@ function convCard(convs, id) {
     const out = e.from === id, peer = byId(out ? e.to : e.from);
     return h('div', { class: 'card-b stack', style: { gap: '6px', borderBottom: '1px solid var(--line2)' } },
       h('div', { class: 'row' }, h('span', { class: 'badge lv-NONE' }, out ? 'to' : 'from'), h('a', { class: 'strong', href: '#/asset/' + encodeURIComponent(peer.id) }, nameOf(peer)),
-        h('span', { class: 'mono small muted' }, peer.id), h('span', { class: 'badge c-LOW', style: { borderLeft: '4px solid ' + protoColor(e.f.protocol) } }, e.f.protocol + ' ' + e.f.port),
+        h('span', { class: 'mono small muted' }, peer.id), h('span', { class: 'badge c-LOW', style: { borderLeft: '4px solid ' + protoColor(e.f.protocol) } }, e.f.protocol + ' ' + e.f.port + (e.f.portHint ? ' (' + e.f.portHint + '?)' : '')),
         h('span', { class: 'small muted' }, e.n + (e.n === 1 ? ' message' : ' messages') + ' · ' + fmtRate(flowRate(e.f))),
         h('a', { class: 'btn sm', href: '#/edge/' + encodeURIComponent(e.key) }, 'Details')),
       h('div', { class: 'small' }, Object.entries(e.f.labels || {}).map(([k, n]) => k + ' ×' + n).join(' · ') || 'no message kinds recorded'),
@@ -527,7 +527,7 @@ function edgePanel(key) {
           f.source ? h('span', { class: 'badge lv-NONE', title: 'which engine produced this conversation' }, f.source) : null,
           isScan(f) ? h('span', { class: 'badge warn' }, 'scan attempts only') : null),
         pair ? h('div', { class: 'small muted' }, 'A busy host pair drawn as one edge: the counters and kinds below add up its ' + pair.members.length + ' conversations, which are listed under them.')
-          : pk === 'unknown' ? h('div', { class: 'small muted' }, 'Carried but not decoded: the host pair and port are known, the protocol is not. Messages count data packets.') : null),
+          : pk === 'unknown' ? h('div', { class: 'small muted' }, 'Carried but not decoded: the host pair and port are known, the protocol is not. Messages count data packets.' + (f.portHint ? ' Port ' + f.port + ' is usually ' + f.portHint + ' (a hint from the port number only, not decoded).' : '')) : null),
       h('div', { class: 'card-b facts' },
         fact('Messages', (f.messages || 0).toLocaleString()), pair ? null : fact('Rate', fmtRate(rate)),
         f.packets != null ? fact('Packets', f.packets.toLocaleString()) : null, f.bytes != null ? fact('Bytes', fmtBytes(f.bytes)) : null,
@@ -708,7 +708,7 @@ const GR = { pos: new Map(), view: { x: 0, y: 0, k: 1 }, fitted: false, sig: '',
 function flowLabel(f) {
   const kinds = Object.entries(f.labels || {}).sort((a, b) => b[1] - a[1]).map((x) => x[0]);
   if (isScan(f)) return 'scan ×' + f.scanAttempts;
-  if (!kinds.length) return protoKey(f.protocol) === 'unknown' ? (f.port || 'unknown') : protoName(f.protocol);
+  if (!kinds.length) return protoKey(f.protocol) === 'unknown' ? (f.port ? f.port + (f.portHint ? ' ' + f.portHint + '?' : '') : 'unknown') : protoName(f.protocol);
   const pre = protoName(f.protocol);
   const top = /^(Modbus|DNP3|SNMP|S7|EtherNet\/IP|CIP)/.test(kinds[0]) ? kinds[0] : pre + ' ' + kinds[0];
   return top + (kinds.length > 1 ? ' +' + (kinds.length - 1) : '');

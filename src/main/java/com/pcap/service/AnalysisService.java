@@ -232,6 +232,12 @@ public final class AnalysisService {
                 // resolver prefers a native decoded value over a Zeek one at equal confidence and keeps both as evidence
                 zeek.observations().forEach(aggregator::accept);
                 detector.flows().mergeFrom(zeek.flows());
+                java.util.Set<String> talked = new java.util.HashSet<>();
+                for (var fl : detector.flows().toList(true)) {
+                    talked.add(String.valueOf(fl.get("client")));
+                    talked.add(String.valueOf(fl.get("server")));
+                }
+                new com.pcap.zeek.ZeekHostNames().read(logDir, talked::contains).forEach(aggregator::accept);   // DHCP host names, unambiguous DNS A answers, for hosts already in the capture
             }
 
             List<DeviceAggregator.ResolvedAsset> assets = aggregator.resolveAssets();
@@ -267,6 +273,7 @@ public final class AnalysisService {
             }
             var flows = detector.flows().toList(options.keepScans() && !options.icsOnly());
             doc.flows = flows.isEmpty() ? null : flows;
+            com.pcap.inventory.HostClassifier.apply(doc);        // port hints for undecoded flows, roles for hosts no decoder explained
             // connections that never completed a handshake: edges only with --keep-scans, but the total is worth knowing
             long scanTotal = Math.max(conversations.scanAttempts(), zeek == null ? 0 : zeek.stats().scanAttempts());
             if (scanTotal > 0) {

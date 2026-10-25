@@ -40,11 +40,15 @@ final class Site {
     static final Map<String, String> OUI = loadBundledOui();
 
     private static Map<String, String> loadBundledOui() {
-        try (InputStream in = Site.class.getResourceAsStream("/oui-ics.csv")) {
-            return in == null ? null : Inventory.loadOui(AdvisoryIndex.utf8(in.readAllBytes()));
-        } catch (IOException e) {
-            return null;                                     // no OUI fallback; everything else still works
+        Map<String, String> m = new HashMap<>();
+        for (String res : List.of("/oui-ics.csv", "/oui-ma-l.csv")) {      // curated ICS names first: putIfAbsent keeps them over the registry's
+            try (InputStream in = Site.class.getResourceAsStream(res)) {
+                if (in != null) Inventory.loadOui(AdvisoryIndex.utf8(in.readAllBytes())).forEach(m::putIfAbsent);
+            } catch (IOException e) {
+                // a missing table only means fewer NIC makers; everything else still works
+            }
         }
+        return m.isEmpty() ? null : m;
     }
 
     static final long MAX_PCAP = 4L << 30;
@@ -351,6 +355,8 @@ final class Site {
             Path p = captureDir.resolve(c.get("id") + ".obs.json");
             if (!Files.exists(p)) continue;
             var doc = Json.obj(Json.parse(Files.readString(p)));
+            try { com.pcap.inventory.HostClassifier.apply(Json.arr(doc.get("flows")), Json.arr(doc.get("assets"))); }   // also names captures analyzed before it existed
+            catch (RuntimeException e) { /* an odd shape in untrusted input: merge the document as it is */ }
             all.addAll(Json.arr(doc.get("assets")));
             addFlows(flows, doc.get("flows"), String.valueOf(c.get("id")));
             List<String> ids = assetIds(doc);
@@ -460,6 +466,7 @@ final class Site {
                     labels.merge(k, count(l.getValue()), (a, b) -> (double) a + (double) b);
             }
             if (f.get("transport") instanceof String t && (t.equals("tcp") || t.equals("udp"))) m.put("transport", t);
+            if (!m.containsKey("portHint") && f.get("portHint") instanceof String ph && !Inventory.clean(ph, 32).isEmpty()) m.put("portHint", Inventory.clean(ph, 32));   // port-inferred name of an undecoded flow
             for (String k : List.of("packets", "bytes", "scanAttempts")) {
                 double n = count(f.get(k));
                 if (n > 0) m.merge(k, n, (a, b) -> Math.min(1e12, (double) a + (double) b));

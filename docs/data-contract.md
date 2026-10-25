@@ -80,6 +80,7 @@ written before a key existed stay valid and old consumers ignore the keys they d
 | `labels` | Message kinds (decoder detail without per-message numbers; Modbus function codes in decimal), at most 8 per flow. |
 | `operations` | What was asked of the server, aggregated by (function, object, address, quantity); see below. |
 | `scanAttempts` | Connections to the server that never completed a handshake. Absent when 0. |
+| `portHint` | Optional, only on `unknown` flows: the usual service on that port (`ssh`, `modbus`, `https`), from the well-known-port table. A hint, not a decode: `protocol` stays `unknown` and nothing here is identity. |
 | `source` | Who produced the flow: `native`, `zeek`, or `zeek+native` when both reported it and the values were merged. |
 | `captures` | Console-side only (not analyzer output): capture ids that reported this flow, in merge order, after `GET /api/v1/inventory`. Used to hide one capture's edges. |
 
@@ -181,4 +182,5 @@ Evidence strings include protocol, message type, field/object id, frame number, 
 - `identityConflicts`
 - `serialNumbers` (EtherNet/IP)
 - `role` (`server` if the device ever answered on an ICS port, else `client`; the server side is the well-known-port side for Modbus, S7comm and EtherNet/IP) and `roles` when both
+- `role` can also be free text with `roleBasis` (`port-inferred`, `service-inferred`, `direction-inferred`) for hosts with no decoded ICS traffic, e.g. `web server (port-inferred)`; see docs/unknown-reduction.md
 - `source.tcpReassembly` (document level): reassembly counters, including flows dropped by the caps
