@@ -64,6 +64,21 @@ class ConversationTrackerTest {
     }
 
     @Test
+    void aCaptureThatStartsMidStreamTakesTheKnownPortAsTheServer() throws Exception {
+        // icsnpp_enip_cip_example.pcap: no SYN, 192.168.10.105:3033 <-> 192.168.10.120:44818. Zeek calls the 44818 side the server; the old
+        // guess (higher port is the client) made it the client and added a second, unknown flow beside the Zeek one.
+        var f = flows(capture(tcp(true, 3033, 44818, DATA, "hello"), tcp(false, 44818, 3033, DATA, "world")), AnalysisOptions.DEFAULT);
+        assertEquals(1, f.size(), f.toString());
+        assertEquals("10.0.0.1", f.get(0).get("client"));
+        assertEquals("10.0.0.2", f.get(0).get("server"));
+        assertEquals("44818/tcp", f.get(0).get("port"));
+        var rev = flows(capture(tcp(false, 3033, 44818, DATA, "hello"), tcp(true, 44818, 3033, DATA, "world")), AnalysisOptions.DEFAULT);
+        assertEquals("10.0.0.1", rev.get(0).get("server"), "whichever host holds the known port");
+        var plain = flows(capture(tcp(true, 40000, 50000, DATA, "hello"), tcp(false, 50000, 40000, DATA, "world")), AnalysisOptions.DEFAULT);
+        assertEquals("10.0.0.2", plain.get(0).get("client"), "two unnamed ports: the higher one is still the client");
+    }
+
+    @Test
     void connectionsThatNeverCompletedAreScanAttemptsNotEdges() throws Exception {
         var f = flows(capture(concat2(WEB, PROBES)), AnalysisOptions.DEFAULT);
         assertEquals(1, f.size(), "three probes add no edges: " + f);

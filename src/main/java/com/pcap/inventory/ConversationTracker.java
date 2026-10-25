@@ -19,7 +19,7 @@ import java.util.Map;
  * the scan table may grow with them, so both are capped and the overflow is only counted.
  *
  * <p>ponytail: the client side is the SYN sender; with no SYN in the capture (mid-stream) or for UDP it is a guess: the
- * higher port number is the client. UDP has no handshake, so UDP scans are not recognised.
+ * side on a port the built-in port table names is the server, else the higher port number is the client. UDP has no handshake, so UDP scans are not recognised.
  */
 public final class ConversationTracker {
     static final int MAX_LIVE = 100_000;
@@ -104,8 +104,19 @@ public final class ConversationTracker {
         }
     }
 
+    /**
+     * No SYN seen (mid-stream capture) or UDP: the side on a port the built-in table names (44818, 502, 102, ...) is the server, so a
+     * capture that starts mid-conversation agrees with Zeek, which logs the same ICS conversation with the right side as server.
+     * Otherwise, or when both or neither port is known, the higher port is the client.
+     */
+    private static boolean guessAIsClient(Conn c) {
+        String t = c.udp ? "/udp" : "/tcp";
+        boolean aKnown = PortHints.builtin(c.portA + t).isPresent(), bKnown = PortHints.builtin(c.portB + t).isPresent();
+        return aKnown != bKnown ? bKnown : c.portA >= c.portB;
+    }
+
     private void close(Conn c) {
-        boolean aIsClient = c.synFrom != 0 ? c.synFrom == 1 : c.portA >= c.portB;
+        boolean aIsClient = c.synFrom != 0 ? c.synFrom == 1 : guessAIsClient(c);
         String client = aIsClient ? c.ipA : c.ipB, server = aIsClient ? c.ipB : c.ipA;
         int serverPort = aIsClient ? c.portB : c.portA;
         String port = serverPort + (c.udp ? "/udp" : "/tcp");
