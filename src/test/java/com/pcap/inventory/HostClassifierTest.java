@@ -34,6 +34,18 @@ class HostClassifierTest {
     }
 
     @Test
+    void aProtocolGuessedFromAPortDoesNotCountAsDecoded() {
+        var flows = List.of(flow("10.0.0.5", "10.0.0.9", "unknown", "502/tcp"));
+        Map<String, Object> portOnly = asset("10.0.0.9", "modbus");               // the reader's ZEEK_PORT observation put modbus on the asset
+        portOnly.put("attributes", new LinkedHashMap<>(Map.of("detectionBases", List.of("ZEEK_PORT"))));
+        Map<String, Object> decoded = asset("10.0.0.9", "modbus");
+        decoded.put("attributes", new LinkedHashMap<>(Map.of("detectionBases", List.of("ZEEK_PORT", "ZEEK_ICSNPP"))));
+        HostClassifier.apply(flows, List.of(portOnly, decoded));
+        assertEquals("Modbus server (port-inferred)", role(portOnly), "port-only evidence is labelled inferred");
+        assertNull(role(decoded), "a dissected protocol keeps the decoders' own role");
+    }
+
+    @Test
     void undecodedFlowsGetAPortHintAndHostsAGuardedRole() {
         var flows = List.of(
                 flow("10.0.0.5", "10.0.0.9", "unknown", "502/tcp"),      // a Modbus port nobody decoded

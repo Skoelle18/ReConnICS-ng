@@ -29,10 +29,16 @@
         "properties": {
           "function": {"type": "string", "maxLength": 64},
           "access": {"enum": ["read", "write", "control", "other"]},
-          "object": {"type": "string", "maxLength": 32, "description": "DNP3 object group/variation, S7 SZL object or CIP class, for example g30v1"},
+          "object": {"type": "string", "maxLength": 64, "description": "A name Zeek logs: DNP3 object or control block type, Modbus diagnostics sub-function, S7 SZL list or block, CIP class and attribute"},
+          "unit": {"$ref": "#/$defs/count", "description": "Modbus unit id behind a gateway"},
+          "statuses": {
+            "type": "object",
+            "maxProperties": 6,
+            "description": "How the calls ended, label to count: ok, exception: <name>, unanswered, iin: <flag>, status: <name>",
+            "additionalProperties": {"$ref": "#/$defs/count"}
+          },
           "address": {"$ref": "#/$defs/count"},
           "quantity": {"$ref": "#/$defs/count"},
-          "status": {"type": "string", "maxLength": 64, "description": "Decoded result status, for example No error 0x00 or Success 0xff"},
           "count": {"$ref": "#/$defs/count"},
           "sampleValues": {
             "type": "array",
@@ -42,6 +48,7 @@
         }
       }
     },
+    "portHint": {"type": "string", "maxLength": 32, "description": "Only on protocol unknown: the protocol the server port usually carries. Port-inferred, not dissected."},
     "scanAttempts": {"$ref": "#/$defs/count"},
     "source": {"enum": ["zeek", "native", "zeek+native"]},
     "portHint": {"type": "string", "maxLength": 32}

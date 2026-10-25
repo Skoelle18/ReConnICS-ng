@@ -74,7 +74,7 @@ final class Site {
     private List<Object> cachedFlows = List.of();    // conversations of the merged captures; built together with `cached`
     /** Capture id -> inventory record ids it contributed; built with `cached`, so the UI can hide one capture's nodes. */
     private Map<String, List<String>> cachedCaptureAssets = new LinkedHashMap<>();
-    static final int MAX_FLOWS = 5_000, MAX_LABELS = 8, MAX_OPERATIONS = 50, MAX_SAMPLES = 8;
+    static final int MAX_FLOWS = 5_000, MAX_LABELS = 8, MAX_OPERATIONS = 50, MAX_SAMPLES = 8, MAX_STATUSES = 6;
     static final int MAX_CAPTURE_ASSETS = 5_000, MAX_FLOW_CAPTURES = 64;
     private static final Set<String> FLOW_SOURCES = Set.of("zeek", "native", "zeek+native"), OP_ACCESS = Set.of("read", "write", "control", "other");
     private AdvisoryMatcher matcher;                // for matcherFor; the index is immutable once loaded
@@ -465,8 +465,8 @@ final class Site {
                 if (!k.isEmpty() && (labels.size() < MAX_LABELS || labels.containsKey(k)))
                     labels.merge(k, count(l.getValue()), (a, b) -> (double) a + (double) b);
             }
+            if (f.get("portHint") instanceof String ph && ph.matches("[a-z0-9][a-z0-9._+-]{0,31}")) m.put("portHint", ph);
             if (f.get("transport") instanceof String t && (t.equals("tcp") || t.equals("udp"))) m.put("transport", t);
-            if (!m.containsKey("portHint") && f.get("portHint") instanceof String ph && !Inventory.clean(ph, 32).isEmpty()) m.put("portHint", Inventory.clean(ph, 32));   // port-inferred name of an undecoded flow
             for (String k : List.of("packets", "bytes", "scanAttempts")) {
                 double n = count(f.get(k));
                 if (n > 0) m.merge(k, n, (a, b) -> Math.min(1e12, (double) a + (double) b));
@@ -502,10 +502,10 @@ final class Site {
             fn = Inventory.clean(fn, 64);
             if (fn.isEmpty()) continue;
             String access = op.get("access") instanceof String a && OP_ACCESS.contains(a) ? a : "other";
-            String obj = op.get("object") instanceof String ob ? Inventory.clean(ob, 32) : "";
-            String status = op.get("status") instanceof String st ? Inventory.clean(st, 64) : "";
+            String obj = op.get("object") instanceof String ob ? Inventory.clean(ob, 64) : "";
+            Double unit = op.get("unit") instanceof Double u && u >= 0 && u <= 65535 ? count(u) : null;
             Double addr = op.get("address") instanceof Double ? count(op.get("address")) : null, qty = op.get("quantity") instanceof Double ? count(op.get("quantity")) : null;
-            String key = fn + '|' + access + '|' + obj + '|' + addr + '|' + qty;
+            String key = fn + '|' + access + '|' + obj + '|' + addr + '|' + qty + '|' + unit;
             var e = ops.get(key);
             if (e == null) {
                 if (ops.size() >= MAX_OPERATIONS) continue;
@@ -514,14 +514,18 @@ final class Site {
                 if (!obj.isEmpty()) e.put("object", obj);
                 if (addr != null) e.put("address", addr);
                 if (qty != null) e.put("quantity", qty);
-                if (!status.isEmpty()) e.put("status", status);
+                if (unit != null) e.put("unit", unit);
                 e.put("count", 0.0);
                 ops.put(key, e);
             }
-            if (e.get("status") == null && !status.isEmpty()) {
-                e.put("status", status);
-            }
             e.put("count", Math.min(1e12, (double) e.get("count") + Math.max(1, count(op.get("count")))));
+            Map<String, Object> st = (Map<String, Object>) e.computeIfAbsent("statuses", k -> new LinkedHashMap<String, Object>());
+            for (var sv : Json.obj(op.get("statuses")).entrySet()) {
+                String k = Inventory.clean(sv.getKey(), 64);
+                if (!k.isEmpty() && count(sv.getValue()) > 0 && (st.size() < MAX_STATUSES || st.containsKey(k)))
+                    st.merge(k, count(sv.getValue()), (a, b) -> Math.min(1e12, (double) a + (double) b));
+            }
+            if (st.isEmpty()) e.remove("statuses");
             List<Object> samples = (List<Object>) e.computeIfAbsent("sampleValues", k -> new ArrayList<Object>());
             for (Object v : Json.arr(op.get("sampleValues"))) {
                 if (samples.size() >= MAX_SAMPLES) break;

@@ -242,6 +242,41 @@ class SiteServerTest {
         assertEquals(List.of("x"), Json.arr(write.get("sampleValues")), "only numbers and strings are kept as samples");
     }
 
+    // operation unit and statuses add up across captures; a port hint survives only in a clean form
+    @Test
+    void operationStatusesUnitsAndPortHintsMerge() throws Exception {
+        String one = """
+                {"assets":[{"ip":"10.0.0.9"}],"flows":[
+                  {"client":"10.0.0.5","server":"10.0.0.9","protocol":"modbus","port":"502/tcp","messages":4,
+                   "operations":[{"function":"FC3 read holding registers","access":"read","unit":7,"count":4,"statuses":{"ok":3,"exception: illegal data address":1}},
+                                 {"function":"FC3 read holding registers","access":"read","unit":8,"count":1}]},
+                  {"client":"10.0.0.5","server":"10.0.0.10","protocol":"unknown","port":"20000/tcp","messages":2,"portHint":"dnp3"},
+                  {"client":"10.0.0.5","server":"10.0.0.11","protocol":"unknown","port":"9/tcp","messages":2,"portHint":"<script>"}]}
+                """;
+        String two = """
+                {"assets":[{"ip":"10.0.0.9"}],"flows":[{"client":"10.0.0.5","server":"10.0.0.9","protocol":"modbus","port":"502/tcp","messages":2,
+                   "operations":[{"function":"FC3 read holding registers","access":"read","unit":7,"count":2,"statuses":{"ok":2,"unanswered":1,"<b>x":-5,"a":1,"b":1,"c":1,"d":1,"e":1}}]}]}
+                """;
+        assertEquals(200, send("POST", "/api/v1/assets", "application/json", one.getBytes(StandardCharsets.UTF_8)).statusCode());
+        assertEquals(200, send("POST", "/api/v1/assets", "application/json", two.getBytes(StandardCharsets.UTF_8)).statusCode());
+        var flows = Json.arr(Json.obj(Json.parse(get("/api/v1/inventory").body())).get("flows"));
+        var mb = flows.stream().map(Json::obj).filter(f -> "modbus".equals(f.get("protocol"))).findFirst().orElseThrow();
+        var ops = Json.arr(mb.get("operations"));
+        assertEquals(2, ops.size(), "unit 7 and unit 8 stay separate rows");
+        var u7 = Json.obj(ops.get(0));
+        assertEquals(7.0, u7.get("unit"));
+        assertEquals(6.0, u7.get("count"));
+        var st = Json.obj(u7.get("statuses"));
+        assertEquals(5.0, st.get("ok"));
+        assertEquals(1.0, st.get("exception: illegal data address"));
+        assertTrue(st.size() <= 6, "capped at 6 outcomes: " + st);
+        assertFalse(st.containsKey("<b>x"), "a negative count adds nothing");
+        assertNull(Json.obj(ops.get(1)).get("statuses"));
+        var hint = flows.stream().map(Json::obj).filter(f -> "20000/tcp".equals(f.get("port"))).findFirst().orElseThrow();
+        assertEquals("dnp3", hint.get("portHint"));
+        assertNull(flows.stream().map(Json::obj).filter(f -> "9/tcp".equals(f.get("port"))).findFirst().orElseThrow().get("portHint"));
+    }
+
     // the UI can tell which capture contributed which node and edge, without reading the observations files
     @Test
     void captureProvenanceMapsAssetsAndFlows() throws Exception {

@@ -114,6 +114,19 @@ class ZeekMergeTest {
     }
 
     @Test
+    void aHostZeekOnlySawOnAnIndustrialPortIsMarkedPortInferred() throws Exception {
+        log("conn.log", "{\"ts\":1760000010.0,\"id.orig_h\":\"10.0.1.100\",\"id.resp_h\":\"10.0.9.7\",\"id.resp_p\":20000,\"proto\":\"tcp\",\"orig_bytes\":5,\"resp_bytes\":5,\"conn_state\":\"SF\",\"orig_pkts\":2,\"resp_pkts\":2}");
+        IngestModels.Document d = merged();
+        IngestModels.Asset a = asset(d, "10.0.9.7");
+        assertEquals(List.of("dnp3"), a.protocols);
+        assertEquals(List.of("20000/tcp"), a.ports);
+        assertEquals(List.of("ZEEK_PORT"), a.attributes.get("detectionBases"), "the protocol came from the port, not from a dissector");
+        assertEquals("dnp3", d.flows.stream().filter(f -> "20000/tcp".equals(f.get("port"))).findFirst().orElseThrow().get("portHint"));
+        assertEquals("unknown", d.flows.stream().filter(f -> "20000/tcp".equals(f.get("port"))).findFirst().orElseThrow().get("protocol"));
+        assertTrue(new com.pcap.output.IngestSchemaValidator(new com.fasterxml.jackson.databind.ObjectMapper()).validate(d).isEmpty());
+    }
+
+    @Test
     void unknownIsDroppedFromAHostThatAlsoHasARealProtocol() throws Exception {
         log("conn.log", CONN.replace("\"service\":\"modbus\",", ""));      // Zeek did not name the service of the PLC's connection
         assertEquals(List.of("modbus"), asset(merged(), "10.0.1.20").protocols);

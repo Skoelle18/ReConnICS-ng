@@ -190,7 +190,7 @@ final class Inventory {
             if (!INPUT_KEYS.contains(en.getKey()) || en.getValue() == null) continue;   // null = absent (data-contract.md)
             Object val = en.getValue();
             if (parserEv != null && HEADER_KEYS.contains(en.getKey()) && !(val instanceof Map<?, ?>))
-                val = Map.of("value", val, "confidence", parserEv.contains("PORT_HEURISTIC only") ? "LOW" : "MEDIUM", "evidence", parserEv);
+                val = Map.of("value", val, "confidence", parserEv.contains(" only") ? "LOW" : "MEDIUM", "evidence", parserEv);
             try { parseField(o, en.getKey(), val); }
             catch (IllegalArgumentException x) { reject(idx, en.getKey(), x.getMessage()); }
         }
@@ -227,7 +227,7 @@ final class Inventory {
         if (b.isEmpty()) return null;
         String frames = attrs.get("firstFrame") instanceof Double f && attrs.get("lastFrame") instanceof Double l
                 && Double.isFinite(f) && Double.isFinite(l) ? ", frames " + f.longValue() + "-" + l.longValue() : "";
-        boolean portOnly = b.equals(Set.of("PORT_HEURISTIC"));
+        boolean portOnly = Set.of("PORT_HEURISTIC", "ZEEK_PORT").containsAll(b);   // the protocol was inferred from a port, never seen
         return "reconnics-ng " + String.join("+", b) + (portOnly ? " only" : "") + frames;
     }
 

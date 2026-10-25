@@ -100,11 +100,14 @@ public final class HostClassifier {
             }
             Map<String, Object> a = (Map<String, Object>) am;
             Seen s = a.get("ip") instanceof String ip ? byIp.get(ip) : null;
+            Map<String, Object> attrs = a.get("attributes") instanceof Map<?, ?> m ? (Map<String, Object>) m : null;
+            // a protocol the reader only guessed from a port (detection basis ZEEK_PORT / PORT_HEURISTIC) is not decoded traffic
+            boolean portOnly = attrs != null && attrs.get("detectionBases") instanceof List<?> bs && !bs.isEmpty()
+                    && bs.stream().allMatch(b -> "ZEEK_PORT".equals(b) || "PORT_HEURISTIC".equals(b));
             if (s == null || a.get("subaddr") != null || s.icsDecoded
-                    || (a.get("protocols") instanceof List<?> ps && ps.stream().anyMatch(p -> p instanceof String x && PortHints.DECODED_ICS.contains(x)))) {
+                    || (!portOnly && a.get("protocols") instanceof List<?> ps && ps.stream().anyMatch(p -> p instanceof String x && PortHints.DECODED_ICS.contains(x)))) {
                 continue;                                            // decoded ICS traffic: the decoders' own direction hint stands
             }
-            Map<String, Object> attrs = a.get("attributes") instanceof Map<?, ?> m ? (Map<String, Object>) m : null;
             Object cur = attrs == null ? null : attrs.get("role");
             if (cur != null && !"server".equals(cur) && !"client".equals(cur) && !(attrs.get("roleBasis") instanceof String rb && INFERRED.contains(rb))) {
                 continue;                                            // somebody named a real role

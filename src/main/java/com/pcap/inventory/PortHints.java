@@ -41,11 +41,11 @@ public final class PortHints {
 
     static {
         // industrial: Modbus and DNP3 are the mandated ones, the rest are the ports other ICS tools key on
-        tcp(502, "modbus", true, "Modbus server");
+        both(502, "modbus", true, "Modbus server");                                  // UDP is rare but seen on some gateways
         tcp(802, "modbus", true, "Modbus server");                                   // Modbus/TCP over TLS
         both(20000, "dnp3", true, "DNP3 outstation");
         both(44818, "ethernet-ip", true, "EtherNet/IP device");
-        udp(2222, "ethernet-ip", true, "EtherNet/IP device");
+        both(2222, "ethernet-ip", true, "EtherNet/IP device");
         tcp(102, "s7comm", true, "S7 / ISO-TSAP device");
         tcp(4840, "opc-ua", true, "OPC UA server");
         tcp(135, "dcom/opc-da", false, "RPC / DCOM host");
@@ -57,17 +57,18 @@ public final class PortHints {
         udp(34964, "profinet", true, "PROFINET device");
         tcp(9600, "omron-fins", true, "Omron FINS device");
         udp(9600, "omron-fins", true, "Omron FINS device");
-        tcp(1911, "niagara-fox", true, "Niagara Fox station");
+        both(1911, "niagara-fox", true, "Niagara Fox station");
         tcp(4911, "niagara-fox", true, "Niagara Fox station");
         tcp(18245, "ge-srtp", true, "GE SRTP device");
         tcp(18246, "ge-srtp", true, "GE SRTP device");
         tcp(5006, "melsec", true, "Mitsubishi MELSEC device");
         tcp(5007, "melsec", true, "Mitsubishi MELSEC device");
         tcp(1962, "pcworx", true, "PC Worx device");
-        tcp(2455, "codesys", true, "CODESYS runtime");
+        both(2455, "codesys", true, "CODESYS runtime");
         tcp(1217, "codesys", true, "CODESYS runtime");
         tcp(789, "redlion-crimson", true, "Red Lion device");
         tcp(20547, "proconos", true, "ProConOS runtime");
+        tcp(1089, "ff-annunc", true, "FOUNDATION Fieldbus HSE device");
         tcp(55000, "fl-net", true, "FL-net device");
         udp(55000, "fl-net", true, "FL-net device");
         udp(161, "snmp", true, "SNMP agent");

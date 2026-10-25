@@ -409,7 +409,7 @@ test('edges', async (t) => {
     try {
       assert.match(app.text(), /Carried but not decoded.*Port 22\/tcp is usually ssh \(a hint from the port number only/);
       await app.go('#/graph');
-      assert.equal(app.$$('#graph .edge.flow')[0].querySelector('text').textContent, '22/tcp ssh?');
+      assert.equal(app.$$('#graph .edge.flow')[0].querySelector('text').textContent, '22/tcp (ssh?)');
       assert.ok(app.$$('#graph .edge.flow')[0].classList.contains('p-unknown'));
     } finally { app.close(); }
   });

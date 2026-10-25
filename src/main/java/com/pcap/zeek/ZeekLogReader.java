@@ -11,6 +11,7 @@ import com.pcap.model.DetectionBasis;
 import com.pcap.model.DeviceObservation;
 import com.pcap.model.Evidence;
 import com.pcap.model.IdentityField;
+import com.pcap.inventory.PortHints;
 import com.pcap.protocol.ProtocolType;
 import com.pcap.protocol.dnp3.Dnp3Parser;
 import com.pcap.protocol.enip.EnipIdentityParser;
@@ -41,12 +42,13 @@ import java.util.regex.Pattern;
  * <table>
  *   <caption>What each log feeds</caption>
  *   <tr><td>conn.log</td><td>flows (packets, bytes, times, scan attempts, service) and host presence</td></tr>
- *   <tr><td>modbus.log, modbus_detailed.log</td><td>modbus message counts and the operations table</td></tr>
- *   <tr><td>modbus_read_device_identification.log</td><td>vendor, product code, revision</td></tr>
- *   <tr><td>dnp3.log, dnp3_objects.log, dnp3_control.log</td><td>dnp3 messages, operations, master/outstation</td></tr>
- *   <tr><td>enip.log, cip.log</td><td>ENIP commands and CIP service operations</td></tr>
+ *   <tr><td>modbus.log, modbus_detailed.log</td><td>modbus message counts (exceptions named) and the operations table (unit, outcome)</td></tr>
+ *   <tr><td>modbus_mask_write_register.log, modbus_read_write_multiple_registers.log</td><td>FC22 / FC23 operations</td></tr>
+ *   <tr><td>modbus_read_device_identification.log</td><td>vendor, product code, revision; the FC43/14 requests as operations</td></tr>
+ *   <tr><td>dnp3.log, dnp3_objects.log, dnp3_control.log</td><td>dnp3 messages, operations, IIN and control status, master/outstation</td></tr>
+ *   <tr><td>enip.log, cip.log, cip_io.log</td><td>EtherNet/IP commands, CIP services on class/instance/attribute, implicit I/O</td></tr>
  *   <tr><td>cip_identity.log</td><td>vendor, product name, device type, revision, serial</td></tr>
- *   <tr><td>cotp.log, s7comm.log, s7comm_read_szl.log, s7comm_plus.log</td><td>COTP kinds, S7 functions, SZL reads and S7plus operations</td></tr>
+ *   <tr><td>s7comm.log, s7comm_read_szl.log, s7comm_upload_download.log</td><td>S7 jobs, SZL reads, block transfers, with the PLC's answer</td></tr>
  *   <tr><td>s7comm_known_devices.log</td><td>module name and serial (no model or firmware: Zeek's SZL view is partial)</td></tr>
  *   <tr><td>software.log</td><td>server banners: a vendor from a fixed table at MEDIUM, the banner as evidence</td></tr>
  *   <tr><td>known_services.log</td><td>ports and service names a host answered on</td></tr>
@@ -62,16 +64,13 @@ public final class ZeekLogReader {
     static final int MAX_STAGED_OPS = 2_000;
     static final int MAX_IDENT_GROUPS = 4_096;
     static final int MAX_UNMATCHED_KEYS = 200_000;
-    private static final int MAX_STATUS = 64;
     private static final int MAX_VALUES_SCANNED = 16;
     private static final Pattern IPV4 = Pattern.compile("(?:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)");
     private static final Pattern HEX = Pattern.compile("(?:0[xX])?([0-9a-fA-F]{1,16})");
     private static final Pattern REVISION = Pattern.compile("(\\d{1,3})\\.(\\d{1,3})");
-    private static final java.util.Set<String> DNP3_REQUESTS = java.util.Set.of("CONFIRM", "READ", "WRITE", "SELECT", "OPERATE",
-            "DIRECT_OPERATE", "DIRECT_OPERATE_NR", "IMMED_FREEZE", "IMMED_FREEZE_NR", "FREEZE_CLEAR", "FREEZE_CLEAR_NR",
-            "FREEZE_AT_TIME", "FREEZE_AT_TIME_NR", "COLD_RESTART", "WARM_RESTART", "INITIALIZE_DATA", "INITIALIZE_APPL",
-            "START_APPL", "STOP_APPL", "SAVE_CONFIG", "ENABLE_UNSOLICITED", "DISABLE_UNSOLICITED", "ASSIGN_CLASS",
-            "DELAY_MEASURE", "RECORD_CURRENT_TIME");
+    /** The only application functions an outstation sends; every other DNP3 function code is a master's request. */
+    private static final java.util.Set<String> DNP3_REPLIES = java.util.Set.of("RESPONSE", "UNSOLICITED_RESPONSE", "AUTHENTICATE_RESP");
+    private static final int MAX_PENDING = 100_000;
 
     private final boolean icsOnly, keepScans;
     private final ObjectMapper mapper;
@@ -83,13 +82,17 @@ public final class ZeekLogReader {
     private final Map<String, Map<String, OpAgg>> staged = new LinkedHashMap<>();
     private final Map<String, FlowRef> stagedFlow = new HashMap<>();
     private final Map<String, String> masterOfUid = new HashMap<>();
+    /** Requests waiting for their answer (control blocks, S7 jobs, CIP services), so the answer's status lands on the request. */
+    private final Map<String, OpAgg> pending = new HashMap<>();
+    /** Connections conn.log says are UDP (everything else an ICSNPP log mentions is taken as TCP), by uid. */
+    private final Set<String> udpUids = new java.util.HashSet<>();
+    /** modbus_detailed_link_id of rows modbus_detailed.log already counted, so the per-function logs do not count them twice. */
+    private final Set<String> linkSeen = new java.util.HashSet<>();
     private final Map<String, ConnAgg> conns = new LinkedHashMap<>();
     private final Map<String, long[]> scans = new LinkedHashMap<>();
     private final Map<String, Host> hosts = new LinkedHashMap<>();
     private final Map<String, IdentGroup> identGroups = new LinkedHashMap<>();
     private final Set<String> unmatchedSeen = new java.util.HashSet<>();
-    private final Set<String> s7SzlRows = new java.util.HashSet<>();
-    private final Map<String, Staged> pendingOps = new HashMap<>();
 
     /** @param icsOnly   no flows for traffic that is not a decoded ICS protocol (hosts still become assets)
      *  @param keepScans give scan-only conversations a flow of their own */
@@ -105,14 +108,18 @@ public final class ZeekLogReader {
     private record FlowRef(String client, String server, String protocol, String port) {
     }
 
-    private record Staged(String flowKey, String operationKey) {
-    }
-
     private static final class OpAgg {
-        String function, access, object, status;
-        Long address, quantity;
+        String function, access, object;
+        Long address, quantity, unit;
         long count;
         final List<Object> samples = new ArrayList<>();
+        final Map<String, Long> statuses = new LinkedHashMap<>();
+
+        void status(String label) {
+            if (label != null && (statuses.size() < FlowTable.MAX_STATUSES || statuses.containsKey(label))) {
+                statuses.merge(label, 1L, Long::sum);
+            }
+        }
     }
 
     private static final class ConnAgg {
@@ -122,7 +129,8 @@ public final class ZeekLogReader {
 
     private static final class Host {
         boolean client, server;
-        final Set<String> services = new LinkedHashSet<>();
+        /** Ports the host answered on ("502/tcp") to the service conn.log named there ("modbus", or "unknown"). */
+        final Map<String, String> ports = new LinkedHashMap<>();
     }
 
     private static final class IdentGroup {
@@ -138,32 +146,38 @@ public final class ZeekLogReader {
         staged.clear();
         stagedFlow.clear();
         masterOfUid.clear();
+        pending.clear();
+        udpUids.clear();
+        linkSeen.clear();
         conns.clear();
         scans.clear();
         hosts.clear();
         identGroups.clear();
         unmatchedSeen.clear();
-        s7SzlRows.clear();
-        pendingOps.clear();
         if (dir == null || !Files.isDirectory(dir)) {
             throw new ZeekException(ZeekException.Kind.ENGINE, "the Zeek log directory does not exist: " + dir);
         }
-        // protocol logs first: they create the flows conn.log's counters are later attached to
+        // conn.log is read first only to learn which connections are UDP (the protocol logs do not say) and to collect its
+        // conversations; they go onto the flows after the protocol logs have created them
+        each(dir, "conn.log", this::conn);
         each(dir, "dnp3_objects.log", this::dnp3Objects);
         each(dir, "dnp3_control.log", this::dnp3Control);
         each(dir, "dnp3.log", this::dnp3);
         each(dir, "modbus.log", this::modbus);
         each(dir, "modbus_detailed.log", this::modbusDetailed);
+        each(dir, "modbus_mask_write_register.log", this::modbusMaskWrite);
+        each(dir, "modbus_read_write_multiple_registers.log", this::modbusReadWrite);
+        each(dir, "modbus_read_device_identification.log", this::modbusIdent);
+        each(dir, "s7comm.log", this::s7);
         each(dir, "s7comm_read_szl.log", this::s7Szl);
-        each(dir, "s7comm.log", this::s7comm);
+        each(dir, "s7comm_upload_download.log", this::s7Transfer);
         each(dir, "s7comm_plus.log", this::s7plus);
         each(dir, "cotp.log", this::cotp);
         each(dir, "enip.log", this::enip);
         each(dir, "cip.log", this::cip);
+        each(dir, "cip_io.log", this::cipIo);
         emitOperations();
-        each(dir, "conn.log", this::conn);
         emitConns();
-        each(dir, "modbus_read_device_identification.log", this::modbusIdent);
         emitModbusIdent();
         each(dir, "cip_identity.log", this::cipIdentity);
         each(dir, "s7comm_known_devices.log", this::s7Known);
@@ -175,6 +189,9 @@ public final class ZeekLogReader {
         scans.clear();
         hosts.clear();
         staged.clear();
+        pending.clear();
+        udpUids.clear();
+        linkSeen.clear();
         return out;
     }
 
@@ -243,43 +260,6 @@ public final class ZeekLogReader {
         }
         String s = v.asText();
         return s.length() > MAX_STR ? s.substring(0, MAX_STR) : s;
-    }
-
-    /** A text or integral field as text: pdu_reference and some ids are numeric in the ICSNPP schemas. */
-    private static String scalar(JsonNode n, String k) {
-        JsonNode v = n.get(k);
-        if (v == null || v.isNull()) {
-            return null;
-        }
-        if (v.isTextual()) {
-            String s = v.asText();
-            return s.length() > MAX_STR ? s.substring(0, MAX_STR) : s;
-        }
-        if (v.isIntegralNumber() && v.canConvertToLong()) {
-            return Long.toString(v.asLong());
-        }
-        return null;
-    }
-
-    private static Long numberOrHex(JsonNode n, String k) {
-        JsonNode v = n.get(k);
-        if (v == null || v.isNull()) {
-            return null;
-        }
-        if (v.isIntegralNumber() && v.canConvertToLong() && v.asLong() >= 0) {
-            return Math.min(v.asLong(), 1_000_000_000_000L);
-        }
-        if (v.isTextual()) {
-            var m = HEX.matcher(v.asText());
-            if (m.matches()) {
-                try {
-                    return Math.min(Long.parseLong(m.group(1), 16), 1_000_000_000_000L);
-                } catch (NumberFormatException e) {
-                    return null;
-                }
-            }
-        }
-        return null;
     }
 
     private static long num(JsonNode n, String k, long dflt) {
@@ -359,6 +339,10 @@ public final class ZeekLogReader {
         }
         stats.connections++;
         boolean tcp = "tcp".equals(proto);
+        String cuid = text(n, "uid");
+        if (!tcp && cuid != null && udpUids.size() < MAX_CONN_KEYS) {
+            udpUids.add(cuid);
+        }
         long ob = num(n, "orig_bytes", 0), rb = num(n, "resp_bytes", 0);
         String port = rp + "/" + proto;
         if (tcp && scanState(text(n, "conn_state"), ob + rb)) {
@@ -379,8 +363,8 @@ public final class ZeekLogReader {
         Host hr = host(r);
         hr.server = true;
         String svc = ZeekNames.protocolOf(text(n, "service"));
-        if (hr.services.size() < 4 && !"unknown".equals(svc)) {
-            hr.services.add(svc);
+        if (hr.ports.size() < 8 || hr.ports.containsKey(port) || (hr.ports.size() < 16 && (!"unknown".equals(svc) || portHint(port) != null))) {
+            hr.ports.merge(port, svc, (old, now) -> "unknown".equals(old) ? now : old);
         }
         // one conversation per host pair + server port + protocol: two protocols on one port (a probe and a master) stay two flows
         String key = o + '>' + r + '>' + port + '>' + svc;
@@ -437,6 +421,9 @@ public final class ZeekLogReader {
                 }
                 f.source("zeek");
             }
+            if ("unknown".equals(f.protocolName())) {
+                f.portHint(portHint(a.port));                 // nothing dissected it: say what the port usually means, as a hint
+            }
             f.traffic(a.packets, a.bytes).seen(a.first).seen(a.last);
             if (f.messageCount() == 0) {
                 f.messages(a.packets);                        // undecoded: Zeek's conn.log has no payload-packet count
@@ -466,24 +453,23 @@ public final class ZeekLogReader {
         if (o == null || r == null || rp < 0 || func == null || func.isEmpty()) {
             return false;
         }
-        FlowTable.Flow f = flows.flow(o, r, "modbus", rp + "/tcp");
+        FlowTable.Flow f = flows.flow(o, r, "modbus", rp + "/" + transport(text(n, "uid"), "tcp"));
         if (f == null) {
             stats.flowsDroppedOverCap++;
             return true;
         }
         int fc = ZeekNames.modbusCode(func);
-        boolean exc = func.endsWith("_EXCEPTION") || n.get("exception") != null || text(n, "exception_code") != null;
-        String label = "Modbus " + (fc < 0 ? cap(func, 40) : "FC" + fc) + (exc ? " exception" : "");
-        f.message(label).seen(micros(n, "ts")).source("zeek");
-        String excCode = text(n, "exception_code");
-        if (exc && excCode != null && func.endsWith("_EXCEPTION")) {
-            String base = func.substring(0, func.length() - "_EXCEPTION".length());
-            String access = ZeekNames.modbusAccess(base);
-            stage(o, r, "modbus", rp + "/tcp", ZeekNames.modbusFunction(base), access,
-                    cap(text(n, "request_subfunction_code"), 32), numOrNull(n, "address"), numOrNull(n, "quantity"),
-                    List.of(), cap(excCode, MAX_STATUS));
-        }
+        boolean exc = ZeekNames.modbusIsException(func) || n.get("exception") != null;
+        String why = exc ? ZeekNames.modbusException(text(n, "exception")) : null;
+        // an exception response is named after the function it answers ("Modbus FC3 exception: illegal data address"), not
+        // after the raw code ICSNPP could not name ("unknown-131")
+        f.message("Modbus " + (fc < 0 ? cap(func, 40) : "FC" + fc) + (exc ? " exception" + (why == null ? "" : ": " + why) : "")).seen(micros(n, "ts")).source("zeek");
         return true;
+    }
+
+    /** "tcp" or "udp" for the connection this log row belongs to, as conn.log said; {@code dflt} when conn.log did not have it. */
+    private String transport(String uid, String dflt) {
+        return uid != null && udpUids.contains(uid) ? "udp" : dflt;
     }
 
     private boolean modbusDetailed(JsonNode n) {
@@ -497,7 +483,7 @@ public final class ZeekLogReader {
         // has no response yet on every later packet (one capture: 5.77 million rows for about 1,100 requests), so an unmatched
         // request counts once per (connection, transaction id, function, address, quantity). A "_EXCEPTION" row only repeats
         // the exception of a transaction whose matched row is already there.
-        if (func.endsWith("_EXCEPTION")) {
+        if (ZeekNames.modbusIsException(func)) {
             return true;
         }
         JsonNode m = n.get("matched");
@@ -513,11 +499,30 @@ public final class ZeekLogReader {
             }
             unmatchedSeen.add(key);
         }
-        String access = ZeekNames.modbusAccess(func);
-        JsonNode vals = n.get("write".equals(access) || "WRITE".equals(func.toUpperCase(java.util.Locale.ROOT).substring(0, Math.min(5, func.length()))) ? "request_values" : "response_values");
-        if (vals == null || !vals.isArray()) {
-            vals = n.get("write".equals(access) ? "response_values" : "request_values");
+        String link = text(n, "modbus_detailed_link_id");
+        if (link != null && linkSeen.size() < MAX_PENDING) {
+            linkSeen.add(link);
         }
+        int fc = ZeekNames.modbusCode(func);
+        String access = ZeekNames.modbusAccess(fc, func);
+        List<Object> samples = values(n.get("write".equals(access) ? "request_values" : "response_values"));
+        // outcome: ICSNPP writes the exception name on the transaction's matched row; an unmatched request has no answer yet
+        String why = ZeekNames.modbusException(text(n, "exception_code"));
+        String status = why != null ? "exception: " + why : matched ? "ok" : "unanswered";
+        String object = cap(text(n, "request_subfunction_code"), 64);     // FC8 diagnostics: which sub-function ("Force Listen Only Mode")
+        if (object == null && fc == 43) {
+            object = cap(text(n, "mei_type"), 64);
+        }
+        OpAgg a = stage(o, r, "modbus", rp + "/" + transport(text(n, "uid"), "tcp"), ZeekNames.modbusFunction(func), access, object,
+                numOrNull(n, "address"), numOrNull(n, "quantity"), numOrNull(n, "unit"), samples, 1);
+        if (a != null) {
+            a.status(status);
+        }
+        return true;
+    }
+
+    /** The integer values of a JSON array, the first few only. */
+    private static List<Object> values(JsonNode vals) {
         List<Object> samples = new ArrayList<>();
         if (vals != null && vals.isArray()) {
             for (int i = 0; i < vals.size() && i < MAX_VALUES_SCANNED && samples.size() < FlowTable.MAX_SAMPLES; i++) {
@@ -527,23 +532,84 @@ public final class ZeekLogReader {
                 }
             }
         }
-        String obj = cap(text(n, "request_subfunction_code"), 32);
-        String status = cap(text(n, "exception_code"), MAX_STATUS);
-        if (status == null) {
-            String resp = text(n, "exception");
-            if (resp != null) {
-                status = cap(resp, MAX_STATUS);
+        return samples;
+    }
+
+    /** First of these keys that holds a non-negative integer, else null (the per-function logs name their address columns differently). */
+    private static Long firstNum(JsonNode n, String... keys) {
+        for (String k : keys) {
+            Long v = numOrNull(n, k);
+            if (v != null) {
+                return v;
             }
         }
-        stage(o, r, "modbus", rp + "/tcp", ZeekNames.modbusFunction(func), access,
-                obj, numOrNull(n, "address"), numOrNull(n, "quantity"), samples, status);
+        return null;
+    }
+
+    /** True for a request row of a per-function Modbus log: {@code request_response} says so, or the row was sent by the originator. */
+    private static boolean modbusRequestRow(JsonNode n) {
+        String rr = text(n, "request_response");
+        return rr != null ? "REQUEST".equalsIgnoreCase(rr) : n.get("is_orig") != null && n.get("is_orig").asBoolean(false);
+    }
+
+    /** modbus_mask_write_register.log: FC22. Counted from its request rows, unless modbus_detailed.log already has the transaction. */
+    private boolean modbusMaskWrite(JsonNode n) {
+        return modbusPerFunction(n, java.util.Arrays.asList(firstNum(n, "and_mask"), firstNum(n, "or_mask")), firstNum(n, "address"), 1L);
+    }
+
+    /** modbus_read_write_multiple_registers.log: FC23, a write to {@code write_start_address} plus a read. */
+    private boolean modbusReadWrite(JsonNode n) {
+        return modbusPerFunction(n, values(n.get("write_registers")), firstNum(n, "write_start_address", "read_start_address"), firstNum(n, "read_quantity"));
+    }
+
+    private boolean modbusPerFunction(JsonNode n, List<?> samples, Long address, Long quantity) {
+        String func = text(n, "func");
+        int rp = port(n, "id.resp_p");
+        if (func == null || func.isEmpty() || rp < 0) {
+            return false;
+        }
+        if (!modbusRequestRow(n)) {
+            return true;                                      // the response row repeats the same transaction
+        }
+        // a request row is sent by the client: its source is the client whichever side opened the TCP connection
+        String o = ip4(text(n, "source_h")), r = ip4(text(n, "destination_h"));
+        if (o == null || r == null) {
+            o = ip4(text(n, "id.orig_h"));
+            r = ip4(text(n, "id.resp_h"));
+        }
+        if (o == null || r == null) {
+            return false;
+        }
+        String link = text(n, "modbus_detailed_link_id");
+        if (link != null && linkSeen.contains(link)) {
+            return true;
+        }
+        List<Object> s = new ArrayList<>();
+        for (Object v : samples) {
+            if (v instanceof Number && s.size() < FlowTable.MAX_SAMPLES) {
+                s.add(v);
+            }
+        }
+        stage(o, r, "modbus", rp + "/" + transport(text(n, "uid"), "tcp"), ZeekNames.modbusFunction(func),
+                ZeekNames.modbusAccess(ZeekNames.modbusCode(func), func), null, address, quantity, numOrNull(n, "unit"), s, 1);
         return true;
     }
 
     // ------------------------------------------------------------------ dnp3
 
-    private static boolean isRequest(String fcName) {
-        return fcName != null && DNP3_REQUESTS.contains(fcName);
+    /**
+     * Whether the sender of a DNP3 row is the master. Replies come from the outstation, every other application function from the
+     * master. A function name this build does not know is decided by the standard outstation port (20000) instead.
+     */
+    private static boolean senderIsMaster(String name, int srcPort, int dstPort) {
+        if (DNP3_REPLIES.contains(name)) {
+            return false;
+        }
+        return Dnp3Parser.functionCode(name) >= 0 || !(srcPort == 20000 && dstPort != 20000);
+    }
+
+    private static String statusLabel(String status) {
+        return status == null ? null : "success".equals(status) ? "ok" : "status: " + status;
     }
 
     /** dnp3_objects.log: who asked (the master) is the source of a request row and the destination of a reply row. */
@@ -554,32 +620,24 @@ public final class ZeekLogReader {
         if (src == null || dst == null || sp < 0 || dp < 0 || name == null) {
             return false;
         }
-        boolean req = isRequest(name);
+        boolean req = senderIsMaster(name, sp, dp);
         String master = req ? src : dst, outstation = req ? dst : src;
         int outPort = req ? dp : sp;
-        if (uid != null && masterOfUid.size() < 100_000) {
+        if (uid != null && masterOfUid.size() < MAX_PENDING) {
             masterOfUid.putIfAbsent(uid, master);
         }
-        Long low = numOrNull(n, "range_low"), count = numOrNull(n, "object_count");
-        if (count == null) {
-            count = numOrNull(n, "count");
-        }
-        String obj = cap(text(n, "object_type"), 32);
-        String var = text(n, "variation");
-        String grp = text(n, "group");
-        if (var != null && !var.isBlank() && obj != null && !obj.isBlank()) {
-            obj = cap(obj + " v" + var, 32);
-        } else if (var != null && !var.isBlank() && obj == null) {
-            obj = cap("g" + (grp == null ? "" : grp) + "v" + var, 32);
-        } else if (grp != null && !grp.isBlank() && obj != null && !obj.isBlank() && var == null) {
-            obj = cap(obj + " g" + grp, 32);
-        }
-        String status = cap(text(n, "status"), MAX_STATUS);
-        stage(master, outstation, "dnp3", outPort + "/tcp", dnp3Function(name), ZeekNames.dnp3Access(name),
-                obj, low, count, List.of(), status);
+        Long low = numOrNull(n, "range_low"), high = numOrNull(n, "range_high"), count = numOrNull(n, "object_count");
+        // a range (index 5 to 12) is 8 points even when the object count says 1 header; the count stays the fallback
+        Long quantity = low != null && high != null && high >= low ? Long.valueOf(high - low + 1) : count;
+        stage(master, outstation, "dnp3", outPort + "/" + transport(uid, "tcp"), dnp3Function(name), ZeekNames.dnp3Access(name),
+                cap(text(n, "object_type"), 64), low, quantity, null, List.of(), 1);
         return true;
     }
 
+    /**
+     * dnp3_control.log: CROB and pattern control blocks of SELECT / OPERATE / DIRECT_OPERATE and the outstation's RESPONSE. The
+     * response row carries the status code; it is put on the request it answers (same connection, point index and block type).
+     */
     private boolean dnp3Control(JsonNode n) {
         String src = ip4(text(n, "source_h")), dst = ip4(text(n, "destination_h"));
         int sp = port(n, "source_p"), dp = port(n, "destination_p");
@@ -587,22 +645,47 @@ public final class ZeekLogReader {
         if (src == null || dst == null || sp < 0 || dp < 0 || name == null) {
             return false;
         }
-        boolean req = isRequest(name);
+        boolean req = senderIsMaster(name, sp, dp);
         String master = req ? src : dst, outstation = req ? dst : src;
-        if (uid != null && masterOfUid.size() < 100_000) {
+        if (uid != null && masterOfUid.size() < MAX_PENDING) {
             masterOfUid.putIfAbsent(uid, master);
         }
+        String block = cap(text(n, "block_type"), 64);
+        Long index = numOrNull(n, "index_number");
+        String status = statusLabel(ZeekNames.dnp3Status(text(n, "status_code")));
+        String pk = "c|" + uid + '|' + index + '|' + block;
+        if (!req) {
+            OpAgg asked = pending.get(pk);
+            if (asked != null) {
+                asked.status(status);                          // the answer belongs to the request
+                return true;
+            }
+        }
         List<Object> samples = new ArrayList<>();
-        String op = text(n, "operation_type");
+        String op = text(n, "operation_type"), trip = text(n, "trip_control_code");
         if (op != null) {
             samples.add(cap(op, 32));
         }
-        String status = cap(text(n, "status"), MAX_STATUS);
-        stage(master, outstation, "dnp3", (req ? dp : sp) + "/tcp", dnp3Function(name), "control",
-                cap(text(n, "block_type"), 32), numOrNull(n, "index_number"), 1L, samples, status);
+        if (trip != null && !trip.equalsIgnoreCase("nul") && !trip.equalsIgnoreCase("null")) {
+            samples.add(cap(trip, 32));
+        }
+        OpAgg a = stage(master, outstation, "dnp3", (req ? dp : sp) + "/" + transport(uid, "tcp"), dnp3Function(name), "control", block,
+                index, 1L, null, samples, 1);
+        if (a != null) {
+            if (req && uid != null && pending.size() < MAX_PENDING) {
+                pending.put(pk, a);
+            } else if (!req) {
+                a.status(status);                              // an answer whose request was not logged
+            }
+        }
         return true;
     }
 
+    /**
+     * dnp3.log (Zeek's own analyzer): one row per request and its reply, with the reply's internal indications (IIN). The
+     * master is whoever dnp3_objects.log / dnp3_control.log showed sending requests on this connection; failing that, the side
+     * not on the standard outstation port 20000 (an outstation can open the connection, and then the TCP originator is it).
+     */
     private boolean dnp3(JsonNode n) {
         String o = ip4(text(n, "id.orig_h")), r = ip4(text(n, "id.resp_h"));
         int op = port(n, "id.orig_p"), rp = port(n, "id.resp_p");
@@ -611,9 +694,10 @@ public final class ZeekLogReader {
             return false;
         }
         String master = uid == null ? null : masterOfUid.get(uid);
-        boolean origIsMaster = master == null || master.equals(o);
+        boolean origIsMaster = master != null ? master.equals(o) : !(op == 20000 && rp != 20000);
         String client = origIsMaster ? o : r, server = origIsMaster ? r : o;
-        FlowTable.Flow f = flows.flow(client, server, "dnp3", (origIsMaster ? rp : op) + "/tcp");
+        String port = (origIsMaster ? rp : op) + "/" + transport(uid, "tcp");
+        FlowTable.Flow f = flows.flow(client, server, "dnp3", port);
         if (f == null) {
             stats.flowsDroppedOverCap++;
             return true;
@@ -625,279 +709,313 @@ public final class ZeekLogReader {
                 f.message("DNP3 " + (fc < 0 ? cap(name, 40) : "FC" + fc + " " + name));
             }
         }
-        if (req != null) {                                   // the request itself is an operation even when it carried no objects
-            stage(client, server, "dnp3", (origIsMaster ? rp : op) + "/tcp", dnp3Function(req), ZeekNames.dnp3Access(req), null, null, null, List.of(), null);
+        // the request itself is an operation even when it carried no objects; a reply with no request is an unsolicited one
+        String fn = req != null ? req : rep;
+        OpAgg a = stage(client, server, "dnp3", port, dnp3Function(fn), ZeekNames.dnp3Access(fn), null, null, null, null, List.of(), 1);
+        JsonNode iin = n.get("iin");
+        if (a != null && rep != null && iin != null && iin.isIntegralNumber() && iin.canConvertToLong()) {
+            List<String> flags = ZeekNames.dnp3Iin(iin.asLong());
+            if (flags.isEmpty()) {
+                a.status("ok");
+            }
+            flags.stream().sorted((x, y) -> Boolean.compare(ZeekNames.dnp3IinIsError(y), ZeekNames.dnp3IinIsError(x)))
+                    .forEach(x -> a.status("iin: " + x));
         }
         return true;
     }
 
     private static String dnp3Function(String name) {
         int fc = Dnp3Parser.functionCode(name);
-        if (name == null) {
-            return "DNP3";
-        }
         String lower = name.toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
         return fc < 0 ? cap(lower, 40) : "FC" + fc + " " + lower;
     }
 
-    // ------------------------------------------------------------------ s7 / cotp / enip / cip
+    // ------------------------------------------------------------------ s7comm, enip, cip
 
-    private static boolean originator(JsonNode n) {
-        JsonNode v = n.get("is_orig");
-        if (v != null && v.isBoolean()) {
-            return v.asBoolean();
+    /** Who is client and server in a row of a log that names the sender (source) and receiver (destination) of each message. */
+    private record Sides(String client, String server, int serverPort, boolean fromClient) {
+    }
+
+    /**
+     * The server is the side on one of the protocol's well-known ports; with neither or both, the TCP responder is. {@code fromClient}
+     * says whether this row was sent by the client (a request) or by the server (an answer).
+     */
+    private static Sides sides(JsonNode n, int... serverPorts) {
+        String src = ip4(text(n, "source_h")), dst = ip4(text(n, "destination_h"));
+        int sp = port(n, "source_p"), dp = port(n, "destination_p");
+        if (src != null && dst != null && sp >= 0 && dp >= 0) {
+            boolean dstServer = false, srcServer = false;
+            for (int p : serverPorts) {
+                dstServer |= dp == p;
+                srcServer |= sp == p;
+            }
+            if (dstServer != srcServer) {
+                return dstServer ? new Sides(src, dst, dp, true) : new Sides(dst, src, sp, false);
+            }
         }
-        String d = text(n, "direction");
-        return d == null || "request".equalsIgnoreCase(d);
-    }
-
-    private static boolean s7Request(JsonNode n) {
-        String m = text(n, "method");
-        return m != null ? "request".equalsIgnoreCase(m) : originator(n);
-    }
-
-    private static String stripDirection(String s) {
-        if (s == null) {
+        String o = ip4(text(n, "id.orig_h")), r = ip4(text(n, "id.resp_h"));
+        int rp = port(n, "id.resp_p");
+        if (o == null || r == null || rp < 0) {
             return null;
         }
-        for (String p : new String[]{"Request: ", "Response: "}) {
-            if (s.startsWith(p)) {
-                return s.substring(p.length());
-            }
-        }
-        return s;
+        boolean fromOrig = n.get("is_orig") != null && n.get("is_orig").asBoolean(false);
+        return new Sides(o, r, rp, fromOrig);
     }
 
-    private static String s7Function(JsonNode n) {
-        String fn = stripDirection(text(n, "function_name"));
-        String sub = text(n, "subfunction_name");
-        if (fn == null || fn.isBlank()) {
-            fn = text(n, "rosctr_name");
-        }
-        if (fn == null || fn.isBlank()) {
-            fn = "message";
-        }
-        if (sub != null && !sub.isBlank() && !fn.toLowerCase(java.util.Locale.ROOT).contains(sub.toLowerCase(java.util.Locale.ROOT))) {
-            fn = fn + " " + sub;
-        }
-        return cap("S7 " + fn, 64);
-    }
-
-    private static String s7Status(JsonNode n) {
-        String cls = text(n, "error_class"), code = text(n, "error_code");
-        if (cls != null && code != null) {
-            return cap(cls + " " + code, MAX_STATUS);
-        }
-        return cap(cls != null ? cls : code, MAX_STATUS);
-    }
-
-    private static String s7SzlStatus(JsonNode n) {
-        String name = text(n, "return_code_name"), code = text(n, "return_code");
-        if (name != null && code != null) {
-            return cap(name + " " + code, MAX_STATUS);
-        }
-        return cap(name != null ? name : code, MAX_STATUS);
-    }
-
-    private static String cipStatus(JsonNode n) {
-        String name = text(n, "cip_status"), code = text(n, "cip_status_code");
-        if (name != null && code != null) {
-            return cap(name + " " + code, MAX_STATUS);
-        }
-        return cap(name != null ? name : code, MAX_STATUS);
-    }
-
-    private boolean s7comm(JsonNode n) {
-        String o = ip4(text(n, "id.orig_h")), r = ip4(text(n, "id.resp_h"));
-        int rp = port(n, "id.resp_p");
-        if (o == null || r == null || rp < 0) {
-            return false;
-        }
-        FlowTable.Flow f = flows.flow(o, r, "s7comm", rp + "/tcp");
+    private FlowTable.Flow flowOf(Sides sd, String protocol, String uid, String dfltTransport) {
+        FlowTable.Flow f = flows.flow(sd.client(), sd.server(), protocol, sd.serverPort() + "/" + transport(uid, dfltTransport));
         if (f == null) {
             stats.flowsDroppedOverCap++;
+        }
+        return f;
+    }
+
+    private String portOf(Sides sd, String uid, String dflt) {
+        return sd.serverPort() + "/" + transport(uid, dflt);
+    }
+
+    private static String idText(JsonNode n, String k) {
+        JsonNode v = n.get(k);
+        return v == null ? null : v.isTextual() ? cap(v.asText(), 40) : v.isIntegralNumber() ? v.asText() : null;
+    }
+
+    /** "Success" and "No error" are the usual outcome; anything else is named. */
+    private static String outcome(String name) {
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+        String l = ZeekNames.clean(name.trim().replace(' ', '-').replace('_', '-')).replace('-', ' ');
+        return l.equals("success") || l.equals("no error") ? "ok" : "status: " + l;
+    }
+
+    /** s7comm.log: jobs (client) and acknowledgements (server); the acknowledgement's error class is the job's status. */
+    private boolean s7(JsonNode n) {
+        Sides sd = sides(n, 102);
+        if (sd == null) {
+            return false;
+        }
+        String uid = text(n, "uid"), fn = text(n, "function_name"), sub = text(n, "subfunction_name");
+        String function = fn == null ? null : cap(fn + (sub == null ? "" : ": " + sub), 64);
+        String pdu = idText(n, "pdu_reference");
+        FlowTable.Flow f = flowOf(sd, "s7comm", uid, "tcp");
+        if (f == null) {
             return true;
         }
-        String uid = text(n, "uid"), pdu = scalar(n, "pdu_reference");
-        String pendingKey = uid == null || pdu == null ? null : uid + '|' + pdu;
-        if (pendingKey != null && s7SzlRows.contains(pendingKey)) {
-            return true;                                  // already counted from s7comm_read_szl.log
+        f.source("zeek").seen(micros(n, "ts"));
+        if (function != null) {
+            f.message("S7 " + function);
         }
-        String function = s7Function(n);
-        boolean response = !originator(n);
-        f.source("zeek").seen(micros(n, "ts")).message(function + (response ? " response" : ""));
-        if (response) {
-            if (pendingKey != null) {
-                setStatus(pendingOps.get("s7|" + pendingKey), s7Status(n));
+        String key = "s|" + uid + '|' + pdu;
+        if (sd.fromClient()) {
+            // a read of an SZL list is counted by s7comm_read_szl.log, which also names the list
+            if (function != null && !function.toLowerCase(java.util.Locale.ROOT).contains("szl")) {
+                OpAgg a = stage(sd.client(), sd.server(), "s7comm", portOf(sd, uid, "tcp"), function, ZeekNames.s7Access(function), null, null, null, null, List.of(), 1);
+                if (a != null && uid != null && pdu != null && pending.size() < MAX_PENDING) {
+                    pending.put(key, a);
+                }
             }
-            return true;
-        }
-        Staged s = stage(o, r, "s7comm", rp + "/tcp", function, ZeekNames.s7Access(function),
-                cap(text(n, "subfunction_name"), 32), null, null, List.of(), null);
-        if (pendingKey != null && s != null && pendingOps.size() < MAX_UNMATCHED_KEYS) {
-            pendingOps.put("s7|" + pendingKey, s);
+        } else {
+            OpAgg asked = pending.get(key);
+            if (asked != null) {
+                String o = outcome(text(n, "error_class")), code = text(n, "error_code");
+                asked.status(o == null ? "ok" : "ok".equals(o) || code == null ? o : o + " " + code);
+            }
         }
         return true;
     }
 
-    private boolean s7Szl(JsonNode n) {
-        String o = ip4(text(n, "id.orig_h")), r = ip4(text(n, "id.resp_h"));
-        int rp = port(n, "id.resp_p");
-        if (o == null || r == null || rp < 0) {
-            return false;
-        }
-        FlowTable.Flow f = flows.flow(o, r, "s7comm", rp + "/tcp");
-        if (f == null) {
-            stats.flowsDroppedOverCap++;
-            return true;
-        }
-        String uid = text(n, "uid"), pdu = scalar(n, "pdu_reference");
-        String pendingKey = uid == null || pdu == null ? null : uid + '|' + pdu;
-        if (pendingKey != null && s7SzlRows.size() < MAX_UNMATCHED_KEYS) {
-            s7SzlRows.add(pendingKey);
-        }
-        boolean response = !s7Request(n);
-        f.source("zeek").seen(micros(n, "ts")).message("S7 Read SZL" + (response ? " response" : ""));
-        if (response) {
-            if (pendingKey != null) {
-                setStatus(pendingOps.get("szl|" + pendingKey), s7SzlStatus(n));
-            }
-            return true;
-        }
-        String name = text(n, "szl_id_name"), id = text(n, "szl_id");
-        String object = cap((name == null || name.isBlank() ? "SZL" : name) + (id == null ? "" : " " + id), 32);
-        Staged s = stage(o, r, "s7comm", rp + "/tcp", "S7 Read SZL", "read", object, 0L, null, List.of(), null);
-        if (pendingKey != null && s != null && pendingOps.size() < MAX_UNMATCHED_KEYS) {
-            pendingOps.put("szl|" + pendingKey, s);
-        }
-        return true;
-    }
-
+    /** s7comm_plus.log: S7comm-Plus messages (newer S7-1200/1500); the client's requests are operations, with no outcome logged. */
     private boolean s7plus(JsonNode n) {
-        String o = ip4(text(n, "id.orig_h")), r = ip4(text(n, "id.resp_h"));
-        int rp = port(n, "id.resp_p");
-        if (o == null || r == null || rp < 0) {
-            return false;
-        }
-        FlowTable.Flow f = flows.flow(o, r, "s7comm", rp + "/tcp");
-        if (f == null) {
-            stats.flowsDroppedOverCap++;
-            return true;
-        }
-        String fn = stripDirection(text(n, "function_name"));
-        if (fn == null || fn.isBlank()) {
+        Sides sd = sides(n, 102);
+        String fn = text(n, "function_name");
+        if (fn == null) {
             fn = text(n, "function_code");
         }
-        if (fn == null || fn.isBlank()) {
-            fn = "message";
-        }
-        boolean response = !originator(n);
-        f.source("zeek").seen(micros(n, "ts")).message(cap("S7plus " + fn + (response ? " response" : ""), 64));
-        if (!response) {
-            stage(o, r, "s7comm", rp + "/tcp", cap("S7plus " + fn, 64), ZeekNames.s7Access(fn),
-                    null, null, null, List.of(), s7Status(n));
-        }
-        return true;
-    }
-
-    private boolean cotp(JsonNode n) {
-        String o = ip4(text(n, "id.orig_h")), r = ip4(text(n, "id.resp_h"));
-        int rp = port(n, "id.resp_p");
-        String pdu = text(n, "pdu_name");
-        if (o == null || r == null || rp < 0 || pdu == null || pdu.isBlank()) {
+        if (sd == null || fn == null) {
             return false;
         }
-        FlowTable.Flow f = flows.flow(o, r, "s7comm", rp + "/tcp");
+        String uid = text(n, "uid"), function = cap("S7plus " + fn.replaceFirst("^(Request|Response): ", ""), 64);
+        FlowTable.Flow f = flowOf(sd, "s7comm", uid, "tcp");
         if (f == null) {
-            stats.flowsDroppedOverCap++;
             return true;
         }
-        f.source("zeek").seen(micros(n, "ts")).labelCount("COTP " + pdu, 1);
-        return true;
-    }
-
-    private boolean enip(JsonNode n) {
-        String o = ip4(text(n, "id.orig_h")), r = ip4(text(n, "id.resp_h"));
-        int rp = port(n, "id.resp_p");
-        String command = text(n, "enip_command");
-        if (o == null || r == null || rp < 0 || command == null || command.isBlank()) {
-            return false;
-        }
-        FlowTable.Flow f = flows.flow(o, r, "ethernet-ip", rp + "/tcp");
-        if (f == null) {
-            stats.flowsDroppedOverCap++;
-            return true;
-        }
-        boolean request = originator(n);
-        String function = cap("ENIP " + command, 64);
         f.source("zeek").seen(micros(n, "ts")).message(function);
-        if (request) {
-            stage(o, r, "ethernet-ip", rp + "/tcp", function, ZeekNames.enipAccess(command),
-                null, null, null, List.of(), cap(text(n, "enip_status"), MAX_STATUS));
+        if (sd.fromClient()) {
+            stage(sd.client(), sd.server(), "s7comm", portOf(sd, uid, "tcp"), function, ZeekNames.s7Access(function), null, null, null, null, List.of(), 1);
         }
         return true;
     }
 
-    private boolean cip(JsonNode n) {
-        String o = ip4(text(n, "id.orig_h")), r = ip4(text(n, "id.resp_h"));
-        int rp = port(n, "id.resp_p");
-        String service = text(n, "cip_service");
-        if (service == null) {
-            service = text(n, "cip_service_code");
-        }
-        if (o == null || r == null || rp < 0 || service == null || service.isBlank()) {
+    /** cotp.log: ISO transport PDUs under S7; counted as message kinds only (a connection request says nothing about operations). */
+    private boolean cotp(JsonNode n) {
+        Sides sd = sides(n, 102);
+        String pdu = text(n, "pdu_name");
+        if (sd == null || pdu == null || pdu.isBlank()) {
             return false;
         }
-        FlowTable.Flow f = flows.flow(o, r, "ethernet-ip", rp + "/tcp");
-        if (f == null) {
-            stats.flowsDroppedOverCap++;
-            return true;
+        FlowTable.Flow f = flowOf(sd, "s7comm", text(n, "uid"), "tcp");
+        if (f != null) {
+            f.source("zeek").seen(micros(n, "ts")).message("COTP " + cap(pdu, 40));
         }
-        String direction = text(n, "direction");
-        boolean response = direction != null ? "response".equalsIgnoreCase(direction) : !originator(n);
-        f.source("zeek").seen(micros(n, "ts")).labelCount("CIP " + service + (response ? " response" : ""), 1);
-        String uid = text(n, "uid"), seq = scalar(n, "cip_sequence_count");
-        String pendingKey = uid == null || seq == null ? null : uid + '|' + seq;
-        if (response) {
-            if (pendingKey != null) {
-                setStatus(pendingOps.get("cip|" + pendingKey), cipStatus(n));
+        return true;
+    }
+
+    /** s7comm_read_szl.log: which system status list (SZL) a client asked for; the module identification list is what names a CPU. */
+    private boolean s7Szl(JsonNode n) {
+        Sides sd = sides(n, 102);
+        if (sd == null) {
+            return false;
+        }
+        String uid = text(n, "uid"), pdu = idText(n, "pdu_reference"), method = text(n, "method");
+        boolean request = method != null ? "Request".equalsIgnoreCase(method) : sd.fromClient();
+        String key = "z|" + uid + '|' + pdu;
+        if (!request) {
+            OpAgg asked = pending.get(key);
+            if (asked != null) {
+                asked.status(outcome(text(n, "return_code_name")));
             }
             return true;
         }
-        String object;
-        String cls = text(n, "class_name"), cid = text(n, "class_id");
-        if (cls != null && !cls.isBlank()) {
-            object = cls;
-        } else {
-            object = cid == null ? null : "class " + cid;
+        Long id = null;
+        var m = HEX.matcher(text(n, "szl_id") == null ? "" : text(n, "szl_id"));
+        if (m.matches()) {
+            id = Long.parseLong(m.group(1), 16);
         }
-        String attr = text(n, "attribute_id");
-        if (object != null && attr != null && !"0x00".equals(attr)) {
-            object = object + " attr " + attr;
+        OpAgg a = stage(sd.client(), sd.server(), "s7comm", portOf(sd, uid, "tcp"), "Read SZL", "read", cap(text(n, "szl_id_name"), 64), id, null, null, List.of(), 1);
+        if (a != null && uid != null && pdu != null && pending.size() < MAX_PENDING) {
+            pending.put(key, a);
         }
-        long count = Math.min(1_000, Math.max(1, num(n, "occurrence_count", 1)));
-        Staged s = stage(o, r, "ethernet-ip", rp + "/tcp", cap("CIP " + service, 64), ZeekNames.cipAccess(service),
-                cap(object, 32), numberOrHex(n, "instance_id"), null, count, List.of(), null);
-        if (pendingKey != null && s != null && pendingOps.size() < MAX_UNMATCHED_KEYS) {
-            pendingOps.put("cip|" + pendingKey, s);
+        return true;
+    }
+
+    private static final Map<Integer, String> S7_TRANSFER = Map.of(0x1A, "Request Download", 0x1B, "Download Block", 0x1C, "Download Ended",
+            0x1D, "Start Upload", 0x1E, "Upload", 0x1F, "End Upload");
+
+    /** s7comm_upload_download.log: block transfers to or from the PLC (a program download or upload), by the client's requests. */
+    private boolean s7Transfer(JsonNode n) {
+        Sides sd = sides(n, 102);
+        if (sd == null) {
+            return false;
         }
+        if (!sd.fromClient()) {
+            return true;
+        }
+        String uid = text(n, "uid"), code = idText(n, "function_code");
+        String function = null;
+        if (code != null) {
+            var m = HEX.matcher(code);
+            function = m.matches() ? S7_TRANSFER.get(Integer.parseInt(m.group(1), 16) & 0xFF) : cap(code, 40);
+        }
+        if (function == null) {
+            function = "Block transfer";
+        }
+        String block = text(n, "block_type"), no = idText(n, "block_number");
+        String object = block == null && no == null ? null : cap((block == null ? "" : block) + (no == null ? "" : " " + no), 64).trim();
+        FlowTable.Flow f = flowOf(sd, "s7comm", uid, "tcp");
+        if (f != null) {
+            f.source("zeek").seen(micros(n, "ts")).message("S7 " + function);
+        }
+        stage(sd.client(), sd.server(), "s7comm", portOf(sd, uid, "tcp"), function, ZeekNames.s7Access(function), object, null, null, null, List.of(), 1);
+        return true;
+    }
+
+    private static final Pattern ZERO_CONTEXT = Pattern.compile("(?:0[xX])?0+");
+
+    /** enip.log: encapsulation commands; the server's status (Success, Invalid Command, ...) lands on the request with the same sender context. */
+    private boolean enip(JsonNode n) {
+        Sides sd = sides(n, 44818, 2222);
+        String cmd = text(n, "enip_command");
+        if (cmd == null) {
+            cmd = text(n, "enip_command_code");
+        }
+        if (sd == null || cmd == null) {
+            return false;
+        }
+        String uid = text(n, "uid"), ctx = text(n, "sender_context");
+        FlowTable.Flow f = flowOf(sd, "ethernet-ip", uid, "tcp");
+        if (f == null) {
+            return true;
+        }
+        f.source("zeek").seen(micros(n, "ts")).message("EtherNet/IP " + cmd);
+        String key = ctx == null || ZERO_CONTEXT.matcher(ctx).matches() ? null : "e|" + uid + '|' + ctx;
+        if (sd.fromClient()) {
+            OpAgg a = stage(sd.client(), sd.server(), "ethernet-ip", portOf(sd, uid, "tcp"), cmd, ZeekNames.enipAccess(cmd), null, null, null, null, List.of(), 1);
+            if (a != null && key != null && pending.size() < MAX_PENDING) {
+                pending.put(key, a);
+            }
+        } else if (key != null && pending.get(key) != null) {
+            pending.get(key).status(outcome(text(n, "enip_status")));
+        }
+        return true;
+    }
+
+    /**
+     * cip.log: a CIP service on a path (class, instance, attribute). The operation's {@code object} is the class, with the attribute
+     * when there is one; {@code address} is the instance. The status of the reply goes on the request with the same sequence count
+     * (ponytail: unconnected messages all carry sequence 0, so there the status lands on the latest request of the connection).
+     */
+    private boolean cip(JsonNode n) {
+        Sides sd = sides(n, 44818, 2222);
+        String service = text(n, "cip_service");
+        if (service == null && idText(n, "cip_service_code") != null) {
+            service = "service " + idText(n, "cip_service_code");
+        }
+        if (sd == null || service == null) {
+            return false;
+        }
+        String dir = text(n, "direction");
+        boolean request = dir != null ? "request".equalsIgnoreCase(dir) : sd.fromClient();
+        String uid = text(n, "uid");
+        FlowTable.Flow f = flowOf(sd, "ethernet-ip", uid, "tcp");
+        if (f == null) {
+            return true;
+        }
+        long times = Math.max(1, num(n, "occurrence_count", 1));
+        f.source("zeek").seen(micros(n, "ts")).message("CIP " + service);
+        String key = "p|" + uid + '|' + idText(n, "cip_sequence_count");
+        if (request) {
+            String cls = text(n, "class_name"), attr = idText(n, "attribute_id");
+            String object = cls == null ? null : cap(cls + (attr == null ? "" : " attr " + attr), 64);
+            OpAgg a = stage(sd.client(), sd.server(), "ethernet-ip", portOf(sd, uid, "tcp"), cap(service, 64), ZeekNames.cipAccess(service), object,
+                    numOrNull(n, "instance_id"), null, null, List.of(), times);
+            if (a != null && uid != null && pending.size() < MAX_PENDING) {
+                pending.put(key, a);
+            }
+        } else if (pending.get(key) != null) {
+            String st = text(n, "cip_status"), ext = text(n, "cip_extended_status");
+            String o = outcome(st);
+            pending.get(key).status(o != null && !"ok".equals(o) && ext != null ? cap(o + ": " + ext.toLowerCase(java.util.Locale.ROOT), 64) : o);
+        }
+        return true;
+    }
+
+    /** cip_io.log: implicit (cyclic) I/O between a scanner and an adapter on UDP 2222. Counted per datagram; the process data is never kept. */
+    private boolean cipIo(JsonNode n) {
+        String o = ip4(text(n, "id.orig_h")), r = ip4(text(n, "id.resp_h"));
+        int rp = port(n, "id.resp_p");
+        if (o == null || r == null || rp < 0) {
+            return false;
+        }
+        String uid = text(n, "uid");
+        String port = rp + "/" + transport(uid, "udp");
+        FlowTable.Flow f = flows.flow(o, r, "ethernet-ip", port);
+        if (f == null) {
+            stats.flowsDroppedOverCap++;
+            return true;
+        }
+        f.source("zeek").seen(micros(n, "ts")).message("CIP I/O data");
+        stage(o, r, "ethernet-ip", port, "CIP I/O data", "other", null, null, numOrNull(n, "data_length"), null, List.of(), 1);
         return true;
     }
 
     // ------------------------------------------------------------------ operations staging
 
-    private Staged stage(String client, String server, String protocol, String port, String function, String access, String object,
-                         Long address, Long quantity, List<Object> samples) {
-        return stage(client, server, protocol, port, function, access, object, address, quantity, 1, samples, null);
-    }
-
-    private Staged stage(String client, String server, String protocol, String port, String function, String access, String object,
-                         Long address, Long quantity, List<Object> samples, String status) {
-        return stage(client, server, protocol, port, function, access, object, address, quantity, 1, samples, status);
-    }
-
-    private Staged stage(String client, String server, String protocol, String port, String function, String access, String object,
-                         Long address, Long quantity, long count, List<Object> samples, String status) {
+    /**
+     * Counts {@code n} calls of one operation on one flow. Returns the row so the caller can put an outcome on it, or null once the
+     * flow's staging is full (the busiest rows are kept at emit time).
+     */
+    private OpAgg stage(String client, String server, String protocol, String port, String function, String access, String object,
+                        Long address, Long quantity, Long unit, List<Object> samples, long n) {
         String fk = client + '>' + server + '>' + protocol + '>' + port;
         Map<String, OpAgg> ops = staged.get(fk);
         if (ops == null) {
@@ -905,8 +1023,7 @@ public final class ZeekLogReader {
             staged.put(fk, ops);
             stagedFlow.put(fk, new FlowRef(client, server, protocol, port));
         }
-        String base = function + '|' + access + '|' + object + '|' + address + '|' + quantity;
-        String ok = base + '|' + status;
+        String ok = function + '|' + access + '|' + object + '|' + address + '|' + quantity + '|' + unit;
         OpAgg a = ops.get(ok);
         if (a == null) {
             if (ops.size() >= MAX_STAGED_OPS) {
@@ -918,44 +1035,16 @@ public final class ZeekLogReader {
             a.object = object;
             a.address = address;
             a.quantity = quantity;
-            a.status = status;
+            a.unit = unit;
         }
-        a.count += Math.max(1, count);
+        a.count += Math.max(1, n);
         for (Object s : samples) {
-            if (a.samples.size() < FlowTable.MAX_SAMPLES) {
+            // a repeated label (a control block's "Latch On" polled all day) is one sample; numbers repeat, they are readings
+            if (a.samples.size() < FlowTable.MAX_SAMPLES && !(s instanceof String && a.samples.contains(s))) {
                 a.samples.add(s);
             }
         }
-        return new Staged(fk, base);
-    }
-
-    /** Re-keys a staged request once its response supplies the decoded status. */
-    private void setStatus(Staged s, String status) {
-        if (s == null || status == null) {
-            return;
-        }
-        Map<String, OpAgg> ops = staged.get(s.flowKey());
-        if (ops == null) {
-            return;
-        }
-        OpAgg a = ops.remove(s.operationKey() + "|null");
-        if (a == null) {
-            return;
-        }
-        a.status = status;
-        String key = s.operationKey() + '|' + status;
-        OpAgg b = ops.get(key);
-        if (b == null) {
-            ops.put(key, a);
-            return;
-        }
-        b.count += a.count;
-        for (Object v : a.samples) {
-            if (b.samples.size() >= FlowTable.MAX_SAMPLES) {
-                break;
-            }
-            b.samples.add(v);
-        }
+        return a;
     }
 
     /** The 50 busiest operations of each flow (the table's own cap would otherwise keep the first 50 seen). */
@@ -971,7 +1060,7 @@ public final class ZeekLogReader {
             List<OpAgg> all = new ArrayList<>(e.getValue().values());
             all.sort((a, b) -> Long.compare(b.count, a.count));
             for (OpAgg a : all.subList(0, Math.min(all.size(), FlowTable.MAX_OPERATIONS))) {
-                f.operation(a.function, a.access, a.object, a.address, a.quantity, a.status, a.count, a.samples);
+                f.operation(a.function, a.access, a.object, a.address, a.quantity, a.unit, a.count, a.samples, a.statuses);
             }
         }
     }
@@ -992,7 +1081,14 @@ public final class ZeekLogReader {
 
     private boolean modbusIdent(JsonNode n) {
         if (!"RESPONSE".equals(text(n, "request_response"))) {
-            return true;                                      // the request carries no identity
+            // the request carries no identity, but it is an operation: who asked which device for its identification
+            String c = ip4(text(n, "source_h")), s = ip4(text(n, "destination_h"));
+            int p = port(n, "destination_p");
+            if ("REQUEST".equals(text(n, "request_response")) && c != null && s != null && p >= 0) {
+                stage(c, s, "modbus", p + "/" + transport(text(n, "uid"), "tcp"), "FC43/14 read device identification", "read",
+                        cap(text(n, "object_id"), 64), null, null, numOrNull(n, "unit"), List.of(), 1);
+            }
+            return true;
         }
         String value = text(n, "object_value"), code = text(n, "object_id_code"), uid = text(n, "uid");
         boolean fromOrig = n.get("is_orig") != null && n.get("is_orig").asBoolean(false);
@@ -1155,11 +1251,18 @@ public final class ZeekLogReader {
             names.add("unknown");
         }
         for (String s : names) {
-            DeviceObservation o = new DeviceObservation(0, IpAddress.parse(ip), null, protocolType(s), DetectionBasis.ZEEK_CONN, "server", List.of(),
-                    "Zeek known_services: " + s).withService(port + "/" + proto);
-            addObs(protocolType(s) == ProtocolType.UNKNOWN ? o.withProtocolName(s) : o);
+            String hint = "unknown".equals(s) ? portHint(port + "/" + proto) : null;       // Zeek named no service: fall back to the port, marked as such
+            String name = hint != null ? hint : s;
+            DeviceObservation o = new DeviceObservation(0, IpAddress.parse(ip), null, protocolType(name), hint != null ? DetectionBasis.ZEEK_PORT : DetectionBasis.ZEEK_CONN,
+                    "server", List.of(), hint != null ? "port-inferred " + name + " (Zeek known_services named no service)" : "Zeek known_services: " + s).withService(port + "/" + proto);
+            addObs(protocolType(name) == ProtocolType.UNKNOWN ? o.withProtocolName(name) : o);
         }
         return true;
+    }
+
+    /** The protocol name a well-known port usually carries ("502/tcp" to "modbus"), or null. A hint, never a decoded protocol. */
+    private static String portHint(String port) {
+        return PortHints.of(port).map(PortHints.Hint::name).orElse(null);
     }
 
     private static ProtocolType protocolType(String wire) {
@@ -1173,22 +1276,48 @@ public final class ZeekLogReader {
         };
     }
 
-    /** One presence observation per host Zeek saw complete a connection: LOW-confidence, no identity, basis zeek-conn. */
+    /**
+     * Presence observations for every host Zeek saw complete a connection: LOW confidence, no identity. A server gets one per port
+     * it answered on (up to 4): the service conn.log named (basis zeek-conn), or, when Zeek named none and the port is a well-known
+     * industrial one, the protocol that port usually carries (basis zeek-port: inferred from the port, never dissected). A server
+     * with neither is "unknown" with the port still listed.
+     */
     private void emitHosts() {
         stats.hosts = hosts.size();
         for (Map.Entry<String, Host> e : hosts.entrySet()) {
             Host h = e.getValue();
             IpAddress ip = IpAddress.parse(e.getKey());
-            List<String> names = h.services.isEmpty() ? List.of("unknown") : new ArrayList<>(h.services);
-            for (int i = 0; i < names.size(); i++) {
-                String s = names.get(i);
-                DeviceObservation o = new DeviceObservation(0, ip, null, protocolType(s), DetectionBasis.ZEEK_CONN,
-                        h.server && (i == 0 || !h.client) ? "server" : "client", List.of(), "host seen in Zeek conn.log");
-                addObs(protocolType(s) == ProtocolType.UNKNOWN ? o.withProtocolName(s) : o);
+            String first = "unknown";
+            int made = 0;
+            // identified services first, then port hints, then the rest: the cap should keep the informative ports
+            for (int pass = 0; pass < 3 && h.server && made < 4; pass++) {
+                for (Map.Entry<String, String> pe : h.ports.entrySet()) {
+                    String port = pe.getKey(), svc = pe.getValue(), hint = portHint(port);
+                    boolean known = !"unknown".equals(svc);
+                    if (made >= 4 || (pass == 0 && !known) || (pass == 1 && (known || hint == null)) || (pass == 2 && (known || hint != null))) {
+                        continue;
+                    }
+                    if (made > 0 && pass == 2) {
+                        break;                                // an unnamed, un-hinted port adds nothing once something is known
+                    }
+                    String name = known ? svc : hint != null ? hint : "unknown";
+                    DetectionBasis basis = known ? DetectionBasis.ZEEK_CONN : hint != null ? DetectionBasis.ZEEK_PORT : DetectionBasis.ZEEK_CONN;
+                    DeviceObservation o = new DeviceObservation(0, ip, null, protocolType(name), basis, "server", List.of(),
+                            known || hint == null ? "host seen in Zeek conn.log" : "port " + port + " is usually " + name + "; Zeek identified no service (port-inferred)")
+                            .withService(port);
+                    addObs(protocolType(name) == ProtocolType.UNKNOWN ? o.withProtocolName(name) : o);
+                    if (made++ == 0) {
+                        first = name;
+                    }
+                }
             }
-            if (h.server && h.client) {
+            if (h.server && made == 0) {
+                addObs(new DeviceObservation(0, ip, null, ProtocolType.UNKNOWN, DetectionBasis.ZEEK_CONN, "server", List.of(), "host seen in Zeek conn.log")
+                        .withProtocolName("unknown"));
+            }
+            if (h.client || !h.server) {
                 addObs(new DeviceObservation(0, ip, null, ProtocolType.UNKNOWN, DetectionBasis.ZEEK_CONN, "client", List.of(), "host seen in Zeek conn.log")
-                        .withProtocolName(names.get(0)));
+                        .withProtocolName(h.server ? first : "unknown"));
             }
         }
     }

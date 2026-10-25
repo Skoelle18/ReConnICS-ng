@@ -61,7 +61,7 @@ written before a key existed stay valid and old consumers ignore the keys they d
   "labels": {"Modbus FC3": 1100, "Modbus FC16": 100},
   "operations": [
       {"function": "FC3 read holding registers", "access": "read", "address": 40001, "quantity": 10,
-       "count": 1100, "sampleValues": [12, 0, 7], "status": "No error 0x00"}
+       "count": 1100, "sampleValues": [12, 0, 7], "statuses": {"ok": 1100}}
     ],
   "scanAttempts": 0,
   "source": "zeek+native"
@@ -78,9 +78,9 @@ written before a key existed stay valid and old consumers ignore the keys they d
 | `packets`, `bytes` | Traffic counters. Zeek: the whole connection(s), both directions, payload bytes. Native: only the packets that carried a counted message. |
 | `firstSeen`, `lastSeen` | ISO-8601 UTC, millisecond precision only when non-zero. The console derives the message rate (messages per minute) from the two. |
 | `labels` | Message kinds (decoder detail without per-message numbers; Modbus function codes in decimal), at most 8 per flow. |
-| `operations` | What was asked of the server, aggregated by (function, object, address, quantity, status); see below. |
+| `operations` | What was asked of the server, aggregated by (function, object, address, quantity, unit); see below. |
+| `portHint` | Only on `protocol` `unknown`: the protocol a well-known port usually carries (`modbus` for 502, `dnp3` 20000, `s7comm` 102, `ethernet-ip` 44818/2222, ...). **Port-inferred, never dissected**; absent on a decoded flow. |
 | `scanAttempts` | Connections to the server that never completed a handshake. Absent when 0. |
-| `portHint` | Optional, only on `unknown` flows: the usual service on that port (`ssh`, `modbus`, `https`), from the well-known-port table. A hint, not a decode: `protocol` stays `unknown` and nothing here is identity. |
 | `source` | Who produced the flow: `native`, `zeek`, or `zeek+native` when both reported it and the values were merged. |
 | `captures` | Console-side only (not analyzer output): capture ids that reported this flow, in merge order, after `GET /api/v1/inventory`. Used to hide one capture's edges. |
 
@@ -90,14 +90,23 @@ written before a key existed stay valid and old consumers ignore the keys they d
 {"function": "FC3 read holding registers", "access": "read", "address": 40001, "quantity": 10, "count": 1100, "sampleValues": [12, 0, 7]}
 ```
 
-- `access` is `read`, `write`, `control` (DNP3 select/operate/direct operate, restarts) or `other`.
+- `access` is `read`, `write`, `control` (DNP3 select/operate/direct operate, restarts, S7 PLC stop, CIP reset/start) or `other`.
+- `unit` (optional integer) is the Modbus unit id behind a gateway; rows for different units are different rows.
+- `statuses` (optional object, at most 6 labels, each a count) says how the calls ended: `ok`; `exception: illegal data address`
+  (Modbus, the exception name on the transaction); `unanswered` (a Modbus request with no response); `iin: need time` /
+  `iin: object unknown` (DNP3 internal indications of the reply, error flags listed first); `status: not supported` (DNP3 control
+  status code, put on the SELECT/OPERATE it answers); `status: access error 0x05` (S7 acknowledgement), `status: privilege violation`
+  (CIP). Labels are lower-case words from a fixed table; the console cleans them like any posted text.
 - `address` and `quantity` are non-negative integers and are omitted when the protocol has none. `object` (optional string) names a
   DNP3 object group/variation such as `g30v1`.
 - `count` is how many **transactions** used that exact (function, object, address, quantity): a request with its response counts
   once, a request that never got a response counts once (not once per repeated log line). `sampleValues` holds at most 8 numbers
   or strings, the first values seen: the response values of a read, the request values of a write.
 - `address` is the zero-based address on the wire, as Zeek reports it (`FC3` at `address` 0 is holding register 40001 in the
-  1-based convention). `object` is the DNP3 object type name Zeek logs ("Single-bit Binary Input"), not a group/variation number.
+  1-based convention). `object` (at most 64 characters) is a name Zeek logs, not a group/variation number: the DNP3 object type ("Binary Input Change
+  Default Variation"), a control block type ("Control Relay Output Block"), a Modbus diagnostics sub-function ("Force Listen Only
+  Mode"), an S7 SZL list or block ("Module identification", "OB 1"), or a CIP class and attribute ("Identity attr 7", with the
+  instance in `address`). DNP3 `quantity` is `range_high - range_low + 1` when the object header has a range, else the object count.
 - **Caps:** at most 50 operations per flow (new rows stop at the cap, known rows keep counting) and 8 `sampleValues` per row, so a
   2M-frame capture cannot produce a giant JSON. Operations come from Zeek/ICSNPP; native mode records message kinds in `labels` only.
 
@@ -114,8 +123,11 @@ written before a key existed stay valid and old consumers ignore the keys they d
 ### Hosts seen only through Zeek
 
 A host that appears in Zeek's `conn.log` but in no decoded message becomes an asset with `protocols` `["unknown"]` (or the
-service name Zeek reports) and detection basis `zeek-conn` (`attributes.detectionBases`). It carries no identity fields and has
-LOW confidence. An asset that native decoding also found is merged by IP and MAC through `DeviceAggregator`; the Zeek and native
+service name Zeek reports) and detection basis `zeek-conn` (`attributes.detectionBases`). When Zeek named no service for a port the
+host answered on and the port is a well-known industrial one (`com.pcap.inventory.PortHints`), the asset gets that protocol, the
+`ports` entry and the detection basis **`ZEEK_PORT`** instead: "inferred from the port, not dissected". The console reads a basis
+set of only `PORT_HEURISTIC` / `ZEEK_PORT` as LOW confidence ("... only" in the evidence); once a decoder or an ICSNPP log sees the
+protocol, the stronger basis is added beside it. It carries no identity fields and has LOW confidence. An asset that native decoding also found is merged by IP and MAC through `DeviceAggregator`; the Zeek and native
 values are both kept as evidence, native decoded values win a conflict.
 
 The console treats a posted `flows` array as untrusted: strings are cleaned, counts clamped, sizes capped. Across merged
@@ -137,7 +149,7 @@ within the same caps.
 | `zeek.scanAttemptsUncounted`, `zeek.flowsDroppedOverCap`, `zeek.hostsDroppedOverCap`, `zeek.modbusUnmatchedRequestsOverCap`, `zeek.observationsDroppedOverCap` | present only when a cap was hit |
 
 New `attributes` on assets: `software` (list of at most 8 server banners from Zeek's `software.log`, e.g.
-`"SSH::SERVER moxa moxa_1.0"`; spoofable text, never an identity field), and the detection bases `ZEEK_CONN`,
+`"SSH::SERVER moxa moxa_1.0"`; spoofable text, never an identity field), and the detection bases `ZEEK_CONN`, `ZEEK_PORT`,
 `ZEEK_SOFTWARE`, `ZEEK_ICSNPP` in `detectionBases` (the plan calls them zeek-conn and zeek-software; they are written like the
 existing bases). Evidence strings from Zeek read `<protocol> <message> <field>, txn <uid>, zeek <log>.log` and carry no frame number.
 
