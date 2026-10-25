@@ -58,6 +58,33 @@ test('graph', async (t) => {
     } finally { app.close(); }
   });
 
+  await t.test('regression: Details on a merged busy-pair edge opens its panel (it used to link to #/edge/null: "No such conversation")', async () => {
+    const many = Array.from({ length: 5 }, (_, i) => ({ client: '10.0.1.50', server: '10.0.1.40', protocol: i < 3 ? 'modbus' : 'unknown', port: (500 + i) + '/tcp', messages: 3 + i,
+      labels: i < 3 ? { ['Modbus FC' + i]: 2, 'Modbus FC17 exception': 1 } : {}, operations: i === 0 ? [{ function: 'FC0 x', access: 'read', count: 2 }] : [] }));
+    const app = await loadApp({ routes: defaultRoutes({ flows: many }), hash: '#/asset/10.0.1.50' });
+    try {
+      app.$$('#main button.tab').find((b) => /^Conversations/.test(b.textContent)).click();
+      await settle();
+      const details = app.$$('#main a.btn').filter((a) => a.textContent === 'Details');
+      assert.equal(details.length, 1, 'one merged card');
+      assert.doesNotMatch(details[0].getAttribute('href'), /null|undefined/);
+      assert.match(app.text(), /Modbus FC17 exception ×3/, 'the card lists every message kind');
+      await app.go(details[0].getAttribute('href'));
+      assert.doesNotMatch(app.text(), /No such conversation/);
+      assert.match(app.text(), /5 conversations/);
+      assert.match(app.text(), /Modbus FC17 exception ×3/, 'the panel shows the same kinds as the card');
+      assert.match(app.text(), /FC0 x/, 'merged operations are listed too');
+      assert.equal(app.$$('#main a.btn').filter((a) => a.textContent === 'Details').length, 5, 'each member conversation links to its own panel');
+      await app.go(app.$$('#main a.btn').filter((a) => a.textContent === 'Details')[0].getAttribute('href'));
+      assert.doesNotMatch(app.text(), /No such conversation/);
+      app.window.location.hash = '#/graph';
+      await settle();
+      app.$$('#graph .edge.flow')[0].dispatchEvent(new app.window.MouseEvent('click', { bubbles: true }));
+      await settle();
+      assert.match(app.window.location.hash, /^#\/edge\/pair%3A/, 'clicking the merged edge opens the same panel');
+    } finally { app.close(); }
+  });
+
   await t.test('gateway units and slots hang off their parent; advisories hang off matched assets', async () => {
     const app = await loadApp({ routes: defaultRoutes(), hash: '#/graph' });
     try {

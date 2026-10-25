@@ -114,6 +114,8 @@ const protoKey = (p) => (PROTO_COLOR[p] ? p : 'unknown');
 const protoColor = (p) => PROTO_COLOR[protoKey(p)];
 const protoName = (p) => PROTO_NAME[p] || p;
 const flowKey = (f) => [f.client, f.server, f.protocol, f.port].join('>');
+/** Key of a merged busy pair (see graphModel). Every edge has a key (flowKey or this), so no Details link or route can carry "null". */
+const pairKey = (from, to) => 'pair:' + from + '>' + to;
 /** A conversation that only ever saw scan attempts: it has an edge only when the analyzer ran with --keep-scans. */
 const isScan = (f) => !(f.messages > 0) && f.scanAttempts > 0;
 /** Messages per minute over first..last seen, or null when the span is missing or under a second (a burst has no rate). */
@@ -475,29 +477,15 @@ function convCard(convs, id) {
   }) : h('div', { class: 'empty' }, 'No conversation seen for this asset yet. Edges come from decoded Modbus, DNP3, EtherNet/IP, S7comm and SNMP messages, and from TCP/UDP host pairs the analyzer could not decode (shown as unknown).'));
 }
 
-/** The side panel of one conversation: protocol, ports, counters, times, rate, and what was asked of the server (operations). */
-function edgePanel(key) {
-  const f = S.flows.find((x) => flowKey(x) === key), back = h('a', { class: 'btn sm', href: '#/graph' }, '‹ Graph');
-  if (!f) return [back, h('div', { class: 'card empty' }, 'No such conversation in the current inventory. It may have been re-merged; open the graph and click the edge again.')];
-  const end = (ip) => { const a = assets().find((x) => !x.subaddr && (str(val(x, 'ip')) || x.id) === ip) || assets().find((x) => (str(val(x, 'ip')) || x.id.split('/')[0]) === ip);
-    return a ? h('a', { href: '#/asset/' + encodeURIComponent(a.id) }, nameOf(a), ' ', h('span', { class: 'mono small muted' }, ip)) : h('span', { class: 'mono' }, ip); };
-  const ops = f.operations || [], rate = flowRate(f), pk = protoKey(f.protocol);
+/** One asset as a link, from the IP a conversation names. */
+function endLink(ip) {
+  const a = assets().find((x) => !x.subaddr && (str(val(x, 'ip')) || x.id) === ip) || assets().find((x) => (str(val(x, 'ip')) || x.id.split('/')[0]) === ip);
+  return a ? h('a', { href: '#/asset/' + encodeURIComponent(a.id) }, nameOf(a), ' ', h('span', { class: 'mono small muted' }, ip)) : h('span', { class: 'mono' }, ip);
+}
+/** Message kinds, then the operations table: the same two cards for one conversation and for a merged pair. */
+function kindsAndOps(f) {
+  const ops = f.operations || [];
   return [
-    h('div', { class: 'row' }, back),
-    h('div', { class: 'card' },
-      h('div', { class: 'card-b stack', style: { gap: '8px' } },
-        h('h1', {}, end(f.client), ' → ', end(f.server)),
-        h('div', { class: 'row' },
-          h('span', { class: 'badge c-LOW', style: { borderLeft: '4px solid ' + PROTO_COLOR[pk] } }, protoName(f.protocol)),
-          h('span', { class: 'mono small' }, f.port || ''), f.transport && !String(f.port || '').includes('/') ? h('span', { class: 'mono small' }, f.transport) : null,
-          f.source ? h('span', { class: 'badge lv-NONE', title: 'which engine produced this conversation' }, f.source) : null,
-          isScan(f) ? h('span', { class: 'badge warn' }, 'scan attempts only') : null),
-        pk === 'unknown' ? h('div', { class: 'small muted' }, 'Carried but not decoded: the host pair and port are known, the protocol is not. Messages count data packets.') : null),
-      h('div', { class: 'card-b facts' },
-        fact('Messages', (f.messages || 0).toLocaleString()), fact('Rate', fmtRate(rate)),
-        f.packets != null ? fact('Packets', f.packets.toLocaleString()) : null, f.bytes != null ? fact('Bytes', fmtBytes(f.bytes)) : null,
-        f.firstSeen ? fact('First seen', fmtStamp(f.firstSeen)) : null, f.lastSeen ? fact('Last seen', fmtStamp(f.lastSeen)) : null,
-        fmtSpan(f) ? fact('Span', fmtSpan(f)) : null, f.scanAttempts ? fact('Scan attempts', f.scanAttempts.toLocaleString()) : null)),
     Object.keys(f.labels || {}).length ? h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Message kinds'),
       h('div', { class: 'card-b small wrap' }, Object.entries(f.labels).map(([k, n]) => k + ' ×' + n).join(' · '))) : null,
     h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Operations', h('span', { class: 'muted small' }, ops.length ? ops.length + (ops.length === 1 ? ' row' : ' rows') + ', busiest first' : '')),
@@ -509,6 +497,39 @@ function edgePanel(key) {
           h('span', { class: 'mono small' }, o.address != null ? o.address : '—'), h('span', { class: 'mono small' }, o.quantity != null ? o.quantity : '—'),
           h('span', { class: 'mono' }, o.count != null ? o.count : ''), h('span', { class: 'mono small wrap' }, (o.sampleValues || []).map(String).join(', ') || '—'))))
         : h('div', { class: 'card-b small muted' }, 'No operation detail for this conversation. Function, address, quantity and values come from the Zeek + ICSNPP engine (analyze --engine zeek); the native decoders record message kinds only.')),
+  ];
+}
+
+/** The side panel of one conversation, or of a merged busy pair ("pair:" key): protocol, ports, counters, times, rate, operations. */
+function edgePanel(key) {
+  const back = h('a', { class: 'btn sm', href: '#/graph' }, '‹ Graph');
+  const pair = key.startsWith('pair:') ? graphModel().edges.find((e) => e.key === key) : null;
+  const f = pair ? pair.f : S.flows.find((x) => flowKey(x) === key);
+  if (!f) return [back, h('div', { class: 'card empty' }, 'No such conversation in the current inventory. It may have been re-merged, or hidden by a filter or a capture toggle; open the graph and click the edge again.')];
+  const rate = flowRate(f), pk = protoKey(f.protocol);
+  return [
+    h('div', { class: 'row' }, back),
+    h('div', { class: 'card' },
+      h('div', { class: 'card-b stack', style: { gap: '8px' } },
+        h('h1', {}, endLink(f.client), ' → ', endLink(f.server)),
+        h('div', { class: 'row' },
+          h('span', { class: 'badge c-LOW', style: { borderLeft: '4px solid ' + PROTO_COLOR[pk] } }, pair ? pair.label : protoName(f.protocol)),
+          pair ? null : h('span', { class: 'mono small' }, f.port || ''), f.transport && !String(f.port || '').includes('/') ? h('span', { class: 'mono small' }, f.transport) : null,
+          f.source ? h('span', { class: 'badge lv-NONE', title: 'which engine produced this conversation' }, f.source) : null,
+          isScan(f) ? h('span', { class: 'badge warn' }, 'scan attempts only') : null),
+        pair ? h('div', { class: 'small muted' }, 'A busy host pair drawn as one edge: the counters and kinds below add up its ' + pair.members.length + ' conversations, which are listed under them.')
+          : pk === 'unknown' ? h('div', { class: 'small muted' }, 'Carried but not decoded: the host pair and port are known, the protocol is not. Messages count data packets.') : null),
+      h('div', { class: 'card-b facts' },
+        fact('Messages', (f.messages || 0).toLocaleString()), pair ? null : fact('Rate', fmtRate(rate)),
+        f.packets != null ? fact('Packets', f.packets.toLocaleString()) : null, f.bytes != null ? fact('Bytes', fmtBytes(f.bytes)) : null,
+        f.firstSeen ? fact('First seen', fmtStamp(f.firstSeen)) : null, f.lastSeen ? fact('Last seen', fmtStamp(f.lastSeen)) : null,
+        fmtSpan(f) ? fact('Span', fmtSpan(f)) : null, f.scanAttempts ? fact('Scan attempts', f.scanAttempts.toLocaleString()) : null)),
+    ...kindsAndOps(f),
+    pair ? h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Conversations (' + pair.members.length + ')'),
+      pair.members.slice().sort((a, b) => (b.messages || 0) - (a.messages || 0)).map((m) => h('div', { class: 'card-b stack', style: { gap: '4px', borderBottom: '1px solid var(--line2)' } },
+        h('div', { class: 'row' }, h('span', { class: 'badge c-LOW', style: { borderLeft: '4px solid ' + protoColor(m.protocol) } }, m.protocol + ' ' + m.port),
+          h('span', { class: 'small muted' }, (m.messages || 0) + ' messages · ' + fmtRate(flowRate(m))), h('a', { class: 'btn sm', href: '#/edge/' + encodeURIComponent(flowKey(m)) }, 'Details')),
+        h('div', { class: 'small' }, Object.entries(m.labels || {}).map(([k, n]) => k + ' ×' + n).join(' · ') || 'no message kinds recorded')))) : null,
   ].filter(Boolean);
 }
 
@@ -703,8 +724,8 @@ function graphModel() {
     const fs = g.map((x) => x.f), labels = {}, byProto = {};
     for (const f of fs) { for (const [k, c] of Object.entries(f.labels || {})) labels[k] = (labels[k] || 0) + c; byProto[f.protocol] = (byProto[f.protocol] || 0) + (f.messages || 0) + 1; }
     const top = Object.keys(byProto).sort((a, b) => byProto[b] - byProto[a])[0], n = fs.reduce((a, f) => a + (f.messages || 0), 0), scans = fs.reduce((a, f) => a + (f.scanAttempts || 0), 0);
-    const f = { client: fs[0].client, server: fs[0].server, protocol: top, port: fs.length + ' ports', labels, messages: n, scanAttempts: scans };   // synthetic: only what the drawing reads
-    edges.push({ id: 'm' + g[0].i, key: null, kind: 'flow', from: g[0].from, to: g[0].to, f, n, members: fs, label: fs.length + ' conversations' });
+    const f = { client: fs[0].client, server: fs[0].server, protocol: top, port: fs.length + ' ports', labels, messages: n, scanAttempts: scans, operations: fs.flatMap((x) => x.operations || []) };   // synthetic: what the drawing and the cards read
+    edges.push({ id: 'm' + g[0].i, key: pairKey(g[0].from, g[0].to), kind: 'flow', from: g[0].from, to: g[0].to, f, n, members: fs, label: fs.length + ' conversations' });
   }
   if (S.showAdv) {
     for (const r of advisoryRows()) {
@@ -899,7 +920,7 @@ function drawGraph() {
     const hit = flow ? sv('path', { class: 'ehit', fill: 'none' }) : null;      // a wide invisible stroke: a 2 px line is hard to click
     const label = sv('text', { class: 'elabel', 'text-anchor': 'middle', 'paint-order': 'stroke' }, e.label);
     els.edges.push({ e, path, hit, label });
-    const open = () => { if (GR.moved || GR.panned) { GR.moved = GR.panned = false; return; } location.hash = e.key ? '#/edge/' + encodeURIComponent(e.key) : '#/asset/' + encodeURIComponent(e.from); };   // a merged edge has no single conversation: show the client's list
+    const open = () => { if (GR.moved || GR.panned) { GR.moved = GR.panned = false; return; } location.hash = '#/edge/' + encodeURIComponent(e.key); };
     return sv('g', { class: 'edge ' + e.kind + (flow ? ' p-' + pk : '') + (dim ? ' dim' : '') + (hot ? ' hot' : '') + (flow && isScan(e.f) ? ' scan' : ''),
       role: flow ? 'button' : 'img', tabindex: flow ? '0' : null, 'data-key': flow ? e.key : null, 'aria-label': edgeLabel(e, byNode),
       onclick: flow ? open : null, onkeydown: flow ? (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); } } : null },
