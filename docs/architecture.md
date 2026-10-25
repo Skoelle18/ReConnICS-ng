@@ -55,6 +55,17 @@ mode with `--network none` and the capture's folder mounted read-only. The conta
 orders of magnitude slower (see `docs/limitations.md`). Its logs are read by `ZeekLogReader`, which treats them as
 untrusted input (64 KiB line cap, JSON depth and string limits, per-field validation and caps; bad rows are skipped and counted).
 
+### Other open-source tools (optional adapters)
+
+`com.pcap.tools` holds one small `Adapter` per tool (`TsharkAdapter`, `SuricataAdapter`, `NdpiAdapter`, `P0fAdapter`): `detect` (on PATH,
+or in the `reconics-tools` Docker image, the same way `ZeekRunner` finds Zeek), `run` (argument list, empty working directory,
+timeout, `--network none` in Docker) and a parser that returns `Findings`. `ToolPipeline` starts them in parallel with the Zeek run
+and merges what they found into the existing `FlowTable` (labels, alerts, conversations Zeek missed) and `Document` (asset `os`,
+asset `alerts`), after Zeek and before `HostClassifier`, so the port-hint table is never duplicated. A tool that is missing, fails or
+times out becomes a status in `source.tools`; it never fails the analysis. `ReferenceData` reads the Wireshark/Nmap data files.
+Order of trust is unchanged: Zeek+ICSNPP and the native decoders decode; the other tools only label, alert or guess, with the tool
+name, version and a confidence on every result. See [`foss-components.md`](foss-components.md).
+
 ### Zeek logs: the real list
 
 Written on the benchmark captures with `docker/zeek/reconics.zeek` on **Zeek 8.0.9**, ICSNPP modbus v2.0.0, dnp3 `b31dbad`, enip

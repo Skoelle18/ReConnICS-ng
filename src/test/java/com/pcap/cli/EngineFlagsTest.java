@@ -88,4 +88,34 @@ class EngineFlagsTest {
         assertTrue(plain.out().contains("\"engine\" : \"native\""));
         assertFalse(plain.out().contains("\"zeek\""));
     }
+
+    @Test
+    void toolsFlagAndEnginesCommand() throws Exception {
+        String p = pcap().toString();
+        assertEquals(2, run("analyze", p, "--tools").code());
+        assertEquals(2, run("analyze", p, "--tools", "magic").code());
+        Result help = run("--help");
+        assertTrue(help.out().contains("--tools <t>"), help.out());
+        assertTrue(help.out().contains("engines"), help.out());
+
+        // off: the optional tools are listed as skipped, none is started
+        Result off = run("analyze", p, "--engine", "auto", "--tools", "off", "--format", "json");
+        assertEquals(0, off.code(), off.err());
+        assertTrue(off.out().contains("\"tools\""), off.out());
+        assertTrue(off.out().contains("\"state\" : \"skipped\""), off.out());
+        assertTrue(off.out().contains("--tools off"), "the reason is recorded");
+
+        // auto with nothing installed (or whatever this machine has): the run still succeeds and every tool has a status
+        Result auto = run("analyze", p, "--tools", "auto", "--format", "json");
+        assertEquals(0, auto.code(), auto.err());
+        for (String id : new String[]{"tshark", "suricata", "ndpi", "p0f"}) {
+            assertTrue(auto.out().contains("\"id\" : \"" + id + "\""), id + " has a status line");
+        }
+
+        Result engines = run("engines");
+        assertEquals(0, engines.code(), engines.err());
+        for (String name : new String[]{"Zeek", "Suricata", "nDPI", "p0f", "Wireshark"}) {
+            assertTrue(engines.out().contains(name), name);
+        }
+    }
 }

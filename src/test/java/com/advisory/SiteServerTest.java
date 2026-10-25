@@ -442,4 +442,42 @@ class SiteServerTest {
             return Integer.parseInt(line.substring(9, 12));
         }
     }
+
+    // evidence from the optional tools: engines join, labels and alerts merge across captures and hostile shapes are dropped
+    @Test
+    void toolEvidenceOnFlowsMergesAcrossCapturesAndHostileValuesAreDropped() throws Exception {
+        String one = """
+                {"assets":[{"ip":"10.0.0.9"}],"flows":[
+                  {"client":"10.0.0.5","server":"10.0.0.9","protocol":"unknown","port":"45123/tcp","messages":4,"source":"tshark",
+                   "portHintSource":"nmap-services","communityIds":["1:abc=","1:abc=","<x>"],
+                   "classifiedBy":[{"tool":"ndpi","version":"4.2","protocol":"TLS","confidence":"MEDIUM","basis":"dpi"},
+                                   {"tool":"evil","protocol":"x","confidence":"HIGH"}],
+                   "alerts":[{"tool":"suricata","version":"7.0","kind":"alert","sid":2000001,"signature":"TEST rule","severity":2,"count":3}]}]}
+                """;
+        String two = """
+                {"assets":[{"ip":"10.0.0.9"}],"flows":[
+                  {"client":"10.0.0.5","server":"10.0.0.9","protocol":"unknown","port":"45123/tcp","messages":2,"source":"zeek",
+                   "classifiedBy":[{"tool":"ndpi","protocol":"HTTP","confidence":"HIGH"},{"tool":"tshark","protocol":"opc-ua","confidence":"MEDIUM","basis":"dissector"}],
+                   "alerts":[{"tool":"suricata","kind":"alert","sid":2000001,"signature":"TEST rule","severity":2,"count":2},
+                             {"tool":"suricata","kind":"anomaly","signature":"anomaly: x","severity":9},{"tool":"nobody","signature":"s"}]}]}
+                """;
+        assertEquals(200, send("POST", "/api/v1/assets", "application/json", one.getBytes(StandardCharsets.UTF_8)).statusCode());
+        assertEquals(200, send("POST", "/api/v1/assets", "application/json", two.getBytes(StandardCharsets.UTF_8)).statusCode());
+        var flows = Json.arr(Json.obj(Json.parse(get("/api/v1/inventory").body())).get("flows"));
+        assertEquals(1, flows.size(), flows.toString());
+        var f = Json.obj(flows.get(0));
+        assertEquals("zeek+tshark", f.get("source"), "engines are joined in a fixed order");
+        assertEquals("nmap-services", f.get("portHintSource"));
+        assertEquals(List.of("1:abc="), Json.arr(f.get("communityIds")), "duplicates and unsafe ids are dropped");
+        var cls = Json.arr(f.get("classifiedBy"));
+        assertEquals(2, cls.size(), cls.toString());
+        assertEquals("TLS", Json.obj(cls.get(0)).get("protocol"), "the first label of a tool wins");
+        assertEquals("tshark", Json.obj(cls.get(1)).get("tool"));
+        var alerts = Json.arr(f.get("alerts"));
+        assertEquals(2, alerts.size(), alerts.toString());
+        var rule = Json.obj(alerts.get(0));
+        assertEquals("TEST rule", rule.get("signature"));
+        assertEquals(5.0, rule.get("count"), "the same rule adds up across captures");
+        assertEquals(3.0, Json.obj(alerts.get(1)).get("severity"), "an out-of-range severity becomes the default");
+    }
 }

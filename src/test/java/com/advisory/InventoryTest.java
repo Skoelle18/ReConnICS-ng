@@ -476,4 +476,32 @@ class InventoryTest {
         assertEquals("00:1d:9c:00:00:01", v(r, "mac"));
         assertTrue(r.alerts.isEmpty());
     }
+
+    // 7b. OUI from the optional data files: the longest block wins and the evidence names the table
+    @Test void ouiLongerBlocksAndSourceNames() {
+        var oui = new java.util.HashMap<String, String>();
+        oui.put("001BC5", "IEEE Registration Authority");
+        oui.put("001BC5001", "Converging Systems Inc.");
+        oui.put("0000AA", "Nmap Only Vendor");
+        var src = Map.of("001BC5001", "Wireshark manuf", "0000AA", "Nmap nmap-mac-prefixes");
+        var i = Inventory.build("[{\"ip\":\"10.0.0.1\",\"mac\":\"00:1b:c5:00:1f:01\"},{\"ip\":\"10.0.0.2\",\"mac\":\"00:1b:c5:0a:00:01\"},"
+                + "{\"ip\":\"10.0.0.3\",\"mac\":\"00:00:aa:00:00:01\"}]", oui, src);
+        var a = rec(i, "10.0.0.1");
+        assertEquals("Converging Systems Inc.", v(a, "vendor_oui"));
+        assertTrue(a.f.get("vendor_oui").evidence().contains("/36 001BC5001 (Wireshark manuf)"), a.f.get("vendor_oui").evidence());
+        assertEquals(LOW, a.f.get("vendor_oui").conf());
+        assertEquals("IEEE Registration Authority", v(rec(i, "10.0.0.2"), "vendor_oui"), "falls back to the 24-bit prefix");
+        assertTrue(rec(i, "10.0.0.2").f.get("vendor_oui").evidence().contains("(IEEE MA-L)"));
+        assertTrue(rec(i, "10.0.0.3").f.get("vendor_oui").evidence().contains("(Nmap nmap-mac-prefixes)"));
+        assertNull(a.f.get("vendor"), "an OUI vendor never becomes the device vendor");
+    }
+
+    // 7c. alerts from a tool are a list field that never feeds matching
+    @Test void toolAlertsAreAListFieldWithEvidence() {
+        var i = Inventory.build("[{\"ip\":\"10.0.0.1\",\"alerts\":{\"value\":[\"TEST (sid 1)\"],\"confidence\":\"MEDIUM\",\"evidence\":\"suricata 7.0 eve.json\"}}]", null);
+        var a = rec(i, "10.0.0.1");
+        assertEquals(List.of("TEST (sid 1)"), a.f.get("alerts").list());
+        assertTrue(a.f.get("alerts").evidence().contains("suricata"));
+        assertEquals(NONE, a.ceiling);
+    }
 }

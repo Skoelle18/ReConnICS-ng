@@ -32,15 +32,15 @@ Roles: 85 hosts mislabelled ICS become 26 decoded-ICS hosts, about 62 hosts with
 402 (the rest sit on ephemeral or unassigned ports, mostly refused or one-way connections). Second site (5 captures): 464 unknown
 flows, 222 hinted.
 
+## Added later as optional engines (see [`foss-components.md`](foss-components.md))
+
+- **nDPI** (`ndpiReader`), **tshark** (dissector names and conversations Zeek missed) and **p0f** (OS guess) are now optional adapters,
+  used only when installed or in the `reconics-tools` image. An nDPI or tshark label goes in `classifiedBy` (LOW/MEDIUM) and the
+  flow stays `unknown`; it is applied only to a flow with no port hint, so it fills a gap and overrides nothing. p0f's guess is an
+  asset `os` field at LOW. Nmap's `nmap-services` supplies port names beyond the built-in table (`portHintSource`).
+
 ## Looked at, not adopted (yet)
 
-- **nDPI / ntopng**: real DPI, but a native C library; shipping it on Windows + Docker is real work. Worth it if port hints prove too
-  weak. Zeek's own protocol detection already covers HTTP, TLS, SSH, DNS, SMB.
-- **p0f**: passive OS fingerprinting from SYN packets. Unmaintained since 2016, Linux only, and an OS guess does not name a PLC.
-  Zeek's `software.log` (HTTP User-Agent, SSH banner) is already used for banners.
-- **tshark / tcpdump fallback** (`tshark -z conv,tcp`, `-T fields`): useful where Zeek is absent, but the native reader already
-  produces the same conversation table with no external tool, so a fallback would add a dependency for no new data. Revisit for
-  protocols with no Zeek analyzer (tshark has dissectors for many ICS protocols: use `-T ek` and normalise).
 - **Zeek packages beyond ICSNPP** (`zeek-ja3`, HASSH, `zeek-known-devices`-style policies): fingerprints, not identities; a
   candidate for "same device again" tracking, not for naming assets.
 - **GRASSMARLIN**'s fingerprint XML: the idea (match first payload bytes per protocol) is what ICSNPP already does for the

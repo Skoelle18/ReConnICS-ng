@@ -15,6 +15,24 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** The deterministic unknown-asset reduction: port hints for undecoded flows, roles for hosts no decoder explained. */
 class HostClassifierTest {
+    @org.junit.jupiter.api.BeforeEach
+    @org.junit.jupiter.api.AfterEach
+    void noNmapNames() {
+        PortHints.useSupplement(null);              // a Site built on a machine with Nmap installed sets this process-wide
+    }
+
+    @Test
+    void aPortNameFromAnNmapDataFileIsMarkedWithItsSourceAndNeverCountsAsDecoded() {
+        PortHints.useSupplement(Map.of("9100/tcp", "jetdirect", "502/tcp", "wrongname"));
+        var flows = new ArrayList<Object>(List.of(flow("10.0.0.5", "10.0.0.9", "unknown", "9100/tcp"), flow("10.0.0.5", "10.0.0.8", "unknown", "502/tcp")));
+        HostClassifier.apply(flows, new ArrayList<>(List.of(asset("10.0.0.9"), asset("10.0.0.8"))));
+        @SuppressWarnings("unchecked") var f0 = (Map<String, Object>) flows.get(0);
+        @SuppressWarnings("unchecked") var f1 = (Map<String, Object>) flows.get(1);
+        assertEquals("jetdirect", f0.get("portHint"));
+        assertEquals("nmap-services", f0.get("portHintSource"));
+        assertEquals("modbus", f1.get("portHint"), "the curated table always wins over the data file");
+        assertNull(f1.get("portHintSource"));
+    }
     private static Map<String, Object> flow(String client, String server, String protocol, String port) {
         Map<String, Object> f = new LinkedHashMap<>();
         f.put("client", client); f.put("server", server); f.put("protocol", protocol); f.put("port", port); f.put("messages", 3.0);

@@ -81,7 +81,11 @@ written before a key existed stay valid and old consumers ignore the keys they d
 | `operations` | What was asked of the server, aggregated by (function, object, address, quantity, unit); see below. |
 | `portHint` | Only on `protocol` `unknown`: the protocol a well-known port usually carries (`modbus` for 502, `dnp3` 20000, `s7comm` 102, `ethernet-ip` 44818/2222, ...). **Port-inferred, never dissected**; absent on a decoded flow. |
 | `scanAttempts` | Connections to the server that never completed a handshake. Absent when 0. |
-| `source` | Who produced the flow: `native`, `zeek`, or `zeek+native` when both reported it and the values were merged. |
+| `source` | The engines that saw the flow, joined by `+` in the order `zeek`, `native`, `tshark`: `native`, `zeek+native`, `tshark` (a conversation only the optional Wireshark fallback saw), ... |
+| `portHintSource` | Only when `portHint` came from a data file and not the built-in table: `nmap-services` (Nmap's port list, read from an Nmap install). |
+| `communityIds` | Up to 3 Community ID v1 values of the conversation's connections, from Zeek's `conn.log` (`community_id`). Suricata writes the same ID. |
+| `classifiedBy` | Up to 4 labels other open-source tools gave a conversation that is still `unknown`: `{tool: ndpi\|tshark, version, protocol, confidence, basis: dpi\|dissector}`. **A label with a confidence, not a decoded protocol**: `protocol` stays `unknown`. One entry per tool. |
+| `alerts` | Up to 10 Suricata matches on this conversation, most severe first: `{tool: "suricata", version, kind: alert\|anomaly, sid, signature, category, severity 1-4, count}`. Evidence that something looked unusual, not a decode and not proof of an attack. |
 | `captures` | Console-side only (not analyzer output): capture ids that reported this flow, in merge order, after `GET /api/v1/inventory`. Used to hide one capture's edges. |
 
 ### Operations
@@ -152,6 +156,28 @@ New `attributes` on assets: `software` (list of at most 8 server banners from Ze
 `"SSH::SERVER moxa moxa_1.0"`; spoofable text, never an identity field), and the detection bases `ZEEK_CONN`, `ZEEK_PORT`,
 `ZEEK_SOFTWARE`, `ZEEK_ICSNPP` in `detectionBases` (the plan calls them zeek-conn and zeek-software; they are written like the
 existing bases). Evidence strings from Zeek read `<protocol> <message> <field>, txn <uid>, zeek <log>.log` and carry no frame number.
+
+### Open-source engines (`source.tools` and the fields they write)
+
+`source.tools` is an array with one entry per component for the capture, so the console can show what ran and what was not
+installed: `{id, name, state, via, version, detail, produced}`. `id` is one of `zeek`, `icsnpp`, `tshark`, `suricata`, `ndpi`,
+`p0f`, `nmap-services`. `state` is `ran`, `not-installed`, `failed`, `skipped` (switched off, `--tools off` or `--engine native`),
+`found` or `reference`. `via` is `native`, `docker`, `existing-logs` or `data-file`. `produced` holds small counts (conversations
+read, flows labelled, alerts, hosts with an OS guess). The key is absent for a plain `--engine native` run with the tools not requested.
+
+Asset fields added by these tools, both `{value, confidence, evidence}` like the identity fields, and both with the tool name and
+version in `evidence`:
+
+| Field | Source | Meaning |
+|---|---|---|
+| `os` | p0f | The most frequent passive OS signature for the host, confidence `LOW`. Never replaces a decoded OS/firmware and never feeds advisory matching. |
+| `alerts` | Suricata | Up to 8 short texts (`signature (sid, xN, severity N)`) for alerts on this host's traffic, confidence `MEDIUM` (a rule matched, which says nothing about whether the device is affected). |
+
+`vendor_oui` evidence now names the table the vendor came from: `IEEE MA-L` (bundled), `Wireshark manuf` or
+`Nmap nmap-mac-prefixes` (data files read from those installs); `manuf` also carries 28- and 36-bit blocks, which the evidence
+shows as `block /36 001BC5001`. Which tool does what, how it is invoked and what was not adopted: [`foss-components.md`](foss-components.md).
+
+New detection basis: `TSHARK_CONV` (a host seen only in a tshark conversation; LOW, presence only, counted with the Zeek group).
 
 ## Ports
 
