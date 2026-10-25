@@ -98,8 +98,7 @@ A small curated ODVA vendor-ID table is included for common IDs (checked against
 
 - **Zeek is not native on Windows.** The team's Windows machines use the `reconics-zeek` Docker image (`docker/zeek`); without
   Docker or a Linux/macOS Zeek, `--engine zeek` is an error (exit 5) and `--engine auto` falls back to native with a note. The
-  Docker image could not be built in the Linux environment this work was done in (no Docker daemon); the same steps were run
-  natively, but the first `docker build` is untested.
+  Docker image builds and runs on Windows 10 / Docker Desktop (built 25 Oct 2026, 1 min 17 s cold, 1.3 GB).
 - **The Docker engine writes its logs inside the container first.** Zeek writes to `/work` on the container filesystem and
   the entrypoint then copies the log set to the mounted `/out`. Writing directly to the host bind mount is far slower on
   Windows (Docker Desktop round-trips every small write to the host): one 209 MB capture produced 1.8 GB of logs in ~3.3
@@ -123,15 +122,17 @@ A small curated ODVA vendor-ID table is included for common IDs (checked against
   port, **port-inferred** (detection basis `ZEEK_PORT`, flow `portHint`). That is a hint about what the port is usually for, shown
   as such; it never becomes a decoded protocol, and no operation table appears. Only a capture that contains the protocol's
   traffic can give ICSNPP something to log.
-- **Field names of the less common ICSNPP logs are from the packages' READMEs, not from live runs here.** `modbus_detailed.log`,
-  `modbus_read_device_identification.log`, `dnp3*.log`, `enip.log`, `cip_identity.log`, `s7comm.log`, `s7comm_read_szl.log` and
-  `s7comm_known_devices.log` were checked against real rows (`src/test/resources/zeek`). `cip.log`, `cip_io.log`,
-  `modbus_mask_write_register.log`, `modbus_read_write_multiple_registers.log` and `s7comm_upload_download.log` were written from the
-  READMEs and are covered by hand-made rows only (no Docker daemon or Zeek was available for this change); a field the reader does
-  not find just leaves that detail out. Reply-to-request pairing for S7 (pdu_reference), CIP (sequence count) and ENIP (sender
+- **Every ICSNPP log the reader uses has now been checked against real rows** (`src/test/resources/zeek` and
+  `src/test/resources/real/zeek`, provenance in `src/test/resources/real/PROVENANCE.md`): modbus, modbus_detailed, the
+  mask-write, read-write and device-identification logs, dnp3, dnp3_objects, dnp3_control, enip, cip, cip_io, cip_identity,
+  s7comm, s7comm_read_szl, s7comm_upload_download, s7comm_known_devices, s7comm_plus and cotp. The real runs corrected three
+  columns (`s7comm_plus.log` has `opcode_name`, `s7comm_upload_download.log` has `function_name`, `cip.log` ids are hex strings). A
+  field the reader does not find still just leaves that detail out. Only the ICSNPP packages in the image (modbus, dnp3, enip, s7comm)
+  were run; the opt-in `ICSNPP_EXTRA` analyzers were not. Reply-to-request pairing for S7 (pdu_reference), CIP (sequence count) and ENIP (sender
   context) is a heuristic: unconnected CIP messages share sequence 0, so there a status can land on a neighbouring request.
-- **DNP3 `iin` byte order.** The reader takes Zeek's `iin` as IIN1 in the high byte and IIN2 in the low byte (the order on the
-  wire). The fixture's unsolicited response with `iin` 4096 (0x1000, "need time") fits that order.
+- **DNP3 `iin` byte order is confirmed.** The reader takes Zeek's `iin` as IIN1 in the high byte and IIN2 in the low byte. For all
+  53 replies of `dnp3_test_data_part1.pcap` Zeek's number equals Wireshark's `dnp3.al.iin` (tshark 4.4.19; 0x1000 is "need time",
+  0x8000 "device restart").
 - **Scan filtering.** A TCP connection whose SYN was never answered and that carried no data (native), or whose Zeek `conn_state`
   is `S0`, `REJ`, `RSTOS0`, `SH`, or `RSTO` with no bytes exchanged, is a *scan attempt*: counted in `scanAttempts`, not drawn
   unless `--keep-scans`. UDP has no handshake, so UDP scans are not recognised. Native and Zeek count slightly differently

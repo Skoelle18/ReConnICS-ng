@@ -154,15 +154,25 @@ console shows them as small badges and in the Engines screen (`#/engines`, backe
 
 ## What was run and what was only tested
 
-Written on a machine where none of tshark, capinfos, Suricata, ndpiReader, p0f, Zeek or Nmap was installed and the Docker daemon was
-not running. The adapters are unit-tested against hand-made fixtures that copy the formats from each tool's documentation or
-source (the fixtures say so in their comments), and the process handling (find on PATH, run, non-zero exit, missing tool) is
-tested with fake executables. No tool's output on a real capture was produced in this change. The first time each adapter meets a
-real tool is the first real check of its format assumptions; the likeliest places for a surprise are the capinfos column titles
-and the exact `os=` text in the p0f log. Both parsers fail soft: a layout they do not recognise gives no data and a "ran, 0 hosts"
-status, never an error or a wrong value.
+The adapters were first written without any tool installed. On 25 Oct 2026 both images were built on Windows 10 / Docker Desktop
+(`reconics-zeek`: 1.3 GB, 1 min 17 s cold; `reconics-tools`: 514 MB, 1 min 18 s) and every adapter was run on real captures
+(`eval/captures/public`: DNP3, Modbus, EtherNet/IP, S7comm, S7comm-plus). Versions seen: Zeek 8.0.9, tshark and capinfos 4.4.19,
+Suricata 7.0.10, nDPI 4.2.0, p0f 3.09b. The real output disagreed with the first guesses in four places, now fixed and covered by
+tests on trimmed real output (`src/test/resources/real`, `RealToolOutputTest`, `ZeekRealLogsTest`):
 
-`docker/tools/Dockerfile` was written from the Debian 13 (trixie) package pages and has not been built; see below.
+- `ndpiReader -C` writes a **comma** separated file (the first version read pipes and found no flow at all).
+- p0f's server-side module is `syn+ack`, not `synack`.
+- `p0f -h` (the only way to get its version) and tshark in a root container print noise before the banner; the version line is
+  now the first line that has a number like `4.4.19`.
+- Suricata's `SURICATA ... invalid checksum` rules (sid 2200073 to 2200079) fire on almost every packet of a capture taken on the
+  sending host (offload, loopback, Docker); `-k none` does not silence them. They are counted (`checksumAlertsIgnored`) and left
+  out. Suricata 7.0 also ships its Modbus, DNP3 and ENIP parsers switched off; the tools image now turns them on. Without
+  `stream.midstream` Suricata does not parse a capture that starts mid-conversation (most of the public ones), so those get no
+  application-layer alerts; this is left as it is.
+
+The capinfos columns (`File type`, `File encapsulation`, `Number of packets`) and the tshark field list were as expected.
+Wireshark `manuf` and the Nmap data files have not been checked against a real install (neither was installed; the native
+Wireshark installer needs an administrator prompt).
 
 ## What we did not adopt, and why
 

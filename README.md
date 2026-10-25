@@ -125,8 +125,8 @@ java -jar target/reconnics-ng.jar analyze capture.pcap --engine zeek
 ```
 
 The analyzer finds the image by name and runs `docker run --rm --network none` with the capture's folder mounted read-only, so the
-built image works offline. *The Dockerfile follows the steps verified natively, but the image itself could not be built in the
-Linux environment this was developed in (no Docker daemon), so treat the first `docker build` as a test.*
+built image works offline. The image has been built and run on Windows 10 / Docker Desktop (25 Oct 2026): about 1.3 GB, 1 min 17 s
+cold, Zeek 8.0.9 with the four ICSNPP packages, and `ZeekIntegrationTest` passes against it.
 
 ### Demo: a DNP3 and a Modbus capture in the console
 
