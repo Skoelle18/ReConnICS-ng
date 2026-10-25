@@ -56,7 +56,7 @@ public final class SuricataAdapter implements Adapter {
             throw new IOException("suricata failed (exit " + d.exit() + ")" + (d.stderrTail().isEmpty() ? "" : ": " + d.stderrTail()));
         }
         Findings f = Findings.empty();
-        long[] counts = new long[3];
+        long[] counts = new long[4];
         try (BufferedReader r = Files.newBufferedReader(eve, StandardCharsets.UTF_8)) {
             parse(r, f.alerts(), counts);
         }
@@ -65,8 +65,12 @@ public final class SuricataAdapter implements Adapter {
         if (counts[2] > 0) {
             f.stats().put("eventsWithoutAddresses", counts[2]);
         }
+        if (counts[3] > 0) {
+            f.stats().put("checksumAlertsIgnored", counts[3]);
+        }
         return new Result(f, counts[0] + " alert events, " + counts[1] + " protocol anomalies"
-                + (counts[0] == 0 ? " (no alerts: check that the installation has rules)" : ""));
+                + (counts[3] > 0 ? ", " + counts[3] + " invalid-checksum alerts ignored (capture-side offload)" : "")
+                + (counts[0] == 0 && counts[3] == 0 ? " (no alerts: check that the installation has rules)" : ""));
     }
 
     @Override
@@ -79,7 +83,15 @@ public final class SuricataAdapter implements Adapter {
         return Adapter.group1("version\\s+(\\S+)", line);
     }
 
-    /** {@code counts}: alert events, anomaly events with addresses, events without addresses. Repeats of one signature between two hosts are folded into {@code count}. */
+    /**
+     * Suricata's own "SURICATA IPv4/TCPv4/UDPv4/ICMPv4/TCPv6/UDPv6/ICMPv6 invalid checksum" rules (sid 2200073 to 2200079). They check the
+     * checksum keyword directly, so {@code -k none} does not silence them, and a capture taken on the sending host (NIC checksum
+     * offload, loopback, Docker) trips them on nearly every packet (176 of 176 alerts on icsnpp-enip's cip example). They say
+     * nothing about the network, so they are left out and only counted ({@code checksumAlertsIgnored}).
+     */
+    static final long CHECKSUM_SID_FIRST = 2200073, CHECKSUM_SID_LAST = 2200079;
+
+    /** {@code counts}: alert events, anomaly events with addresses, events without addresses, checksum alerts left out. Repeats of one signature between two hosts are folded into {@code count}. */
     static void parse(BufferedReader r, List<Findings.Alert> out, long[] counts) throws IOException {
         Map<String, Integer> index = new LinkedHashMap<>();
         String line;
@@ -117,6 +129,10 @@ public final class SuricataAdapter implements Adapter {
                     continue;
                 }
                 sid = a.path("signature_id").asLong(0);
+                if (sid >= CHECKSUM_SID_FIRST && sid <= CHECKSUM_SID_LAST) {
+                    counts[3]++;                                       // see CHECKSUM_SID_FIRST
+                    continue;
+                }
                 sig = clean(text(a, "signature"), 120);
                 cat = clean(text(a, "category"), 64);
                 sev = a.path("severity").asInt(3);

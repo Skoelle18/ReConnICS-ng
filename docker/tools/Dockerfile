@@ -24,8 +24,11 @@ RUN echo "wireshark-common wireshark-common/install-setuid boolean false" | debc
 # Rules: ET Open (suricata-update's default source) plus the rules Suricata ships for its own decoders and app-layer parsers
 # (/etc/suricata/rules: modbus-events.rules, dnp3-events.rules, ...). Community ID in eve.json so a flow can be followed between
 # Suricata and the Zeek conn.log (scripts/policy/protocols/conn/community-id-logging).
+# Suricata 7.0 ships its Modbus, DNP3 and ENIP app-layer parsers switched off ("enabled: no"); without them the *-events.rules
+# above and the ET SCADA rules cannot match, so the first "enabled:" after each protocol's key is switched to yes.
 RUN suricata-update --no-reload --no-test \
  && sed -i 's/community-id: false/community-id: true/' /etc/suricata/suricata.yaml \
+ && sed -i '/^    \(modbus\|dnp3\|enip\):$/,/enabled:/ s/enabled: no/enabled: yes/' /etc/suricata/suricata.yaml \
  && suricata -T -c /etc/suricata/suricata.yaml
 
 # /in is the capture's folder (read-only), /out the empty folder a run may write to. No entrypoint: the first argument is the tool.
