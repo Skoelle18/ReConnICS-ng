@@ -99,6 +99,8 @@ class SiteServerTest {
         var up = send("POST", "/api/v1/captures?name=Hall%20B%20%26%20C.pcap", "application/octet-stream", acmePcap("1.9"));
         assertEquals(202, up.statusCode(), up.body());
         assertEquals("Hall B & C.pcap", Json.obj(Json.parse(up.body())).get("file"));
+        // let the queued analysis finish: it writes into the temp site dir, which JUnit deletes when the test returns
+        waitFor((String) Json.obj(Json.parse(up.body())).get("id"));
     }
 
     @Test
