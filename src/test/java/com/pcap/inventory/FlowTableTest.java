@@ -126,6 +126,32 @@ class FlowTableTest {
     }
 
     @Test
+    void operationStatusesAndUnitsAggregateAndAPortHintNeverOutlivesAnIdentifiedProtocol() {
+        FlowTable t = new FlowTable();
+        var f = t.flow("a", "b", "modbus", "502/tcp");
+        f.operation("FC3 read holding registers", "read", null, 1L, 2L, 7L, 2, List.of(), Map.of("ok", 2L));
+        f.operation("FC3 read holding registers", "read", null, 1L, 2L, 7L, 1, List.of(), Map.of("exception: illegal data address", 1L, "ok", 1L));
+        f.operation("FC3 read holding registers", "read", null, 1L, 2L, 8L, 1, List.of(), null);
+        var ops = (List<?>) t.toList().get(0).get("operations");
+        assertEquals(2, ops.size(), "the unit is part of the row's identity");
+        @SuppressWarnings("unchecked") var u7 = (Map<String, Object>) ops.get(0);
+        assertEquals(7L, u7.get("unit"));
+        assertEquals(3L, u7.get("count"));
+        assertEquals(Map.of("ok", 3L, "exception: illegal data address", 1L), u7.get("statuses"));
+        @SuppressWarnings("unchecked") var u8 = (Map<String, Object>) ops.get(1);
+        assertFalse(u8.containsKey("statuses"));
+
+        FlowTable n = new FlowTable();
+        n.flow("a", "b", "unknown", "502/tcp").portHint("modbus").messages(1);
+        assertEquals("modbus", n.toList().get(0).get("portHint"));
+        FlowTable z = new FlowTable();
+        z.flow("b", "a", "modbus", "502/tcp").messages(1);
+        n.mergeFrom(z);
+        assertEquals("modbus", n.toList().get(0).get("protocol"));
+        assertFalse(n.toList().get(0).containsKey("portHint"), "once dissected, the hint is gone");
+    }
+
+    @Test
     void twoIdentifiedProtocolsOnOnePairAndPortAreNeverMerged() {
         // the 4SICS case: an S7 probe and a DNP3 master both talk to 192.168.88.95:20000
         FlowTable nat = new FlowTable();
