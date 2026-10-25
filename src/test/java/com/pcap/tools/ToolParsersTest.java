@@ -11,12 +11,11 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Parsers of the open-source tools' output formats.
+ * Parsers of the open-source tools' output formats: edge cases on HAND-MADE lines.
  *
- * <p>Every fixture below is HAND-MADE to mirror the format as the tool's own documentation describes it (tshark -T fields,
- * capinfos -T -m, Suricata eve.json, ndpiReader -C CSV, p0f log lines, Wireshark manuf, Nmap data files). None was produced
- * by running the tool; the tools were not installed where these tests were written. A run on a real capture is what proves
- * the format assumption, and docs/foss-components.md says which tools have had one.
+ * <p>The fixtures below are hand-made variations (hostile text, odd layouts, limits). The formats themselves were checked against
+ * real runs of tshark, capinfos, Suricata, ndpiReader and p0f on 25 Oct 2026: see {@link RealToolOutputTest} and
+ * src/test/resources/real/PROVENANCE.md. Wireshark manuf and the Nmap data files have not been checked against a real install.
  */
 class ToolParsersTest {
 
@@ -122,7 +121,7 @@ class ToolParsersTest {
 
     private static List<Findings.Alert> eve(String... lines) throws Exception {
         List<Findings.Alert> out = new ArrayList<>();
-        SuricataAdapter.parse(new BufferedReader(new StringReader(String.join("\n", lines) + "\n")), out, new long[3]);
+        SuricataAdapter.parse(new BufferedReader(new StringReader(String.join("\n", lines) + "\n")), out, new long[4]);
         return out;
     }
 
@@ -158,7 +157,7 @@ class ToolParsersTest {
     @Test
     void suricataSkipsIcmpAndEventsWithoutAddressesAndCountsThem() throws Exception {
         List<Findings.Alert> out = new ArrayList<>();
-        long[] counts = new long[3];
+        long[] counts = new long[4];
         SuricataAdapter.parse(new BufferedReader(new StringReader(
                 "{\"event_type\":\"anomaly\",\"anomaly\":{\"type\":\"decode\",\"event\":\"decoder.ipv4.trunc_pkt\"}}\n"
                         + ALERT.replace("\"TCP\"", "\"ICMP\"") + "\n")), out, counts);
@@ -178,15 +177,15 @@ class ToolParsersTest {
 
     @Test
     void ndpiCsvIsReadByColumnNameAndUnknownIsDropped() {
-        // hand-made: header names as printed by ndpiReader -C (documented in its source), pipe separated
-        String header = "#flow_id|protocol|first_seen|last_seen|duration|src_ip|src_port|dst_ip|dst_port|ndpi_proto_num|ndpi_proto|proto_stack|proto_by_ip|server_name_sni|c_to_s_pkts|c_to_s_bytes|s_to_c_pkts|s_to_c_bytes";
+        // hand-made rows, real layout: comma separated with a "#" header (see RealToolOutputTest for a real file)
+        String header = "#flow_id,protocol,first_seen,last_seen,duration,src_ip,src_port,dst_ip,dst_port,ndpi_proto_num,ndpi_proto,proto_stack,proto_by_ip,server_name_sni,c_to_s_pkts,c_to_s_bytes,s_to_c_pkts,s_to_c_bytes";
         List<Findings.Classification> out = new ArrayList<>();
         long[] rows = new long[2];
         NdpiAdapter.parse(List.of(header,
-                "1|6|0|1|1|10.0.0.5|50000|10.0.0.7|4840|5|OPC-UA|OPC-UA|Unknown||3|200|2|180",
-                "2|6|0|1|1|10.0.0.5|50001|10.0.0.8|9999|0|Unknown|Unknown|Unknown||3|200|0|0",
-                "3|17|0|1|1|10.0.0.5|50002|10.0.0.8|5683|9|CoAP|CoAP|Unknown||1|40|0|0",
-                "4|1|0|1|1|10.0.0.5|0|10.0.0.8|0|81|ICMP|ICMP|Unknown||1|40|0|0",
+                "1,6,0,1,1,10.0.0.5,50000,10.0.0.7,4840,5,OPC-UA,OPC-UA,Unknown,,3,200,2,180",
+                "2,6,0,1,1,10.0.0.5,50001,10.0.0.8,9999,0,Unknown,Unknown,Unknown,,3,200,0,0",
+                "3,17,0,1,1,10.0.0.5,50002,10.0.0.8,5683,9,CoAP,CoAP,Unknown,,1,40,0,0",
+                "4,1,0,1,1,10.0.0.5,0,10.0.0.8,0,81,ICMP,ICMP,Unknown,,1,40,0,0",
                 "").iterator(), out, rows);
         assertEquals(4, rows[0], "flow rows read");
         assertEquals(2, out.size(), "Unknown and ICMP rows are not classifications");
@@ -203,7 +202,7 @@ class ToolParsersTest {
     @Test
     void ndpiRowsWithoutAHeaderAreIgnored() {
         List<Findings.Classification> out = new ArrayList<>();
-        NdpiAdapter.parse(List.of("1|6|0|1|1|10.0.0.5|50000|10.0.0.7|4840|5|OPC-UA|x|x||3|200|2|180").iterator(), out, new long[2]);
+        NdpiAdapter.parse(List.of("1,6,0,1,1,10.0.0.5,50000,10.0.0.7,4840,5,OPC-UA,x,x,,3,200,2,180").iterator(), out, new long[2]);
         assertTrue(out.isEmpty(), "an unknown layout is not guessed at");
         assertEquals("4.2.0-4210-abc", new NdpiAdapter().cleanVersion("Welcome to nDPI 4.2.0-4210-abc"));
     }
@@ -216,7 +215,7 @@ class ToolParsersTest {
         String log = "[2012/01/20 17:32:44] mod=syn|cli=10.0.0.5/50000|srv=10.0.0.9/502|subj=cli|os=Windows 7 or 8|dist=0|params=none|raw_sig=4:128+0:0:1460:8192,8:mss,nop,ws:df,id+:0\n"
                 + "[2012/01/20 17:32:45] mod=syn|cli=10.0.0.5/50001|srv=10.0.0.9/502|subj=cli|os=Windows 7 or 8|dist=0|params=none|raw_sig=x\n"
                 + "[2012/01/20 17:32:46] mod=syn|cli=10.0.0.5/50002|srv=10.0.0.9/502|subj=cli|os=Linux 3.x|dist=0|params=none|raw_sig=y\n"
-                + "[2012/01/20 17:32:47] mod=synack|cli=10.0.0.5/50000|srv=10.0.0.9/502|subj=srv|os=Linux 2.6.x|dist=1|params=none|raw_sig=z\n"
+                + "[2012/01/20 17:32:47] mod=syn+ack|cli=10.0.0.5/50000|srv=10.0.0.9/502|subj=srv|os=Linux 2.6.x|dist=1|params=none|raw_sig=z\n"
                 + "[2012/01/20 17:32:48] mod=syn|cli=10.0.0.6/50000|srv=10.0.0.9/502|subj=cli|os=???|dist=0|params=none|raw_sig=q\n"
                 + "[2012/01/20 17:32:49] mod=http request|cli=10.0.0.5/50000|srv=10.0.0.9/80|subj=cli|app=Apache 2.x\n"
                 + "[2012/01/20 17:32:50] mod=syn|cli=10.0.0.7/1|srv=10.0.0.9/2|subj=cli|os=<script>|dist=0\n";

@@ -1,0 +1,16 @@
+[2008/11/12 21:27:38] mod=syn|cli=192.168.10.22/3269|srv=192.168.10.105/139|subj=cli|os=Windows NT kernel|dist=0|params=generic|raw_sig=4:128+0:0:1460:mss*44,0:mss,nop,nop,sok:df,id+:0
+[2008/11/12 21:27:38] mod=mtu|cli=192.168.10.22/3269|srv=192.168.10.105/139|subj=cli|link=Ethernet or modem|raw_mtu=1500
+[2008/11/12 21:27:38] mod=syn+ack|cli=192.168.10.22/3269|srv=192.168.10.105/139|subj=srv|os=Windows XP|dist=0|params=none|raw_sig=4:128+0:0:1460:65535,0:mss,nop,nop,sok:df,id+:0
+[2008/11/12 21:27:38] mod=mtu|cli=192.168.10.22/3269|srv=192.168.10.105/139|subj=srv|link=Ethernet or modem|raw_mtu=1500
+[2008/11/12 21:29:19] mod=syn|cli=192.168.10.21/3098|srv=192.168.10.105/139|subj=cli|os=Windows NT kernel|dist=0|params=generic|raw_sig=4:128+0:0:1460:mss*44,0:mss,nop,nop,sok:df,id+:0
+[2008/11/12 21:29:19] mod=mtu|cli=192.168.10.21/3098|srv=192.168.10.105/139|subj=cli|link=Ethernet or modem|raw_mtu=1500
+[2008/11/12 21:29:19] mod=syn+ack|cli=192.168.10.21/3098|srv=192.168.10.105/139|subj=srv|os=Windows XP|dist=0|params=none|raw_sig=4:128+0:0:1460:65535,0:mss,nop,nop,sok:df,id+:0
+[2008/11/12 21:29:19] mod=mtu|cli=192.168.10.21/3098|srv=192.168.10.105/139|subj=srv|link=Ethernet or modem|raw_mtu=1500
+[2008/11/12 21:29:26] mod=syn|cli=192.168.10.24/4107|srv=192.168.10.105/139|subj=cli|os=Windows NT kernel|dist=0|params=generic|raw_sig=4:128+0:0:1460:mss*44,0:mss,nop,nop,sok:df,id+:0
+[2008/11/12 21:29:26] mod=mtu|cli=192.168.10.24/4107|srv=192.168.10.105/139|subj=cli|link=Ethernet or modem|raw_mtu=1500
+[2008/11/12 21:29:26] mod=syn+ack|cli=192.168.10.24/4107|srv=192.168.10.105/139|subj=srv|os=Windows XP|dist=0|params=none|raw_sig=4:128+0:0:1460:65535,0:mss,nop,nop,sok:df,id+:0
+[2008/11/12 21:29:26] mod=mtu|cli=192.168.10.24/4107|srv=192.168.10.105/139|subj=srv|link=Ethernet or modem|raw_mtu=1500
+[2008/11/12 21:30:41] mod=syn|cli=192.168.10.105/1135|srv=192.168.10.120/44818|subj=cli|os=Windows XP|dist=0|params=none|raw_sig=4:128+0:0:1460:65535,0:mss,nop,nop,sok:df,id+:0
+[2008/11/12 21:30:41] mod=mtu|cli=192.168.10.105/1135|srv=192.168.10.120/44818|subj=cli|link=Ethernet or modem|raw_mtu=1500
+[2008/11/12 21:30:41] mod=syn+ack|cli=192.168.10.105/1135|srv=192.168.10.120/44818|subj=srv|os=???|dist=0|params=none|raw_sig=4:64+0:0:1460:4096,0:mss:df,id+:0
+[2008/11/12 21:30:41] mod=mtu|cli=192.168.10.105/1135|srv=192.168.10.120/44818|subj=srv|link=Ethernet or modem|raw_mtu=1500
