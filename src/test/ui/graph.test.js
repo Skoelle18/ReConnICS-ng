@@ -85,6 +85,25 @@ test('graph', async (t) => {
     } finally { app.close(); }
   });
 
+  await t.test('link distance grows with the messages a pair exchanges, up to a cap, still one spring per pair', async () => {
+    const flows = [
+      { client: '10.0.1.50', server: '10.0.1.40', protocol: 'modbus', port: '502/tcp', messages: 2, labels: { 'Modbus FC3': 2 } },
+      { client: '10.0.1.20', server: '10.0.1.10', protocol: 'modbus', port: '502/tcp', messages: 1000000, labels: { 'Modbus FC3': 1000000 } },
+    ];
+    const app = await loadApp({ routes: defaultRoutes({ flows }), hash: '#/graph' });
+    try {
+      assert.equal(app.get('linkStretch(0)'), 1, 'no traffic: the base spacing');
+      assert.ok(app.get('linkStretch(150)') > app.get('linkStretch(10)'), 'more messages, more distance');
+      assert.equal(app.get('linkStretch(1e12)'), app.get('LINK_MAX'), 'capped');
+      const d = (a, b) => app.get(`Math.hypot(GR.pos.get('${a}').x - GR.pos.get('${b}').x, GR.pos.get('${a}').y - GR.pos.get('${b}').y)`);
+      const quiet = d('10.0.1.50', '10.0.1.40'), busy = d('10.0.1.20', '10.0.1.10');
+      assert.ok(busy > quiet * 1.5, `busy pair ${busy.toFixed(0)} px vs quiet pair ${quiet.toFixed(0)} px`);
+      assert.ok(busy < app.get('K') * app.get('LINK_MAX') * 1.3, 'and the cap keeps it readable');
+      assert.equal(app.get('springsOf(graphModel().edges, new Map(graphModel().nodes.map((n, i) => [n.id, i]))).size'),
+        new Set(app.get('graphModel().edges').map((e) => [e.from, e.to].sort().join())).size, 'one spring per pair');
+    } finally { app.close(); }
+  });
+
   await t.test('gateway units and slots hang off their parent; advisories hang off matched assets', async () => {
     const app = await loadApp({ routes: defaultRoutes(), hash: '#/graph' });
     try {

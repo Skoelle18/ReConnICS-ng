@@ -758,9 +758,27 @@ const edgeLabel = (e, byNode) => (e.kind === 'flow' ? 'Conversation from ' + byN
   : e.kind === 'unit' ? byNode(e.to) + ' sits behind ' + byNode(e.from) + ' as ' + e.label : byNode(e.from) + ' matches advisory ' + byNode(e.to) + ' at ' + e.label);
 
 const K = 150;   // layout spacing
+// Link distance grows with how much two hosts talk: distance = K * min(LINK_MAX, 1 + LINK_GROWTH * log10(1 + messages)). Tune here:
+// LINK_GROWTH 0 turns it off, higher spreads busy pairs further apart; LINK_MAX caps the stretch (repulsion only reaches 3K, keep this below 3).
+const LINK_GROWTH = 0.35, LINK_MAX = 2.5;
+/** How many times K a pair of hosts with `messages` messages (all their conversations together) wants to sit apart. */
+const linkStretch = (messages) => Math.min(LINK_MAX, 1 + LINK_GROWTH * Math.log10(1 + messages));
+/** One spring per node pair, however many conversations they share: its pull, weaker the more messages the pair exchanged. */
+function springsOf(edges, ix) {
+  const m = new Map();
+  for (const e of edges) {
+    const i = ix.get(e.from), j = ix.get(e.to);
+    if (i == null || j == null) continue;
+    const pk = i < j ? i + ',' + j : j + ',' + i, s = m.get(pk) || m.set(pk, { i, j, adv: e.kind === 'adv', msgs: 0 }).get(pk);
+    if (e.kind === 'flow') s.msgs += Math.max(1, e.n || 0);
+  }
+  for (const s of m.values()) s.f = (s.adv ? 0.6 : 1) / Math.pow(linkStretch(s.msgs), 3);   // spring d*d/K against repulsion K*K/d balances at d = K*stretch, so the pull shrinks with stretch^3
+  return m;
+}
 /** Fruchterman-Reingold on one set of nodes: repulsion K*K/d (not beyond 3K), springs d*d/K, gravity to the origin. */
 function relax(nodes, edges, iters, warm) {
   const P = nodes.map((n) => GR.pos.get(n.id)), ix = new Map(nodes.map((n, i) => [n.id, i]));
+  const springs = springsOf(edges, ix);
   const band = (n) => (n.a ? ({ '3.5': -1.5, 3: -1, 2: 0, 1: 1, 0: 2 }[purdueOf(n.a)] ?? 3) : 3.5) * K * 0.8;   // Purdue layers: top = site operations, bottom = process; advisories and unplaced below
   for (let it = 0; it < iters; it++) {
     const t = warm ? K * 0.08 * (1 - it / iters) + 0.5 : K * 0.6 * (1 - it / iters) + 1;
@@ -772,14 +790,8 @@ function relax(nodes, edges, iters, warm) {
       const f = K * K / d / d;
       dx[i] += x * f; dy[i] += y * f; dx[j] -= x * f; dy[j] -= y * f;
     }
-    const sprung = new Set();                                          // one spring per node pair, however many conversations they share
-    for (const e of edges) {
-      const i = ix.get(e.from), j = ix.get(e.to);
-      if (i == null || j == null) continue;
-      const pk = i < j ? i + ',' + j : j + ',' + i;
-      if (sprung.has(pk)) continue;
-      sprung.add(pk);
-      const x = P[i].x - P[j].x, y = P[i].y - P[j].y, d = Math.hypot(x, y) || 1, f = d / K * (e.kind === 'adv' ? 0.6 : 1);
+    for (const { i, j, f: k } of springs.values()) {
+      const x = P[i].x - P[j].x, y = P[i].y - P[j].y, d = Math.hypot(x, y) || 1, f = d / K * k;
       dx[i] -= x * f; dy[i] -= y * f; dx[j] += x * f; dy[j] += y * f;
     }
     P.forEach((p, i) => {
