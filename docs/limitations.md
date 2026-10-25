@@ -116,7 +116,22 @@ A small curated ODVA vendor-ID table is included for common IDs (checked against
   Native mode records message kinds (`labels`). Addresses are the zero-based addresses on the wire, as Zeek reports them. For
   DNP3, ICSNPP logs object type names (for example "Single-bit Binary Input") and index ranges, not group/variation numbers.
   DNP3 `sampleValues` are empty except for the operation type of a control block. The master is taken from the ICSNPP object
-  logs when they exist, otherwise it is the TCP originator.
+  logs when they exist (the sender of a request, the receiver of a reply); otherwise it is the side not on port 20000, so an
+  outstation that opened the connection is still the server.
+- **A capture with only generic traffic stays thin.** If the capture holds no Modbus/DNP3/S7/ENIP payload, or the protocol runs on a
+  non-standard port Zeek's analyzer does not try, `conn.log` is all Zeek has: the host is `unknown`, or, on a well-known industrial
+  port, **port-inferred** (detection basis `ZEEK_PORT`, flow `portHint`). That is a hint about what the port is usually for, shown
+  as such; it never becomes a decoded protocol, and no operation table appears. Only a capture that contains the protocol's
+  traffic can give ICSNPP something to log.
+- **Field names of the less common ICSNPP logs are from the packages' READMEs, not from live runs here.** `modbus_detailed.log`,
+  `modbus_read_device_identification.log`, `dnp3*.log`, `enip.log`, `cip_identity.log`, `s7comm.log`, `s7comm_read_szl.log` and
+  `s7comm_known_devices.log` were checked against real rows (`src/test/resources/zeek`). `cip.log`, `cip_io.log`,
+  `modbus_mask_write_register.log`, `modbus_read_write_multiple_registers.log` and `s7comm_upload_download.log` were written from the
+  READMEs and are covered by hand-made rows only (no Docker daemon or Zeek was available for this change); a field the reader does
+  not find just leaves that detail out. Reply-to-request pairing for S7 (pdu_reference), CIP (sequence count) and ENIP (sender
+  context) is a heuristic: unconnected CIP messages share sequence 0, so there a status can land on a neighbouring request.
+- **DNP3 `iin` byte order.** The reader takes Zeek's `iin` as IIN1 in the high byte and IIN2 in the low byte (the order on the
+  wire). The fixture's unsolicited response with `iin` 4096 (0x1000, "need time") fits that order.
 - **Scan filtering.** A TCP connection whose SYN was never answered and that carried no data (native), or whose Zeek `conn_state`
   is `S0`, `REJ`, `RSTOS0`, `SH`, or `RSTO` with no bytes exchanged, is a *scan attempt*: counted in `scanAttempts`, not drawn
   unless `--keep-scans`. UDP has no handshake, so UDP scans are not recognised. Native and Zeek count slightly differently

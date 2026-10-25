@@ -89,8 +89,10 @@ class IngestSchemaValidatorTest {
         schema.get("properties").fieldNames().forEachRemaining(documented::add);
         var t = new com.pcap.inventory.FlowTable();
         t.flow("10.0.0.1", "10.0.0.2", "modbus", "502/tcp").message("Modbus FC=0x3").traffic(2, 20).seen(1_445_504_401_000_000L)
-                .scanAttempts(1).source("zeek").operation("FC3", "read", "g1v1", 1L, 2L, 1, List.of(1));
-        java.util.Set<String> written = new java.util.TreeSet<>(t.toList(true).get(0).keySet());
+                .scanAttempts(1).source("zeek").portHint("modbus").operation("FC3", "read", "g1v1", 1L, 2L, 7L, 1, List.of(1), java.util.Map.of("ok", 1L));
+        t.flow("10.0.0.1", "10.0.0.2", "unknown", "502/tcp").portHint("modbus");     // the hint is written only on an undecoded flow
+        java.util.Set<String> written = new java.util.TreeSet<>(t.toList(true).get(1).keySet());
+        written.addAll(t.toList(true).get(0).keySet());
         assertEquals(documented, written);
         var op = schema.get("properties").get("operations").get("items").get("properties");
         java.util.Set<String> opDoc = new java.util.TreeSet<>();

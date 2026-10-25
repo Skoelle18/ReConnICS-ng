@@ -66,14 +66,16 @@ Written on the benchmark captures with `docker/zeek/reconics.zeek` on **Zeek 8.0
 | `known_services.log` | `known-services` policy | yes | ports and service names per host |
 | `known_hosts.log`, `packet_filter.log`, `weird.log`, `analyzer.log`, `files.log` | core | no | (hosts come from `conn.log`) |
 | `software.log` | `policy/protocols/{http,ssh,ftp}/software` | yes | server banners: vendor from a fixed table, MEDIUM, never a model. Client software (browsers, ssh clients) is ignored |
-| `modbus.log` | ICSNPP modbus | yes | message counts and kinds (one row per request or response PDU) |
-| `modbus_detailed.log` | ICSNPP modbus | yes | `operations`: function, address, quantity, values |
-| `modbus_read_device_identification.log` | ICSNPP modbus (needs Zeek ≥ 6.1) | yes | vendor / product code / revision, with the same object-id mapping as `ModbusIdentityParser` |
-| `dnp3.log` | Zeek's own DNP3 analyzer | yes | message counts, function codes |
-| `dnp3_objects.log`, `dnp3_control.log` | ICSNPP dnp3 | yes | object-level operations, control relay output blocks, who is master |
-| `enip.log`, `cip.log` | ICSNPP enip | no | (not needed for identity) |
+| `modbus.log` | ICSNPP modbus | yes | message counts and kinds (one row per request or response PDU); exception responses named after the function they answer |
+| `modbus_detailed.log` | ICSNPP modbus | yes | `operations`: function, unit, address, quantity, values, diagnostics sub-function, outcome (`ok`, `exception: ...`, `unanswered`) |
+| `modbus_mask_write_register.log`, `modbus_read_write_multiple_registers.log` | ICSNPP modbus | yes | FC22 / FC23 operations (skipped when `modbus_detailed.log` has the same `modbus_detailed_link_id`) |
+| `modbus_read_device_identification.log` | ICSNPP modbus (needs Zeek ≥ 6.1) | yes | vendor / product code / revision, with the same object-id mapping as `ModbusIdentityParser`; the FC43/14 requests as operations |
+| `dnp3.log` | Zeek's own DNP3 analyzer | yes | message counts, function codes, reply IIN flags as outcomes, unsolicited replies |
+| `dnp3_objects.log`, `dnp3_control.log` | ICSNPP dnp3 | yes | object-level operations (range to quantity), control relay output blocks with the response's status code on the request, who is master |
+| `enip.log`, `cip.log`, `cip_io.log` | ICSNPP enip | yes | encapsulation commands with their status; CIP services on class/instance/attribute with status; implicit I/O datagram counts (process data is never kept) |
 | `cip_identity.log` | ICSNPP enip | yes | vendor id, device type, product code, revision, serial, product name |
-| `cotp.log`, `s7comm.log`, `s7comm_read_szl.log`, `s7comm_plus.log` | ICSNPP s7comm | no | `s7comm_read_szl.log` records which SZL was read, **not its contents** |
+| `s7comm.log`, `s7comm_read_szl.log`, `s7comm_upload_download.log` | ICSNPP s7comm | yes | S7 jobs with the acknowledgement's error class, which SZL list was read (**not its contents**), block up/downloads |
+| `cotp.log`, `s7comm_plus.log` | ICSNPP s7comm | no | transport and S7comm-Plus detail; not needed for the inventory |
 | `s7comm_known_devices.log` | ICSNPP s7comm | yes | module name and module serial only; model and firmware come only from the native S7 decoder |
 | `dns`, `dhcp`, `http`, `ssl`, `ssh`, `ftp`, `ntp`, `snmp`, `kerberos`, `ldap`, `ntlm`, `smb_mapping`, `dce_rpc`, `x509` `.log` | Zeek base protocols | no | |
 
