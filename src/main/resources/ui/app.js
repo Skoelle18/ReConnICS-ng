@@ -12,10 +12,14 @@ const ATTRS = [
   ['logging', 'Logging', 'human'], ['user_accounts', 'User accounts', 'human'],
 ];
 // Identity details that are not among the 14 but are decoded from the same identity messages; shown in the attribute table only.
-const ATTRS_EXTRA = [['serial', 'Serial number', 'passive'], ['deviceType', 'Device type', 'passive']];
+const ATTRS_EXTRA = [['serial', 'Serial number', 'passive'], ['deviceType', 'Device type', 'passive'], ['alerts', 'Suricata alerts', 'passive']];
+// Open-source tool behind a value, read from the evidence text the server wrote (the tool name is always in it). Badges only; the full text stays next to them.
+const SOURCE_TAGS = [[/p0f/i, 'p0f'], [/suricata/i, 'Suricata'], [/ndpi/i, 'nDPI'], [/tshark|wireshark manuf/i, 'Wireshark'], [/nmap/i, 'Nmap data'],
+  [/ICSNPP|zeek/i, 'Zeek'], [/IEEE MA-/i, 'IEEE OUI']];
+const sourceTags = (text) => SOURCE_TAGS.filter(([re]) => re.test(text || '')).map(([, t]) => t);
 const IDENTITY_KEYS = ['vendor', 'model', 'os', 'serial', 'deviceType'];
 const NO_IDENTITY = 'No identity message observed (needs Modbus FC43 / ENIP ListIdentity / S7 SZL)';
-const EXTRA_HINT = { serial: 'Modbus FC43 object, ENIP ListIdentity serial, S7 SZL 0x0011.', deviceType: 'ENIP ListIdentity device type or S7 SZL 0x001C module type.' };
+const EXTRA_HINT = { alerts: 'Only with Suricata (optional engine, see Engines): rule matches on this host traffic.', serial: 'Modbus FC43 object, ENIP ListIdentity serial, S7 SZL 0x0011.', deviceType: 'ENIP ListIdentity device type or S7 SZL 0x001C module type.' };
 const LEVELS = ['EXACT', 'PROBABLE', 'POSSIBLE', 'NONE'];
 const LEVEL_COLOR = { EXACT: '#FF6B61', PROBABLE: '#F59E4B', POSSIBLE: '#E8C84A', NONE: '#8793A5', UNRUN: '#6B7585' };
 const ROLE_COLOR = { PLC: '#2DD4BF', Drive: '#4ADE80', 'Comms adapter': '#A78BFA', Network: '#60A5FA', Workstation: '#F5C542', Other: '#94A3B8', Unknown: '#6B7585' };
@@ -26,7 +30,7 @@ const LIFECYCLE = ['Acquisition', 'Deployment', 'Commissioning', 'In service', '
 // or saving an untouched form would log a change nobody made.
 const SITE_DEFAULTS = { lifecycle: 'In service' };
 
-const S = { inv: null, rank: [], site: {}, flows: [], caps: [], changes: [], index: null, search: '', level: 'ALL', kevOnly: false, unvalOnly: false,
+const S = { engines: null, inv: null, rank: [], site: {}, flows: [], caps: [], changes: [], index: null, search: '', level: 'ALL', kevOnly: false, unvalOnly: false,
   openCap: null, openAdv: null, tab: 'attrs', editing: false, staged: null,
   color: 'role', showAdv: true, layout: 'force', path: null,
   hideUnknown: false, hideScans: false, protoOff: new Set(),
@@ -393,6 +397,9 @@ function captures() {
         : c.state === 'failed' ? h('div', { class: 'card-b stack' }, h('div', {}, h('strong', {}, 'Exit ' + c.exit + '. '), c.error),
           h('div', { class: 'muted small' }, 'Classic PCAP and pcapng are read. For anything else, convert on this machine and queue it again, e.g.'),
           h('div', { class: 'mono code' }, 'editcap -F pcap input.cap output.pcap')) : null,
+      c.state === 'done' && c.summary && (c.summary.tools || []).length ? h('div', { class: 'card-b stack', style: { gap: '4px' } },
+        h('div', { class: 'muted small' }, 'Engines for this capture'), h('div', { class: 'row' }, c.summary.tools.map((t) => toolBadge(t))),
+        h('a', { class: 'small', href: '#/engines' }, 'What each engine is and its licence')) : null,
       c.state === 'done' ? h('div', { class: 'card-b stack' },
         h('div', { class: 'head' }, h('div', { class: 'muted small' }, c.kind === 'posted' ? 'Assets posted in this batch' : 'Devices contributed by this capture'),
           h('button', { class: 'btn sm', onclick: () => focusCapture(c.id) }, 'Show only on graph')),
@@ -404,6 +411,37 @@ function captures() {
         }) : h('div', { class: 'empty' }, 'No assets recorded for this capture.')) : null) : null,
   ];
 }
+const TOOL_STATE = { ran: ['ok', 'ran'], found: ['ok', 'installed'], reference: ['lv-NONE', 'reference'], skipped: ['lv-NONE', 'skipped'], failed: ['bad', 'failed'], 'not-installed': ['lv-NONE', 'not installed'] };
+/** One engine's state for one capture or for this machine: name, state, version. The detail (why it did not run) is the tooltip. */
+function toolBadge(t) {
+  const [cls, txt] = TOOL_STATE[t.state] || ['lv-NONE', t.state];
+  return h('span', { class: 'badge ' + cls, title: [t.via, t.detail].filter(Boolean).join(': ') }, [t.name || t.id, t.version, txt].filter(Boolean).join(' · '));
+}
+
+/** "Powered by": every open-source component, whether it is installed here, how many captures used it, and its licence. */
+function engines() {
+  const rows = S.engines || [];
+  const done = S.caps.filter((c) => c.state === 'done').length;
+  const ran = (id) => S.caps.filter((c) => c.state === 'done' && c.summary && (c.summary.tools || []).some((t) => t.id === id && t.state === 'ran')).length;
+  const kindTxt = { engine: 'engine', package: 'Zeek package', data: 'data file', reference: 'reference only' };
+  const section = (title, note, list) => list.length ? h('div', { class: 'card' }, h('div', { class: 'card-h' }, title, h('span', { class: 'muted small' }, note)),
+    h('div', { class: 'scroll' }, h('div', { class: 'trow thead g-eng' }, ['Component', 'Status here', 'Used in', 'Licence', 'What it does for ReConnICS'].map((t) => h('span', {}, t))),
+      list.map((r) => { const st = r.status || {}; return h('div', { class: 'trow g-eng' },
+        h('span', {}, h('a', { class: 'cell-name', href: r.url, target: '_blank', rel: 'noopener noreferrer' }, r.name), h('span', { class: 'muted small' }, (kindTxt[r.kind] || r.kind) + (r.optional ? ', optional' : ', built in'))),
+        h('span', { class: 'stack', style: { gap: '2px', alignItems: 'flex-start' } }, toolBadge({ id: '', state: st.state || 'not-installed', version: st.version, via: st.via, detail: st.detail }),
+          h('span', { class: 'small muted wrap' }, [st.via, st.detail].filter(Boolean).join(' · '))),
+        h('span', { class: 'small' }, r.kind === 'reference' ? '-' : done ? ran(r.id) + ' of ' + done + ' captures' : 'no captures yet'),
+        h('span', { class: 'small wrap' }, r.licence), h('span', { class: 'small wrap' }, r.role)); }))) : null;
+  return [
+    h('div', {}, h('h1', {}, 'Engines'), h('div', { class: 'muted' }, 'ReConnICS-ng wraps existing open-source tools instead of rewriting them. Zeek with the ICSNPP packages is the primary engine; every other tool is optional and used only when it is installed (on PATH, or in the reconics-tools Docker image). Everything is passive: capture files are only read.')),
+    S.engines === null ? h('div', { class: 'card empty' }, 'Looking for installed tools…') : null,
+    section('Engines and Zeek packages', 'status of this machine', rows.filter((r) => r.kind === 'engine' || r.kind === 'package')),
+    section('Data files', 'read-only reference tables', rows.filter((r) => r.kind === 'data')),
+    section('Lineage and credits', 'not run, not bundled', rows.filter((r) => r.kind === 'reference')),
+    h('div', { class: 'small muted' }, 'Suricata, nDPI and p0f results are shown as evidence with the tool named and a confidence. They never count as a decoded protocol. Details and what was not adopted: docs/foss-components.md.'),
+  ].filter(Boolean);
+}
+
 const fact = (label, value, mono) => h('div', {}, h('div', { class: 'muted small' }, label), h('div', { class: mono ? 'mono' : 'fact-v' }, value));
 
 async function upload(files) {
@@ -532,19 +570,38 @@ function edgePanel(key) {
         pair ? h('div', { class: 'small muted' }, 'A busy host pair drawn as one edge: the counters and kinds below add up its ' + pair.members.length + ' conversations, which are listed under them.')
           : pk === 'unknown' ? h('div', { class: 'small muted' }, 'Carried but not decoded: the host pair and port are known, the protocol is not. Messages count data packets.',
             f.portHint ? [' ', h('span', { class: 'badge warn' }, 'port-inferred: ' + protoName(f.portHint) + '?'),
-              ' Port ' + f.port + ' is usually ' + protoName(f.portHint) + ' (a hint from the port number only, not decoded).'] : null) : null),
+              ' Port ' + f.port + ' is usually ' + protoName(f.portHint) + ' (a hint from the port number only, not decoded'
+              + (f.portHintSource ? '; port name from ' + f.portHintSource : '') + ').'] : null) : null),
       h('div', { class: 'card-b facts' },
         fact('Messages', (f.messages || 0).toLocaleString()), pair ? null : fact('Rate', fmtRate(rate)),
         f.packets != null ? fact('Packets', f.packets.toLocaleString()) : null, f.bytes != null ? fact('Bytes', fmtBytes(f.bytes)) : null,
         f.firstSeen ? fact('First seen', fmtStamp(f.firstSeen)) : null, f.lastSeen ? fact('Last seen', fmtStamp(f.lastSeen)) : null,
         fmtSpan(f) ? fact('Span', fmtSpan(f)) : null, f.scanAttempts ? fact('Scan attempts', f.scanAttempts.toLocaleString()) : null)),
     ...kindsAndOps(f),
+    ...toolEvidence(f),
     pair ? h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Conversations (' + pair.members.length + ')'),
       pair.members.slice().sort((a, b) => (b.messages || 0) - (a.messages || 0)).map((m) => h('div', { class: 'card-b stack', style: { gap: '4px', borderBottom: '1px solid var(--line2)' } },
         h('div', { class: 'row' }, h('span', { class: 'badge c-LOW', style: { borderLeft: '4px solid ' + protoColor(m.protocol) } }, m.protocol + ' ' + m.port),
           h('span', { class: 'small muted' }, (m.messages || 0) + ' messages · ' + fmtRate(flowRate(m))), h('a', { class: 'btn sm', href: '#/edge/' + encodeURIComponent(flowKey(m)) }, 'Details')),
         h('div', { class: 'small' }, Object.entries(m.labels || {}).map(([k, n]) => k + ' ×' + n).join(' · ') || 'no message kinds recorded')))) : null,
   ].filter(Boolean);
+}
+
+/** What optional open-source tools said about a conversation: nDPI/tshark labels (not decodes), Suricata alerts, Community IDs. */
+function toolEvidence(f) {
+  const cls = f.classifiedBy || [], al = f.alerts || [], ids = f.communityIds || [];
+  if (!cls.length && !al.length && !ids.length) return [];
+  const tool = (t) => ({ ndpi: 'nDPI', tshark: 'Wireshark tshark', suricata: 'Suricata' }[t] || t);
+  return [h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Other open-source tools', h('a', { class: 'btn sm', href: '#/engines' }, 'Engines')),
+    h('div', { class: 'card-b stack', style: { gap: '8px' } },
+      cls.map((c) => h('div', { class: 'row' }, h('span', { class: 'badge lv-NONE' }, tool(c.tool) + (c.version ? ' ' + c.version : '')),
+        h('span', { class: 'badge warn' }, 'classified, not decoded: ' + c.protocol + '?'), h('span', { class: 'badge c-' + c.confidence }, c.confidence),
+        h('span', { class: 'small muted' }, c.basis === 'dissector' ? 'Wireshark dissector chain' : 'deep-packet inspection'))),
+      al.map((x) => h('div', { class: 'row' }, h('span', { class: 'badge lv-NONE' }, tool(x.tool) + (x.version ? ' ' + x.version : '')),
+        h('span', { class: 'badge ' + (x.severity <= 1 ? 'bad' : 'warn') }, x.kind + (x.severity ? ' sev ' + x.severity : '')),
+        h('span', { class: 'small wrap' }, x.signature + (x.sid ? ' (sid ' + x.sid + ')' : '') + (x.count > 1 ? ' x' + x.count : '')))),
+      al.length ? h('div', { class: 'small muted' }, 'Suricata matched a rule or flagged an anomaly. That is evidence that something looked unusual, not a decoded protocol and not proof of an attack.') : null,
+      ids.length ? h('div', { class: 'small' }, 'Community ID ', ids.map((i) => h('span', { class: 'mono' }, i + ' ')), h('span', { class: 'muted' }, '(search the same ID in Suricata, Zeek or Wireshark)')) : null))];
 }
 
 function attrsCard(a, site, role) {
@@ -560,7 +617,7 @@ function attrsCard(a, site, role) {
     role !== 'validator' ? h('div', { class: 'small muted strip-note' }, 'Only a validator can mark an asset validated. Change Role in Settings (the sliders button).') : null,
     h('div', { class: 'scroll' },
       h('div', { class: 'g-attr thead' }, ['Attribute', 'Value', 'Confidence', 'Evidence / how to fill'].map((t) => h('span', {}, t))),
-      ATTRS.concat(ATTRS_EXTRA).map(([k, label, by]) => {
+      ATTRS.concat(ATTRS_EXTRA).filter(([k]) => k !== 'alerts' || a.alerts).map(([k, label, by]) => {
         const f = fieldVal(k), person = f && /^entered by /.test(f.evidence || '');
         return h('div', { class: 'g-attr' },
           h('span', { class: 'strong' }, label, h('span', { class: 'muted small', style: { display: 'block', fontWeight: '400' } }, by === 'human' ? 'filled by people' : 'from passive capture')),
@@ -568,7 +625,8 @@ function attrsCard(a, site, role) {
           h('span', { class: 'stack', style: { gap: '4px', alignItems: 'flex-start' } },
             f ? h('span', { class: 'badge c-' + (person ? 'PERSON' : f.confidence) }, person ? 'PERSON' : f.confidence) : null,
             f && f.conflict ? h('span', { class: 'badge warn' }, 'conflict') : null, f && f.inherited ? h('span', { class: 'badge lv-NONE' }, 'inherited') : null),
-          h('span', { class: 'small' + (f ? ' mono' : ' muted') }, f ? f.evidence : (missing[k] ? missing[k].hint : EXTRA_HINT[k] || '')));
+          h('span', { class: 'small' + (f ? ' mono' : ' muted') }, f ? [sourceTags(f.evidence).map((t) => h('span', { class: 'badge lv-NONE', style: { marginRight: '4px' }, title: 'open-source component named in the evidence; see Engines' }, t)), f.evidence]
+            : (missing[k] ? missing[k].hint : EXTRA_HINT[k] || '')));
       })),
     h('div', { class: 'card-h', style: { borderTop: '1px solid var(--line2)' } }, 'Site fields', h('span', { class: 'muted small' }, 'not part of the 14; for grouping and lifecycle')),
     h('div', { class: 'form' }, [['Zone', site.zone], ['Purdue level', site.purdue ? 'Level ' + site.purdue : 'Suggested: ' + (purdueOf(a) ? 'Level ' + purdueOf(a) : 'none')],
@@ -713,7 +771,8 @@ const GR = { pos: new Map(), view: { x: 0, y: 0, k: 1 }, fitted: false, sig: '',
 function flowLabel(f) {
   const kinds = Object.entries(f.labels || {}).sort((a, b) => b[1] - a[1]).map((x) => x[0]);
   if (isScan(f)) return 'scan ×' + f.scanAttempts;
-  if (!kinds.length) return protoKey(f.protocol) === 'unknown' ? (f.port || 'unknown') + (f.portHint ? ' (' + protoName(f.portHint) + '?)' : '') : protoName(f.protocol);
+  if (!kinds.length) return protoKey(f.protocol) === 'unknown' ? (f.port || 'unknown') + (f.portHint ? ' (' + protoName(f.portHint) + '?)'
+    : f.classifiedBy && f.classifiedBy.length ? ' (' + f.classifiedBy[0].protocol + '?)' : '') : protoName(f.protocol);
   const pre = protoName(f.protocol);
   const top = /^(Modbus|DNP3|SNMP|S7|EtherNet\/IP|CIP)/.test(kinds[0]) ? kinds[0] : pre + ' ' + kinds[0];
   return top + (kinds.length > 1 ? ' +' + (kinds.length - 1) : '');
@@ -1054,7 +1113,7 @@ function render() {
   if (!S.inv) return;
   if (r.name + r.arg !== lastRoute) { S.tab = 'attrs'; S.editing = false; lastRoute = r.name + r.arg; }
   chrome(r.name);
-  const screens = { overview, captures, review, advisories, index: indexScreen, log, asset: () => asset(r.arg), edge: () => edgePanel(r.arg) };
+  const screens = { overview, engines, captures, review, advisories, index: indexScreen, log, asset: () => asset(r.arg), edge: () => edgePanel(r.arg) };
   const main = $('main'), open = r.name !== 'graph', side = r.name === 'asset' || r.name === 'edge';
   main.hidden = !open;
   main.className = side ? 'panel' : 'sheet';
@@ -1081,8 +1140,9 @@ async function refresh(background) {
   try {
     await loadAll();
     if (route().name === 'log' || route().name === 'asset') S.changes = await api('GET', 'changes');
+    if (route().name === 'engines') S.engines = await api('GET', 'engines').catch(() => S.engines || []);
   } catch (e) { if (background) { schedulePoll(); return; } toast('Cannot reach the console: ' + e.message); }
-  const sig = JSON.stringify([S.inv, S.rank, S.site, S.flows, S.caps, S.index, S.changes]);
+  const sig = JSON.stringify([S.inv, S.rank, S.site, S.flows, S.caps, S.index, S.changes, S.engines]);
   if (!background || sig !== lastSig) { lastSig = sig; if (!S.editing) render(); else chrome(route().name); }
   schedulePoll();
 }
