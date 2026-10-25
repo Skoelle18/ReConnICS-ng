@@ -131,7 +131,7 @@ public final class ZeekLogReader {
 
     private static final class ConnAgg {
         String client, server, port, protocol;
-        long packets, bytes, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
+        long packets, bytes, toServer, toClient, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
         /** conn.log {@code community_id} (policy/protocols/conn/community-id-logging) of the first few connections; empty when the script was not loaded. */
         final List<String> cids = new ArrayList<>(3);
         /** ICMP message kinds ("ICMP echo request") to their count; empty for TCP and UDP. */
@@ -434,6 +434,8 @@ public final class ZeekLogReader {
         }
         a.packets += num(n, "orig_pkts", 0) + num(n, "resp_pkts", 0);
         a.bytes += ob + rb;
+        a.toServer += ob;                                     // the originator is always the client of the aggregated conversation
+        a.toClient += rb;
         if (ts > 0) {                                         // a row without a usable clock still counts; it just carries no time
             a.first = Math.min(a.first, ts);
             JsonNode d = n.get("duration");
@@ -487,7 +489,7 @@ public final class ZeekLogReader {
             if ("unknown".equals(f.protocolName())) {
                 f.portHint(portHint(a.port));                 // nothing dissected it: say what the port usually means, as a hint
             }
-            f.traffic(a.packets, a.bytes).seen(a.first).seen(a.last);
+            f.traffic(a.packets, a.bytes).directed(a.toServer, a.toClient).seen(a.first).seen(a.last);
             a.kinds.forEach(f::labelCount);
             a.cids.forEach(f::communityId);
             if (f.messageCount() == 0) {

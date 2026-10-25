@@ -13,6 +13,8 @@
     "messages": {"$ref": "#/$defs/count"},
     "packets": {"$ref": "#/$defs/count"},
     "bytes": {"$ref": "#/$defs/count"},
+    "bytesToServer": {"$ref": "#/$defs/count", "description": "Payload bytes the client sent to the server. Absent when the engine that saw the flow does not tell the directions apart."},
+    "bytesToClient": {"$ref": "#/$defs/count", "description": "Payload bytes the server sent back to the client."},
     "firstSeen": {"type": "string", "format": "date-time"},
     "lastSeen": {"type": "string", "format": "date-time"},
     "labels": {

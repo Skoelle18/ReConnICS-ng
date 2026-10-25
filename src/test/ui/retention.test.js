@@ -8,7 +8,7 @@ const { defaultRoutes, exampleInventory, field } = require('./support/fixtures')
 
 const GROUP = { address: '255.255.255.255', kind: 'broadcast', scope: 'limited broadcast (255.255.255.255)', packets: 15, bytes: 900, senders: ['10.0.1.50'], ports: ['67/udp'], protocols: ['dhcp'] };
 const FLOWS = [
-  { client: '10.0.1.50', server: '10.0.1.40', protocol: 'modbus', port: '502/tcp', messages: 12, labels: { 'Modbus FC=0x3': 12 } },
+  { client: '10.0.1.50', server: '10.0.1.40', protocol: 'modbus', port: '502/tcp', messages: 12, bytes: 3000, bytesToServer: 1000, bytesToClient: 2000, labels: { 'Modbus FC=0x3': 12 } },
   { client: '10.0.1.50', server: '255.255.255.255', protocol: 'unknown', port: '67/udp', messages: 15, packets: 15, portHint: 'dhcp', labels: {} },
   { client: '10.0.1.50', server: '10.0.1.60', protocol: 'icmp', port: 'icmp', messages: 2, labels: { 'ICMP echo request': 1, 'ICMP echo reply': 1 } },
 ];
@@ -85,6 +85,14 @@ test('retained observations', async (t) => {
       await a.go('#/edge/' + encodeURIComponent('10.0.1.50>10.0.1.60>icmp>icmp'));
       assert.match(a.text(), /Time\s*unknown/);
       assert.doesNotMatch(a.text(), /1970|294247/);
+    } finally { a.close(); }
+  });
+
+  await t.test('the edge panel shows the bytes each way', async () => {
+    const a = await open('#/edge/' + encodeURIComponent('10.0.1.50>10.0.1.40>modbus>502/tcp'));
+    try {
+      assert.match(a.text(), /Client → server\s*1000 B/);
+      assert.match(a.text(), /Server → client\s*2\.0 kB/);
     } finally { a.close(); }
   });
 

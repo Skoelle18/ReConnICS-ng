@@ -82,7 +82,7 @@ public final class NetworkObserver {
     }
 
     private static final class Icmp {
-        long packets, bytes, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
+        long packets, bytes, toTarget, fromTarget, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
         final Map<String, Long> labels = new LinkedHashMap<>();
     }
 
@@ -326,6 +326,11 @@ public final class NetworkObserver {
             if (f != null) {
                 f.packets++;
                 f.bytes += Math.max(0, p.wireLength());
+                if (reply) {
+                    f.fromTarget += Math.max(0, p.wireLength());
+                } else {
+                    f.toTarget += Math.max(0, p.wireLength());
+                }
                 f.labels.merge(IcmpNames.label(p.icmpType(), p.icmpCode()), 1L, Long::sum);
                 if (Timestamps.usable(p.timestampMicros())) {
                     f.first = Math.min(f.first, p.timestampMicros());
@@ -395,7 +400,7 @@ public final class NetworkObserver {
                 continue;
             }
             Icmp i = e.getValue();
-            f.messages(i.packets).traffic(i.packets, i.bytes).source("native");
+            f.messages(i.packets).traffic(i.packets, i.bytes).directed(i.toTarget, i.fromTarget).source("native");
             i.labels.forEach(f::labelCount);
             f.seen(i.first).seen(i.last);
         }
@@ -408,7 +413,7 @@ public final class NetworkObserver {
                         continue;
                     }
                     long[] c = p.getValue();
-                    f.messages(c[0]).traffic(c[0], c[1]).source("native");
+                    f.messages(c[0]).traffic(c[0], c[1]).directed(c[1], 0).source("native");
                     f.portHint(PortHints.builtin(p.getKey()).map(PortHints.Hint::name).orElse(null));
                     f.seen(c[2]).seen(c[3]);
                     if (proto.equals("icmp")) {

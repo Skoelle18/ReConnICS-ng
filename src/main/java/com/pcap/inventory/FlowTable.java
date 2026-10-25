@@ -76,6 +76,8 @@ public final class FlowTable {
         final String client, server, port, transport;
         String protocol;
         long messages, packets, bytes, scanAttempts;
+        /** Payload bytes client to server and server to client; 0 when the engine that saw the flow does not tell the directions apart. */
+        long toServer, toClient;
         long firstMicros = Long.MAX_VALUE, lastMicros = Long.MIN_VALUE;
         String source, portHint, note;
         /** Names other FOSS tools gave this conversation ({@code tool, version?, protocol, confidence, basis}); never a decoded protocol. */
@@ -120,6 +122,13 @@ public final class FlowTable {
         public Flow traffic(long pkts, long octets) {
             packets += Math.max(0, pkts);
             bytes += Math.max(0, octets);
+            return this;
+        }
+
+        /** The two directions of the bytes already counted by {@link #traffic}. */
+        public Flow directed(long toServerBytes, long toClientBytes) {
+            toServer += Math.max(0, toServerBytes);
+            toClient += Math.max(0, toClientBytes);
             return this;
         }
 
@@ -254,6 +263,9 @@ public final class FlowTable {
             if (z.packets > 0) {
                 packets = z.packets;
                 bytes = z.bytes;
+                boolean flipped = z.client.equals(server) && !z.client.equals(client);          // the other engine called the same conversation the other way round
+                toServer = flipped ? z.toClient : z.toServer;
+                toClient = flipped ? z.toServer : z.toClient;
             }
             if (z.lastMicros >= z.firstMicros) {
                 seen(z.firstMicros).seen(z.lastMicros);
@@ -339,6 +351,12 @@ public final class FlowTable {
             }
             if (bytes > 0) {
                 m.put("bytes", bytes);
+            }
+            if (toServer > 0) {
+                m.put("bytesToServer", toServer);
+            }
+            if (toClient > 0) {
+                m.put("bytesToClient", toClient);
             }
             if (lastMicros >= firstMicros) {
                 m.put("firstSeen", iso(firstMicros));

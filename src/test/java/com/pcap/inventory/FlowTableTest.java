@@ -103,6 +103,7 @@ class FlowTableTest {
         zk.flow("10.0.0.9", "10.0.0.5", "modbus", "502/tcp").messages(6).traffic(40, 900).seen(1_700_000_001_000_000L).seen(1_700_000_009_000_000L)
                 .labelCount("Modbus FC3", 6).labelCount("Modbus FC16", 1).operation("FC3 read holding registers", "read", null, 0L, 10L, 6, List.of(1)).scanAttempts(1).source("zeek");
         zk.flow("10.0.0.5", "10.0.0.11", "http", "80/tcp").messages(3).source("zeek");
+        zk.flow("10.0.0.9", "10.0.0.5", "modbus", "502/tcp").directed(700, 200);          // Zeek's originator 10.0.0.9 sent 700, 10.0.0.5 sent 200
         nat.mergeFrom(zk);
         var l = nat.toList(true);
         assertEquals(3, l.size(), l.toString());
@@ -112,6 +113,8 @@ class FlowTableTest {
         assertEquals(6L, mb.get("messages"), "the larger count, not 10");
         assertEquals(40L, mb.get("packets"));
         assertEquals(900L, mb.get("bytes"));
+        assertEquals(200L, mb.get("bytesToServer"), "Zeek called the conversation the other way round: what 10.0.0.5 sent is the native client-to-server");
+        assertEquals(700L, mb.get("bytesToClient"));
         assertEquals(2L, mb.get("scanAttempts"), "the larger of 2 and 1");
         assertEquals(6L, ((Map<?, ?>) mb.get("labels")).get("Modbus FC3"), "the larger per label, not the sum");
         assertEquals(1L, ((Map<?, ?>) mb.get("labels")).get("Modbus FC16"));

@@ -652,6 +652,7 @@ function edgePanel(key) {
       h('div', { class: 'card-b facts' },
         fact('Messages', (f.messages || 0).toLocaleString()), pair ? null : fact('Rate', fmtRate(rate)),
         f.packets != null ? fact('Packets', f.packets.toLocaleString()) : null, f.bytes != null ? fact('Bytes', fmtBytes(f.bytes)) : null,
+        f.bytesToServer != null ? fact('Client → server', fmtBytes(f.bytesToServer)) : null, f.bytesToClient != null ? fact('Server → client', fmtBytes(f.bytesToClient)) : null,
         f.firstSeen ? fact('First seen', fmtStamp(f.firstSeen)) : null, f.lastSeen ? fact('Last seen', fmtStamp(f.lastSeen)) : null,
         !pair && !f.firstSeen && !f.lastSeen ? fact('Time', 'unknown (the capture has no usable timestamps)') : null,
         fmtSpan(f) ? fact('Span', fmtSpan(f)) : null, f.scanAttempts ? fact('Scan attempts', f.scanAttempts.toLocaleString()) : null)),
@@ -879,7 +880,8 @@ function graphModel() {
     const fs = g.map((x) => x.f), labels = {}, byProto = {};
     for (const f of fs) { for (const [k, c] of Object.entries(f.labels || {})) labels[k] = (labels[k] || 0) + c; byProto[f.protocol] = (byProto[f.protocol] || 0) + (f.messages || 0) + 1; }
     const top = Object.keys(byProto).sort((a, b) => byProto[b] - byProto[a])[0], n = fs.reduce((a, f) => a + (f.messages || 0), 0), scans = fs.reduce((a, f) => a + (f.scanAttempts || 0), 0);
-    const f = { client: fs[0].client, server: fs[0].server, protocol: top, port: fs.length + ' ports', labels, messages: n, scanAttempts: scans, operations: fs.flatMap((x) => x.operations || []) };   // synthetic: what the drawing and the cards read
+    const sum = (k) => fs.reduce((a, x) => a + (x[k] || 0), 0);
+    const f = { client: fs[0].client, server: fs[0].server, protocol: top, port: fs.length + ' ports', labels, messages: n, scanAttempts: scans, bytes: sum('bytes') || undefined, bytesToServer: sum('bytesToServer') || undefined, bytesToClient: sum('bytesToClient') || undefined, operations: fs.flatMap((x) => x.operations || []) };   // synthetic: what the drawing and the cards read
     edges.push({ id: 'm' + g[0].i, key: pairKey(g[0].from, g[0].to), kind: 'flow', from: g[0].from, to: g[0].to, f, n, members: fs, label: fs.length + ' conversations' });
   }
   if (S.showAdv) {

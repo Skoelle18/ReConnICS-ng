@@ -32,7 +32,7 @@ public final class ConversationTracker {
         int synFrom;                 // 1 = A sent the SYN, 2 = B sent it, 0 = not seen
         boolean synAck, ackA, ackB, rstA, rstB;     // ack*: a packet with ACK and no SYN came from that side; rst*: a RST came from that side
         long pktsA, pktsB;
-        long packets, bytes, dataPackets, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
+        long packets, bytes, bytesA, bytesB, dataPackets, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
 
         Conn(String ipA, int portA, String ipB, int portB, boolean udp) {
             this.ipA = ipA;
@@ -45,7 +45,7 @@ public final class ConversationTracker {
 
     private static final class Agg {
         String client, server, port;
-        long messages, packets, bytes, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
+        long messages, packets, bytes, toServer, toClient, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
     }
 
     private final Map<String, Conn> live = new LinkedHashMap<>(1024, 0.75f, true) {
@@ -95,6 +95,11 @@ public final class ConversationTracker {
             c.pktsB++;
         }
         c.bytes += Math.max(0, p.payloadLength());
+        if (srcIsA) {
+            c.bytesA += Math.max(0, p.payloadLength());
+        } else {
+            c.bytesB += Math.max(0, p.payloadLength());
+        }
         if (p.payloadLength() > 0) {
             c.dataPackets++;
         }
@@ -176,6 +181,8 @@ public final class ConversationTracker {
         a.messages += c.dataPackets;
         a.packets += c.packets;
         a.bytes += c.bytes;
+        a.toServer += aIsClient ? c.bytesA : c.bytesB;
+        a.toClient += aIsClient ? c.bytesB : c.bytesA;
         a.first = Math.min(a.first, c.first);
         a.last = Math.max(a.last, c.last);
     }
@@ -218,7 +225,7 @@ public final class ConversationTracker {
                 }
                 FlowTable.Flow f = table.flow(a.client, a.server, "unknown", a.port);
                 if (f != null) {
-                    f.messages(a.messages).traffic(a.packets, a.bytes).source("native");
+                    f.messages(a.messages).traffic(a.packets, a.bytes).directed(a.toServer, a.toClient).source("native");
                     f.portHint(PortHints.builtin(a.port).map(PortHints.Hint::name).orElse(null));
                     f.seen(a.first).seen(a.last);
                 }

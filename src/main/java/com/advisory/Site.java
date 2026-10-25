@@ -522,7 +522,7 @@ final class Site {
             }
             if (f.get("portHint") instanceof String ph && ph.matches("[a-z0-9][a-z0-9._+-]{0,31}")) m.put("portHint", ph);
             if (f.get("transport") instanceof String t && (t.equals("tcp") || t.equals("udp"))) m.put("transport", t);
-            for (String k : List.of("packets", "bytes", "scanAttempts")) {
+            for (String k : List.of("packets", "bytes", "bytesToServer", "bytesToClient", "scanAttempts")) {
                 double n = count(f.get(k));
                 if (n > 0) m.merge(k, n, (a, b) -> Math.min(1e12, (double) a + (double) b));
             }

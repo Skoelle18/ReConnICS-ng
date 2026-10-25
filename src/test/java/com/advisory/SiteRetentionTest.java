@@ -70,6 +70,18 @@ class SiteRetentionTest {
 
     @Test
     @SuppressWarnings("unchecked")
+    void directionalBytesAddUpAcrossCaptures() throws Exception {
+        Site s = site();
+        var f = Map.<String, Object>of("client", "10.0.0.5", "server", "10.0.0.9", "protocol", "unknown", "port", "80/tcp", "bytes", 150.0, "bytesToServer", 50.0, "bytesToClient", 100.0);
+        s.addPosted(List.of(seenOnly("10.0.0.9")), List.of(f), "t");
+        s.addPosted(List.of(seenOnly("10.0.0.8")), List.of(f), "t");
+        var flow = ((List<Map<String, Object>>) s.inventoryJson().get("flows")).get(0);
+        assertEquals(100.0, flow.get("bytesToServer"));
+        assertEquals(200.0, flow.get("bytesToClient"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
     void aFlowWithAnImplausibleTimeKeepsNoDate() throws Exception {
         Site s = site();
         var f = Map.<String, Object>of("client", "10.0.0.5", "server", "10.0.0.9", "protocol", "icmp", "port", "icmp", "messages", 2.0,

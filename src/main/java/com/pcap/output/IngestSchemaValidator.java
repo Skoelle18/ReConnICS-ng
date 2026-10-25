@@ -195,7 +195,7 @@ public final class IngestSchemaValidator {
             if (f.has("alerts")) {
                 validateFlowAlerts(f.get("alerts"), at, errors);
             }
-            for (String k : List.of("messages", "packets", "bytes", "scanAttempts")) {
+            for (String k : List.of("messages", "packets", "bytes", "bytesToServer", "bytesToClient", "scanAttempts")) {
                 if (f.has(k) && !count(f.get(k))) {
                     errors.add(at + "." + k + " must be a non-negative integer");
                 }

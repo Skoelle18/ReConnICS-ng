@@ -218,6 +218,15 @@ class ZeekLogReaderTest {
     }
 
     @Test
+    void bytesAreKeptPerDirectionClientToServerAndBack() throws Exception {
+        Path dir = logs(conn("10.0.0.5", "10.0.0.9", 80, "tcp", "SF", 300, 5000, "http") + conn("10.0.0.5", "10.0.0.9", 80, "tcp", "SF", 100, 1000, "http"));
+        var f = new ZeekLogReader(false, false).read(dir).flows().toList().get(0);
+        assertEquals(6400L, f.get("bytes"));
+        assertEquals(400L, f.get("bytesToServer"));
+        assertEquals(6000L, f.get("bytesToClient"));
+    }
+
+    @Test
     void aScanAttemptOnAServedPortCountsOnThatFlow() throws Exception {
         Path dir = logs(conn("10.0.0.5", "10.0.0.9", 80, "tcp", "SF", 10, 10, "http") + conn("10.0.0.5", "10.0.0.9", 80, "tcp", "S0", 0, 0, null));
         var f = new ZeekLogReader(false, false).read(dir).flows().toList().get(0);

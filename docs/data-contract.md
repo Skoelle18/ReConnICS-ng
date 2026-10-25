@@ -124,6 +124,9 @@ written before a key existed stay valid and old consumers ignore the keys they d
   `scanAttempts` above 0); `--drop-scans` leaves such flows out. The console hides scan-only edges by default behind a toggle.
 - At most 5 000 flows per capture. Only header-validated or decoded messages make a *protocol* flow; port-only guesses stay
   `unknown` with a `portHint`. Broadcast and multicast destinations are flows to a **group address** (see `groups`), never hosts.
+- **Bytes per direction.** `bytes` is the total; `bytesToServer` (client to server) and `bytesToClient` (server back) split it when the
+  engine can tell: Zeek (`orig_bytes`/`resp_bytes`), the native tracker and the native decoders (payload bytes), ICMP and group flows
+  (frame bytes). Absent for a conversation only tshark saw. They are payload bytes, not wire bytes, except on ICMP and group flows.
 - ICMP is a flow too: `protocol` `icmp`, `port` `icmp`, one label per message kind (`ICMP echo request`, `ICMP destination
   unreachable (port)`). Other IP protocols without ports use `port` `ip/<protocol number>`.
 - **Time.** `firstSeen`/`lastSeen` are present only when the capture clock is usable (between 1990 and 2100). A capture whose
