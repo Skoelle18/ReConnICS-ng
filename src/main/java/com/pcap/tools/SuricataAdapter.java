@@ -15,8 +15,9 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Suricata in offline mode: {@code suricata -r FILE -l DIR -k none} (read a capture, write logs to DIR, no checksum
- * verification; options from the Suricata command-line documentation) and then {@code DIR/eve.json}, one JSON object per line.
+ * Suricata in offline mode: {@code suricata -r FILE -l DIR -k none --set stream.midstream=true} (read a capture, write logs to DIR,
+ * no checksum verification, accept connections that start mid-stream; options from the Suricata command-line documentation, see
+ * {@link #ARGS}) and then {@code DIR/eve.json}, one JSON object per line.
  *
  * <p>Only two event types are read, and they are evidence, never a decoded protocol:
  * <ul>
@@ -33,6 +34,14 @@ public final class SuricataAdapter implements Adapter {
     static final int MAX_ALERTS = 20_000, MAX_LINE = 256 * 1024;
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /**
+     * {@code -r FILE -l DIR}: read a capture, write the logs to DIR. {@code -k none}: no checksum verification. {@code --set
+     * stream.midstream=true}: pick up TCP connections whose handshake is not in the capture (a capture that starts mid-conversation,
+     * a span port, a rotated file). Without it Suricata ignores such a stream and the application-layer parsers (Modbus, DNP3, ENIP)
+     * never run, so no app-layer alert or anomaly can appear. {@code --set} overrides the setting of whatever suricata.yaml is used.
+     */
+    static final List<String> ARGS = List.of("-r", "{IN}", "-l", "{OUT}", "-k", "none", "--set", "stream.midstream=true");
+
     @Override
     public Components component() {
         return Components.byId("suricata");
@@ -45,7 +54,7 @@ public final class SuricataAdapter implements Adapter {
 
     @Override
     public Result run(Env env, Launch l, Path pcap, Path work) throws IOException, InterruptedException {
-        List<String> args = new java.util.ArrayList<>(List.of("-r", "{IN}", "-l", "{OUT}", "-k", "none"));
+        List<String> args = new java.util.ArrayList<>(ARGS);
         String yaml = System.getenv("RECONICS_SURICATA_YAML");
         if (l.mode() == Launch.Mode.NATIVE && yaml != null && !yaml.isBlank()) {
             args.addAll(List.of("-c", yaml));
@@ -56,7 +65,7 @@ public final class SuricataAdapter implements Adapter {
             throw new IOException("suricata failed (exit " + d.exit() + ")" + (d.stderrTail().isEmpty() ? "" : ": " + d.stderrTail()));
         }
         Findings f = Findings.empty();
-        long[] counts = new long[4];
+        long[] counts = new long[5];
         try (BufferedReader r = Files.newBufferedReader(eve, StandardCharsets.UTF_8)) {
             parse(r, f.alerts(), counts);
         }
@@ -68,9 +77,13 @@ public final class SuricataAdapter implements Adapter {
         if (counts[3] > 0) {
             f.stats().put("checksumAlertsIgnored", counts[3]);
         }
+        if (counts[4] > 0) {
+            f.stats().put("streamArtifactAlertsIgnored", counts[4]);
+        }
         return new Result(f, counts[0] + " alert events, " + counts[1] + " protocol anomalies"
                 + (counts[3] > 0 ? ", " + counts[3] + " invalid-checksum alerts ignored (capture-side offload)" : "")
-                + (counts[0] == 0 && counts[3] == 0 ? " (no alerts: check that the installation has rules)" : ""));
+                + (counts[4] > 0 ? ", " + counts[4] + " TCP stream-state alerts ignored (capture starts mid-conversation)" : "")
+                + (counts[0] == 0 && counts[3] == 0 && counts[4] == 0 ? " (no alerts: check that the installation has rules)" : ""));
     }
 
     @Override
@@ -91,7 +104,17 @@ public final class SuricataAdapter implements Adapter {
      */
     static final long CHECKSUM_SID_FIRST = 2200073, CHECKSUM_SID_LAST = 2200079;
 
-    /** {@code counts}: alert events, anomaly events with addresses, events without addresses, checksum alerts left out. Repeats of one signature between two hosts are folded into {@code count}. */
+    /**
+     * What {@code stream.midstream=true} adds: Suricata tracks a connection whose start it never saw and then complains about its own
+     * lost state, "SURICATA STREAM ESTABLISHED invalid ack" (2210029), "FIN invalid ack" (2210030), "FIN out of window" (2210038) and
+     * "Packet with invalid ack" (2210045). Without the setting these streams are ignored and the rules never fire; with it,
+     * iti_EIP-IPAddressChangeAttempt.pcap goes from 3 to 3,919 such alerts, 3,916 of them these, on one TLS connection captured
+     * one-sidedly. They describe the capture, not the network, so like the checksum ones they are only counted
+     * ({@code streamArtifactAlertsIgnored}). Other stream rules (overlapping data with different content, for example) still alert.
+     */
+    static final java.util.Set<Long> STREAM_ARTIFACT_SIDS = java.util.Set.of(2210029L, 2210030L, 2210038L, 2210045L);
+
+    /** {@code counts}: alert events, anomaly events with addresses, events without addresses, checksum alerts left out, stream-state alerts left out. Repeats of one signature between two hosts are folded into {@code count}. */
     static void parse(BufferedReader r, List<Findings.Alert> out, long[] counts) throws IOException {
         Map<String, Integer> index = new LinkedHashMap<>();
         String line;
@@ -131,6 +154,10 @@ public final class SuricataAdapter implements Adapter {
                 sid = a.path("signature_id").asLong(0);
                 if (sid >= CHECKSUM_SID_FIRST && sid <= CHECKSUM_SID_LAST) {
                     counts[3]++;                                       // see CHECKSUM_SID_FIRST
+                    continue;
+                }
+                if (STREAM_ARTIFACT_SIDS.contains(sid)) {
+                    counts[4]++;                                       // see STREAM_ARTIFACT_SIDS
                     continue;
                 }
                 sig = clean(text(a, "signature"), 120);

@@ -49,7 +49,7 @@ class RealToolOutputTest {
     @Test
     void suricataRealEveGivesOneAlertAndOneAnomalyForTheSameEvent() throws IOException {
         List<Findings.Alert> out = new ArrayList<>();
-        long[] counts = new long[4];
+        long[] counts = new long[5];
         SuricataAdapter.parse(reader("eve-dnp3.json"), out, counts);
         assertEquals(1, counts[0]);
         assertEquals(1, counts[1]);
@@ -67,11 +67,33 @@ class RealToolOutputTest {
     @Test
     void suricataInvalidChecksumRulesAreCountedAndLeftOut() throws IOException {
         List<Findings.Alert> out = new ArrayList<>();
-        long[] counts = new long[4];
+        long[] counts = new long[5];
         SuricataAdapter.parse(reader("eve-checksum.json"), out, counts);
         assertTrue(out.isEmpty(), "capture-side checksum offload is not a finding about the network");
         assertEquals(3, counts[3]);
         assertEquals(0, counts[0]);
+    }
+
+    @Test
+    void suricataMidstreamStateAlertsAreCountedLikeChecksumOnesAndRealFindingsStay() throws IOException {
+        List<Findings.Alert> out = new ArrayList<>();
+        long[] counts = new long[5];
+        SuricataAdapter.parse(reader("eve-midstream.json"), out, counts);
+        assertEquals(4, counts[4], "ESTABLISHED invalid ack x3 and Packet with invalid ack: what stream.midstream=true makes Suricata say about a one-sided TLS connection");
+        assertEquals(1, counts[3], "the checksum alert is still left out");
+        assertEquals(1, counts[0], "the real finding stays: Applayer Detect protocol only one direction");
+        assertEquals(1, counts[1]);
+        assertEquals(2, out.size());
+        assertTrue(out.stream().allMatch(a -> a.signature().contains("only one direction") || a.signature().contains("ONLY_ONE_DIRECTION")), out.toString());
+    }
+
+    @Test
+    void suricataIsStartedWithMidstreamPickupInBothModes() {
+        Path capture = Path.of("eval/captures/public/x.pcap"), work = Path.of("work");
+        var nativeCmd = new Launch(Launch.Mode.NATIVE, "suricata", "suricata").command(SuricataAdapter.ARGS, capture, work);
+        assertTrue(String.join(" ", nativeCmd).contains("-k none --set stream.midstream=true"), nativeCmd.toString());
+        var dockerCmd = new Launch(Launch.Mode.DOCKER, "docker", "suricata").command(SuricataAdapter.ARGS, capture, work);
+        assertTrue(String.join(" ", dockerCmd).contains("reconics-tools suricata -r /in/x.pcap -l /out -k none --set stream.midstream=true"), dockerCmd.toString());
     }
 
     @Test

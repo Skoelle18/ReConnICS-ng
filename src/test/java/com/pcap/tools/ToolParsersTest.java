@@ -121,7 +121,7 @@ class ToolParsersTest {
 
     private static List<Findings.Alert> eve(String... lines) throws Exception {
         List<Findings.Alert> out = new ArrayList<>();
-        SuricataAdapter.parse(new BufferedReader(new StringReader(String.join("\n", lines) + "\n")), out, new long[4]);
+        SuricataAdapter.parse(new BufferedReader(new StringReader(String.join("\n", lines) + "\n")), out, new long[5]);
         return out;
     }
 
@@ -157,7 +157,7 @@ class ToolParsersTest {
     @Test
     void suricataSkipsIcmpAndEventsWithoutAddressesAndCountsThem() throws Exception {
         List<Findings.Alert> out = new ArrayList<>();
-        long[] counts = new long[4];
+        long[] counts = new long[5];
         SuricataAdapter.parse(new BufferedReader(new StringReader(
                 "{\"event_type\":\"anomaly\",\"anomaly\":{\"type\":\"decode\",\"event\":\"decoder.ipv4.trunc_pkt\"}}\n"
                         + ALERT.replace("\"TCP\"", "\"ICMP\"") + "\n")), out, counts);
