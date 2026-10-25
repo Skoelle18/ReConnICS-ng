@@ -161,7 +161,7 @@ public final class ConversationTracker {
                 FlowTable.Flow f = table.flow(a.client, a.server, "unknown", a.port);
                 if (f != null) {
                     f.messages(a.messages).traffic(a.packets, a.bytes).source("native");
-                    f.portHint(PortHints.of(a.port).map(PortHints.Hint::name).orElse(null));
+                    f.portHint(PortHints.builtin(a.port).map(PortHints.Hint::name).orElse(null));
                     f.seen(a.first).seen(a.last);
                 }
             }

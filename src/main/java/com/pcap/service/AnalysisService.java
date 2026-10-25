@@ -41,6 +41,7 @@ public final class AnalysisService {
     private final IngestJsonWriter jsonWriter = new IngestJsonWriter();
     private final Clock clock;
     private final String path;
+    private final com.pcap.tools.Env toolEnv;
     private final AtomicBoolean cancelled = new AtomicBoolean(false);
 
     public AnalysisService() {
@@ -48,13 +49,19 @@ public final class AnalysisService {
     }
 
     public AnalysisService(Clock clock) {
-        this(clock, System.getenv("PATH"));
+        this.clock = clock;
+        this.path = System.getenv("PATH");
+        this.toolEnv = com.pcap.tools.Env.system();
     }
 
-    /** {@code path} is where a Zeek executable is looked for; tests pass a temp directory instead of the real PATH. */
+    /**
+     * {@code path} is where Zeek and the other tools are looked for; tests pass a temp directory instead of the real PATH, and then
+     * no data files of this machine are consulted either.
+     */
     public AnalysisService(Clock clock, String path) {
         this.clock = clock;
         this.path = path;
+        this.toolEnv = new com.pcap.tools.Env(path, "docker", null, List.of());
     }
 
     public void cancel() {
@@ -100,8 +107,10 @@ public final class AnalysisService {
                 }
             });
         }
+        CompletableFuture<List<com.pcap.tools.ToolPipeline.Outcome>> toolsRun = options.toolsEnabled()
+                ? com.pcap.tools.ToolPipeline.start(toolEnv.withTimeout(options.zeekTimeout()), capturePath) : null;
         try {
-            return analyzeWith(capturePath, verbose, options, notes, useZeek, zeekEngine, zeekRun, runner);
+            return analyzeWith(capturePath, verbose, options, notes, useZeek, zeekEngine, zeekRun, runner, toolsRun);
         } finally {
             if (zeekRun != null) {
                 // whatever happened, the temp log directory must not outlive the call
@@ -111,7 +120,8 @@ public final class AnalysisService {
     }
 
     private AnalysisResult analyzeWith(Path capturePath, boolean verbose, AnalysisOptions options, List<String> notes, boolean useZeek,
-                                       ZeekRunner.Engine zeekEngine, CompletableFuture<ZeekRunner.Run> zeekRun, ZeekRunner runner)
+                                       ZeekRunner.Engine zeekEngine, CompletableFuture<ZeekRunner.Run> zeekRun, ZeekRunner runner,
+                                       CompletableFuture<List<com.pcap.tools.ToolPipeline.Outcome>> toolsRun)
             throws IOException, PcapException {
         ConversationTracker conversations = new ConversationTracker();
         DeviceAggregator aggregator = new DeviceAggregator();
@@ -240,6 +250,18 @@ public final class AnalysisService {
                 new com.pcap.zeek.ZeekHostNames().read(logDir, talked::contains).forEach(aggregator::accept);   // DHCP host names, unambiguous DNS A answers, for hosts already in the capture
             }
 
+            // The optional tools beyond Zeek: their conversations, labels and alerts join the flow table the same way Zeek's did
+            List<com.pcap.tools.ToolPipeline.Outcome> outcomes = toolsRun != null ? toolsRun.join()
+                    : com.pcap.tools.ToolPipeline.skipped(options.engine() == AnalysisOptions.Engine.NATIVE
+                            ? "not requested: --engine native uses nothing outside the jar (--tools auto to use them)" : "--tools off");
+            com.pcap.tools.ToolPipeline.mergeFlows(detector.flows(), outcomes, options.icsOnly()).observations().forEach(aggregator::accept);
+            outcomes.stream().filter(o -> o.status().id().equals("tshark")).findFirst().ifPresent(o -> {
+                Object n = o.status().produced().get("capinfos") instanceof Map<?, ?> m ? m.get("packets") : null;
+                if (n != null && !n.toString().equals(Long.toString(reader.framesRead()))) {
+                    notes.add("capinfos (Wireshark) counts " + n + " packets, the native reader read " + reader.framesRead() + " frames");
+                }
+            });
+
             List<DeviceAggregator.ResolvedAsset> assets = aggregator.resolveAssets();
             int conflicts = assets.stream().mapToInt(a -> a.identity().conflictCount()).sum();
             Instant now = clock.instant();
@@ -273,7 +295,10 @@ public final class AnalysisService {
             }
             var flows = detector.flows().toList(options.keepScans() && !options.icsOnly());
             doc.flows = flows.isEmpty() ? null : flows;
+            com.pcap.tools.ReferenceData.Loaded ref = options.toolsEnabled() ? com.pcap.tools.ReferenceData.load(toolEnv) : null;
+            com.pcap.inventory.PortHints.useSupplement(ref == null ? null : ref.services());   // Nmap's nmap-services, when installed: names for ports the table lacks
             com.pcap.inventory.HostClassifier.apply(doc);        // port hints for undecoded flows, roles for hosts no decoder explained
+            com.pcap.tools.ToolPipeline.applyAssets(doc, outcomes);
             // connections that never completed a handshake: edges only with --keep-scans, but the total is worth knowing
             long scanTotal = Math.max(conversations.scanAttempts(), zeek == null ? 0 : zeek.stats().scanAttempts());
             if (scanTotal > 0) {
@@ -291,6 +316,15 @@ public final class AnalysisService {
             }
             if (aggregator.droppedOverCap() > 0) {
                 doc.source.put("observationsDroppedOverAssetCap", aggregator.droppedOverCap());
+            }
+            List<Map<String, Object>> toolList = new ArrayList<>();
+            zeekStatuses(options, zeek, zeekVersion, zeekHow).forEach(t -> toolList.add(t.toMap()));
+            outcomes.forEach(o -> toolList.add(o.status().toMap()));
+            if (ref != null) {
+                ref.statuses().stream().filter(t -> t.id().equals("nmap-services")).forEach(t -> toolList.add(t.toMap()));
+            }
+            if (zeek != null || options.engine() != AnalysisOptions.Engine.NATIVE || options.toolsEnabled()) {
+                doc.source.put("tools", toolList);               // the plain native default stays free of any mention of other tools
             }
             AnalysisReport report = new AnalysisReport(
                     draft.capturePath(),
@@ -315,6 +349,33 @@ public final class AnalysisService {
                     "");
             return new AnalysisResult(report, doc, notes);
         }
+    }
+
+    /** Zeek and ICSNPP lines of {@code source.tools}: Zeek is not an {@code Adapter} (it has its own runner and log reader). */
+    private static List<com.pcap.tools.ToolStatus> zeekStatuses(AnalysisOptions options, ZeekData zeek, String version, String how) {
+        List<com.pcap.tools.ToolStatus> out = new ArrayList<>();
+        if (zeek == null) {
+            boolean off = options.engine() == AnalysisOptions.Engine.NATIVE;
+            String why = off ? "not requested: --engine native" : "Zeek not found (no zeek on PATH, no " + ZeekRunner.IMAGE + " Docker image)";
+            out.add(new com.pcap.tools.ToolStatus("zeek", off ? "skipped" : "not-installed", "", "", why, null));
+            out.add(new com.pcap.tools.ToolStatus("icsnpp", off ? "skipped" : "not-installed", "", "", "needs Zeek", null));
+            return out;
+        }
+        String via = how.startsWith("logs from") ? "existing-logs" : how.startsWith("docker") ? "docker" : "native";
+        Map<String, Object> produced = new java.util.LinkedHashMap<>();
+        produced.put("connections", zeek.stats().connections());
+        out.add(new com.pcap.tools.ToolStatus("zeek", "ran", via, version, how, produced));
+        Map<String, Object> rows = new java.util.LinkedHashMap<>();
+        for (String log : List.of("modbus.log", "modbus_detailed.log", "dnp3.log", "dnp3_control.log", "enip.log", "cip.log", "cip_identity.log", "s7comm.log", "s7comm_plus.log")) {
+            long n = zeek.stats().rowsUsed(log);
+            if (n > 0) {
+                rows.put(log, n);
+            }
+        }
+        out.add(new com.pcap.tools.ToolStatus("icsnpp", "ran", via, "", rows.isEmpty()
+                ? "no ICSNPP log rows: the capture has no Modbus/DNP3/ENIP/S7 traffic, or this Zeek has no ICSNPP packages"
+                : "ICSNPP logs read: " + String.join(", ", rows.keySet()), rows));
+        return out;
     }
 
     /** {@code notes}: things the user should hear on stderr that are not errors (for example the --engine auto fallback). */

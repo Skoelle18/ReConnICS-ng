@@ -78,6 +78,12 @@ public final class FlowTable {
         long messages, packets, bytes, scanAttempts;
         long firstMicros = Long.MAX_VALUE, lastMicros = Long.MIN_VALUE;
         String source, portHint;
+        /** Names other FOSS tools gave this conversation ({@code tool, version?, protocol, confidence, basis}); never a decoded protocol. */
+        final List<Map<String, Object>> classifiedBy = new ArrayList<>();
+        /** Suricata alerts and anomalies on this conversation ({@code tool, version?, kind, sid?, signature, category?, severity, count}). */
+        final List<Map<String, Object>> alerts = new ArrayList<>();
+        /** Community ID v1 of the connections Zeek saw here: the same flow id Suricata writes, to pivot between tools. */
+        final java.util.Set<String> communityIds = new java.util.LinkedHashSet<>();
         final Map<String, Long> labels = new LinkedHashMap<>();
         final Map<String, Operation> operations = new LinkedHashMap<>();
 
@@ -138,6 +144,64 @@ public final class FlowTable {
         /** A port-inferred protocol name for a flow nothing decoded ({@code protocol} "unknown"); never set on a decoded flow. */
         public Flow portHint(String hint) {
             portHint = hint;
+            return this;
+        }
+
+        public static final int MAX_CLASSIFIERS = 4, MAX_ALERTS = 10, MAX_COMMUNITY_IDS = 3;
+
+        /** Records the label another tool gave this conversation; one entry per tool, the first label wins. */
+        public Flow classifiedBy(String tool, String version, String protocol, String confidence, String basis) {
+            if (tool == null || protocol == null || protocol.isEmpty() || classifiedBy.size() >= MAX_CLASSIFIERS
+                    || classifiedBy.stream().anyMatch(c -> tool.equals(c.get("tool")))) {
+                return this;
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("tool", tool);
+            if (version != null && !version.isEmpty()) {
+                m.put("version", version);
+            }
+            m.put("protocol", protocol.length() > 48 ? protocol.substring(0, 48) : protocol);
+            m.put("confidence", confidence);
+            m.put("basis", basis);
+            classifiedBy.add(m);
+            return this;
+        }
+
+        /** Adds an alert; the list keeps the {@link #MAX_ALERTS} most severe (severity 1 is the highest), then the most frequent. */
+        public Flow alert(String tool, String version, String kind, long sid, String signature, String category, int severity, long count) {
+            if (signature == null || signature.isEmpty()) {
+                return this;
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("tool", tool);
+            if (version != null && !version.isEmpty()) {
+                m.put("version", version);
+            }
+            m.put("kind", kind);
+            if (sid > 0) {
+                m.put("sid", sid);
+            }
+            m.put("signature", signature.length() > 120 ? signature.substring(0, 120) : signature);
+            if (category != null && !category.isEmpty()) {
+                m.put("category", category.length() > 64 ? category.substring(0, 64) : category);
+            }
+            m.put("severity", severity);
+            m.put("count", Math.max(1, count));
+            alerts.add(m);
+            alerts.sort((x, y) -> {
+                int c = Integer.compare((int) x.get("severity"), (int) y.get("severity"));
+                return c != 0 ? c : Long.compare((long) y.get("count"), (long) x.get("count"));
+            });
+            while (alerts.size() > MAX_ALERTS) {
+                alerts.remove(alerts.size() - 1);
+            }
+            return this;
+        }
+
+        public Flow communityId(String id) {
+            if (id != null && !id.isEmpty() && id.length() <= 64 && communityIds.size() < MAX_COMMUNITY_IDS) {
+                communityIds.add(id);
+            }
             return this;
         }
 
@@ -203,11 +267,37 @@ public final class FlowTable {
             if (portHint == null) {
                 portHint = z.portHint;
             }
+            z.communityIds.forEach(this::communityId);
             scanAttempts = into ? Math.max(scanAttempts, z.scanAttempts) : scanAttempts + z.scanAttempts;
         }
 
         public String protocolName() {
             return protocol;
+        }
+
+        public String client() {
+            return client;
+        }
+
+        public String server() {
+            return server;
+        }
+
+        public String port() {
+            return port;
+        }
+
+        /** The port-inferred protocol name, or null. */
+        public String portHintName() {
+            return portHint;
+        }
+
+        public java.util.Set<String> communityIdsView() {
+            return java.util.Collections.unmodifiableSet(communityIds);
+        }
+
+        public boolean hasClassifier(String tool) {
+            return classifiedBy.stream().anyMatch(c -> tool.equals(c.get("tool")));
         }
 
         public long messageCount() {
@@ -253,6 +343,15 @@ public final class FlowTable {
             }
             if (source != null) {
                 m.put("source", source);
+            }
+            if (!classifiedBy.isEmpty()) {
+                m.put("classifiedBy", classifiedBy);
+            }
+            if (!alerts.isEmpty()) {
+                m.put("alerts", alerts);
+            }
+            if (!communityIds.isEmpty()) {
+                m.put("communityIds", new ArrayList<>(communityIds));
             }
             return m;
         }
@@ -337,6 +436,11 @@ public final class FlowTable {
 
     public int size() {
         return flows.size();
+    }
+
+    /** Every flow in creation order (live objects: a caller may annotate them). */
+    public java.util.Collection<Flow> all() {
+        return flows.values();
     }
 
     private static String keyOf(Flow f) {

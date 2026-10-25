@@ -16,7 +16,11 @@ public final class IngestSchemaValidator {
     private static final Set<String> CONFIDENCE = Set.of("HIGH", "MEDIUM", "LOW");
     private static final Set<String> TRANSPORT = Set.of("tcp", "udp");
     private static final Set<String> ACCESS = Set.of("read", "write", "control", "other");
-    private static final Set<String> FLOW_SOURCE = Set.of("zeek", "native", "zeek+native");
+    /** A flow's {@code source} is the engines that saw it joined by "+": zeek, native, tshark (in that order). */
+    private static final Set<String> FLOW_ENGINES = Set.of("zeek", "native", "tshark");
+    private static final Set<String> TOOL_STATES = com.pcap.tools.ToolStatus.STATES;
+    private static final Set<String> ALERT_KINDS = Set.of("alert", "anomaly");
+    static final int MAX_CLASSIFIERS = 4, MAX_ALERTS = 10, MAX_COMMUNITY_IDS = 3, MAX_TOOLS = 32;
     private static final int MAX_FLOW_OPERATIONS = 50;
     private static final int MAX_SAMPLE_VALUES = 8;
     private final ObjectMapper mapper;
@@ -42,6 +46,8 @@ public final class IngestSchemaValidator {
             }
             if (root.has("source") && !root.get("source").isObject()) {
                 errors.add("'source' must be an object when present");
+            } else if (root.has("source") && root.get("source").has("tools")) {
+                validateTools(root.get("source").get("tools"), errors);
             }
             assets = root.get("assets");
             if (root.has("flows")) {
@@ -78,6 +84,59 @@ public final class IngestSchemaValidator {
         validateIdentityField(a.get("vendor"), index, "vendor", errors);
         validateIdentityField(a.get("model"), index, "model", errors);
         validateIdentityField(a.get("firmware"), index, "firmware", errors);
+        validateIdentityField(a.get("os"), index, "os", errors);
+        validateAlertsField(a.get("alerts"), index, errors);
+    }
+
+    /** {@code assets[].alerts}: {@code {value: [text, ...], confidence, evidence}}, the tool named in the evidence. */
+    private void validateAlertsField(JsonNode n, int index, List<String> errors) {
+        if (n == null || n.isNull()) {
+            return;
+        }
+        String at = "assets[" + index + "].alerts";
+        if (!n.isObject() || !n.has("value") || !n.get("value").isArray() || n.get("value").size() > 8) {
+            errors.add(at + " must be an object whose value is an array of at most 8 strings");
+            return;
+        }
+        for (JsonNode v : n.get("value")) {
+            if (!v.isTextual() || v.asText().length() > 200) {
+                errors.add(at + ".value entries must be strings of at most 200 characters");
+                break;
+            }
+        }
+        if (n.has("confidence") && !(n.get("confidence").isTextual() && CONFIDENCE.contains(n.get("confidence").asText().toUpperCase(Locale.ROOT)))) {
+            errors.add(at + ".confidence must be HIGH|MEDIUM|LOW");
+        }
+        if (n.has("evidence") && !n.get("evidence").isTextual()) {
+            errors.add(at + ".evidence must be a string");
+        }
+    }
+
+    /** {@code source.tools}: which open-source tools ran for this capture (docs/data-contract.md, "Open-source engines"). */
+    private void validateTools(JsonNode tools, List<String> errors) {
+        if (!tools.isArray() || tools.size() > MAX_TOOLS) {
+            errors.add("source.tools must be an array of at most " + MAX_TOOLS + " entries");
+            return;
+        }
+        for (int i = 0; i < tools.size(); i++) {
+            JsonNode t = tools.get(i);
+            String at = "source.tools[" + i + "]";
+            if (!t.isObject() || text(t, "id") == null) {
+                errors.add(at + " must be an object with a string id");
+                continue;
+            }
+            if (!t.has("state") || !t.get("state").isTextual() || !TOOL_STATES.contains(t.get("state").asText())) {
+                errors.add(at + ".state must be one of " + new java.util.TreeSet<>(TOOL_STATES));
+            }
+            for (String k : List.of("name", "via", "version", "detail")) {
+                if (t.has(k) && !t.get(k).isTextual()) {
+                    errors.add(at + "." + k + " must be a string");
+                }
+            }
+            if (t.has("produced") && !t.get("produced").isObject()) {
+                errors.add(at + ".produced must be an object");
+            }
+        }
     }
 
     /** {@code flows} is optional and only grows: every field beyond client/server/protocol is optional, old entries stay valid. */
@@ -107,8 +166,24 @@ public final class IngestSchemaValidator {
             if (f.has("portHint") && !(f.get("portHint").isTextual() && f.get("portHint").asText().length() <= 32)) {
                 errors.add(at + ".portHint must be a protocol name of at most 32 characters");
             }
-            if (f.has("source") && !(f.get("source").isTextual() && FLOW_SOURCE.contains(f.get("source").asText()))) {
-                errors.add(at + ".source must be zeek|native|zeek+native");
+            if (f.has("source") && !(f.get("source").isTextual() && flowSource(f.get("source").asText()))) {
+                errors.add(at + ".source must be engines from zeek|native|tshark joined by +");
+            }
+            if (f.has("portHintSource") && !(f.get("portHintSource").isTextual() && f.get("portHintSource").asText().length() <= 32)) {
+                errors.add(at + ".portHintSource must be a short name");
+            }
+            if (f.has("communityIds")) {
+                JsonNode ids = f.get("communityIds");
+                if (!ids.isArray() || ids.size() > MAX_COMMUNITY_IDS || java.util.stream.StreamSupport.stream(ids.spliterator(), false)
+                        .anyMatch(x -> !x.isTextual() || x.asText().length() > 64)) {
+                    errors.add(at + ".communityIds must be at most " + MAX_COMMUNITY_IDS + " strings of at most 64 characters");
+                }
+            }
+            if (f.has("classifiedBy")) {
+                validateClassifiers(f.get("classifiedBy"), at, errors);
+            }
+            if (f.has("alerts")) {
+                validateFlowAlerts(f.get("alerts"), at, errors);
             }
             for (String k : List.of("messages", "packets", "bytes", "scanAttempts")) {
                 if (f.has(k) && !count(f.get(k))) {
@@ -134,6 +209,59 @@ public final class IngestSchemaValidator {
             }
             if (f.has("operations")) {
                 validateOperations(f.get("operations"), at, errors);
+            }
+        }
+    }
+
+    private static boolean flowSource(String s) {
+        for (String p : s.split("\\+", -1)) {
+            if (!FLOW_ENGINES.contains(p)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** {@code classifiedBy}: what other tools called a conversation (nDPI, tshark); a label, never a decoded protocol. */
+    private void validateClassifiers(JsonNode list, String at, List<String> errors) {
+        if (!list.isArray() || list.size() > MAX_CLASSIFIERS) {
+            errors.add(at + ".classifiedBy must be an array of at most " + MAX_CLASSIFIERS + " entries");
+            return;
+        }
+        for (int j = 0; j < list.size(); j++) {
+            JsonNode c = list.get(j);
+            String cat = at + ".classifiedBy[" + j + "]";
+            if (!c.isObject() || text(c, "tool") == null || text(c, "protocol") == null || text(c, "protocol").length() > 48) {
+                errors.add(cat + " needs a tool and a protocol of at most 48 characters");
+            } else if (!c.has("confidence") || !c.get("confidence").isTextual() || !CONFIDENCE.contains(c.get("confidence").asText())) {
+                errors.add(cat + ".confidence must be HIGH|MEDIUM|LOW");
+            }
+        }
+    }
+
+    /** {@code alerts} on a flow: Suricata rule matches and protocol anomalies, evidence not a decode. */
+    private void validateFlowAlerts(JsonNode list, String at, List<String> errors) {
+        if (!list.isArray() || list.size() > MAX_ALERTS) {
+            errors.add(at + ".alerts must be an array of at most " + MAX_ALERTS + " entries");
+            return;
+        }
+        for (int j = 0; j < list.size(); j++) {
+            JsonNode a = list.get(j);
+            String aat = at + ".alerts[" + j + "]";
+            if (!a.isObject() || text(a, "tool") == null || text(a, "signature") == null || text(a, "signature").length() > 120) {
+                errors.add(aat + " needs a tool and a signature of at most 120 characters");
+                continue;
+            }
+            if (!a.has("kind") || !a.get("kind").isTextual() || !ALERT_KINDS.contains(a.get("kind").asText())) {
+                errors.add(aat + ".kind must be alert|anomaly");
+            }
+            for (String k : List.of("sid", "count")) {
+                if (a.has(k) && !count(a.get(k))) {
+                    errors.add(aat + "." + k + " must be a non-negative integer");
+                }
+            }
+            if (a.has("severity") && !(a.get("severity").isIntegralNumber() && a.get("severity").asInt() >= 1 && a.get("severity").asInt() <= 4)) {
+                errors.add(aat + ".severity must be 1..4");
             }
         }
     }

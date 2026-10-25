@@ -125,6 +125,8 @@ public final class ZeekLogReader {
     private static final class ConnAgg {
         String client, server, port, protocol;
         long packets, bytes, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
+        /** conn.log {@code community_id} (policy/protocols/conn/community-id-logging) of the first few connections; empty when the script was not loaded. */
+        final List<String> cids = new ArrayList<>(3);
     }
 
     private static final class Host {
@@ -380,6 +382,10 @@ public final class ZeekLogReader {
             a.port = port;
             a.protocol = svc;
         }
+        String cid = text(n, "community_id");
+        if (cid != null && cid.length() <= 64 && a.cids.size() < 3 && !a.cids.contains(cid)) {
+            a.cids.add(cid);
+        }
         a.packets += num(n, "orig_pkts", 0) + num(n, "resp_pkts", 0);
         a.bytes += ob + rb;
         a.first = Math.min(a.first, ts);
@@ -425,6 +431,7 @@ public final class ZeekLogReader {
                 f.portHint(portHint(a.port));                 // nothing dissected it: say what the port usually means, as a hint
             }
             f.traffic(a.packets, a.bytes).seen(a.first).seen(a.last);
+            a.cids.forEach(f::communityId);
             if (f.messageCount() == 0) {
                 f.messages(a.packets);                        // undecoded: Zeek's conn.log has no payload-packet count
             }
@@ -1262,7 +1269,7 @@ public final class ZeekLogReader {
 
     /** The protocol name a well-known port usually carries ("502/tcp" to "modbus"), or null. A hint, never a decoded protocol. */
     private static String portHint(String port) {
-        return PortHints.of(port).map(PortHints.Hint::name).orElse(null);
+        return PortHints.builtin(port).map(PortHints.Hint::name).orElse(null);
     }
 
     private static ProtocolType protocolType(String wire) {

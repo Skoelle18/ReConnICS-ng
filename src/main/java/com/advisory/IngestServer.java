@@ -168,7 +168,8 @@ final class IngestServer {
                 try { doc = Json.parse(AdvisoryIndex.utf8(b)); } catch (IllegalArgumentException e) { error(ex, 400, "body is not valid JSON"); return true; }
                 if (!(doc instanceof Map)) { error(ex, 400, "body must be an object"); return true; }
                 send(ex, 200, Json.write(Map.of("changes", site.edit(path.substring("/api/v1/assets/".length()), Json.obj(doc), actor, role))));
-            } else if (method.equals("GET") && path.equals("/api/v1/changes")) send(ex, 200, Json.write(site.changes()));
+            } else if (method.equals("GET") && path.equals("/api/v1/engines")) send(ex, 200, Json.write(site.engines()));
+            else if (method.equals("GET") && path.equals("/api/v1/changes")) send(ex, 200, Json.write(site.changes()));
             else if (method.equals("GET") && path.equals("/api/v1/index")) send(ex, 200, Json.write(site.indexMeta()));
             else if (method.equals("POST") && path.equals("/api/v1/index")) {
                 if (!contentType(ex, "application/octet-stream")) { error(ex, 415, "Content-Type must be application/octet-stream"); return true; }

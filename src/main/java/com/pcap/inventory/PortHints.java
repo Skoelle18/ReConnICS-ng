@@ -16,8 +16,23 @@ public final class PortHints {
     private PortHints() {
     }
 
-    /** {@code name}: short service name; {@code ics}: an industrial protocol; {@code noun}: what its server is called. */
-    public record Hint(String name, boolean ics, String noun) {
+    /** {@code name}: short service name; {@code ics}: an industrial protocol; {@code noun}: what its server is called; {@code source}: the table that said so. */
+    public record Hint(String name, boolean ics, String noun, String source) {
+        public Hint(String name, boolean ics, String noun) {
+            this(name, ics, noun, BUILTIN);
+        }
+    }
+
+    public static final String BUILTIN = "builtin", NMAP_SERVICES = "nmap-services";
+
+    /**
+     * Port to service names read from an Nmap install's {@code nmap-services} data file (see {@code com.pcap.tools.ReferenceData});
+     * consulted only for ports the built-in table does not know, so the curated ICS entries always win. Never an ICS hint.
+     */
+    private static volatile Map<String, String> supplement = Map.of();
+
+    public static void useSupplement(Map<String, String> portToName) {
+        supplement = portToName == null ? Map.of() : portToName;
     }
 
     /** Wire names of the protocols the decoders understand; a flow carrying one of these is not "unknown". */
@@ -126,6 +141,15 @@ public final class PortHints {
 
     /** {@code port} as the flows write it: {@code "502/tcp"}. Empty for a port nobody has a name for. */
     public static Optional<Hint> of(String port) {
+        return lookup(port, true);
+    }
+
+    /** Only the curated built-in table: what host observations and asset protocols may be built on. */
+    public static Optional<Hint> builtin(String port) {
+        return lookup(port, false);
+    }
+
+    private static Optional<Hint> lookup(String port, boolean withSupplement) {
         if (port == null) {
             return Optional.empty();
         }
@@ -134,6 +158,11 @@ public final class PortHints {
             return Optional.empty();
         }
         String num = port.substring(0, slash), transport = port.substring(slash + 1);
-        return Optional.ofNullable("tcp".equals(transport) ? TCP.get(num) : "udp".equals(transport) ? UDP.get(num) : null);
+        Hint h = "tcp".equals(transport) ? TCP.get(num) : "udp".equals(transport) ? UDP.get(num) : null;
+        if (h == null && withSupplement && !supplement.isEmpty()) {
+            String n = supplement.get(num + "/" + transport);
+            h = n == null ? null : new Hint(n, false, n + " service", NMAP_SERVICES);
+        }
+        return Optional.ofNullable(h);
     }
 }

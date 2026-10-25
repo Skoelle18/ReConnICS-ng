@@ -38,6 +38,10 @@ final class Site {
      * It fills vendor_oui (LOW) and never feeds advisory matching.
      */
     static final Map<String, String> OUI = loadBundledOui();
+    /** The optional data files of other projects (Wireshark manuf, Nmap data files), found on this machine at start-up; see com.pcap.tools.ReferenceData. */
+    private final com.pcap.tools.ReferenceData.Loaded reference;
+    /** OUI table including the optional data files, and which table each added prefix came from. */
+    private final Map<String, String> ouiAll, ouiSources;
 
     private static Map<String, String> loadBundledOui() {
         Map<String, String> m = new HashMap<>();
@@ -76,7 +80,8 @@ final class Site {
     private Map<String, List<String>> cachedCaptureAssets = new LinkedHashMap<>();
     static final int MAX_FLOWS = 5_000, MAX_LABELS = 8, MAX_OPERATIONS = 50, MAX_SAMPLES = 8, MAX_STATUSES = 6;
     static final int MAX_CAPTURE_ASSETS = 5_000, MAX_FLOW_CAPTURES = 64;
-    private static final Set<String> FLOW_SOURCES = Set.of("zeek", "native", "zeek+native"), OP_ACCESS = Set.of("read", "write", "control", "other");
+    private static final List<String> FLOW_ENGINES = List.of("zeek", "native", "tshark");
+    private static final Set<String> OP_ACCESS = Set.of("read", "write", "control", "other");
     private AdvisoryMatcher matcher;                // for matcherFor; the index is immutable once loaded
     private AdvisoryIndex matcherFor;
 
@@ -89,6 +94,13 @@ final class Site {
         this.insecure = insecure;
         this.index = index;
         this.verified = index.verified;
+        this.reference = com.pcap.tools.ReferenceData.load(com.pcap.tools.Env.system());
+        com.pcap.inventory.PortHints.useSupplement(reference.services());          // names for ports the built-in table lacks, when an Nmap install exists
+        Map<String, String> all = new HashMap<>(OUI == null ? Map.of() : OUI);
+        reference.macNames().forEach(all::putIfAbsent);                             // the bundled IEEE table first: only prefixes it lacks come from the data files
+        this.ouiAll = all.isEmpty() ? null : all;
+        this.ouiSources = new HashMap<>();
+        reference.macSources().forEach((k, v) -> { if (OUI == null || !OUI.containsKey(k)) ouiSources.put(k, v); });
         Path e = dir.resolve("edits.json");
         if (Files.exists(e)) Json.obj(Json.parse(Files.readString(e))).forEach((k, v) -> edits.put(k, new TreeMap<>(Json.obj(v))));
         try (var files = Files.list(captureDir)) {
@@ -230,12 +242,43 @@ final class Site {
             summary.put("protocols", new TreeMap<>(r.protocolCandidates()));
             summary.put("identityFields", (double) r.identityFieldsDecoded());
             summary.put("devices", (double) r.assets().size());
+            summary.put("tools", toolsSummary(result.document()));
             synchronized (this) { merged(c, id, obs, summary); }
         } catch (PcapException e) {
             fail(c, 4, e.getMessage());
         } catch (Exception | StackOverflowError e) {
             fail(c, 5, "analysis failed: " + e.getClass().getSimpleName());
         }
+    }
+
+    /** Which open-source tools ran for one capture (document source.tools), reduced to short strings for the capture queue and the Engines panel. */
+    static List<Object> toolsSummary(com.pcap.output.IngestModels.Document d) {
+        List<Object> out = new ArrayList<>();
+        if (d == null || d.source == null || !(d.source.get("tools") instanceof List<?> l)) return out;
+        for (Object o : l) {
+            if (!(o instanceof Map<?, ?> m) || out.size() >= 32) continue;
+            Map<String, Object> e = new LinkedHashMap<>();
+            for (String k : List.of("id", "name", "state", "via", "version", "detail")) if (m.get(k) instanceof String s) e.put(k, Inventory.clean(s, 300));
+            if (e.containsKey("id")) out.add(e);
+        }
+        return out;
+    }
+
+    private long enginesAt;
+    private List<Map<String, Object>> enginesCache;
+
+    /**
+     * Every open-source component with what this machine has (found / not installed / data file / reference), for the Engines panel.
+     * Looked up again at most every 20 s: detection starts a few processes.
+     */
+    synchronized List<Map<String, Object>> engines() {
+        long now = System.currentTimeMillis();
+        if (enginesCache == null || now - enginesAt > 20_000) {
+            var rows = new ArrayList<>(com.pcap.tools.Engines.report(com.pcap.tools.Env.system()));
+            enginesCache = List.copyOf(rows);
+            enginesAt = now;
+        }
+        return enginesCache;
     }
 
     /** Writes the observations, marks the entry done and logs what the merge changed. Caller holds the lock. */
@@ -376,7 +419,7 @@ final class Site {
             });
             if (e.size() > (slash >= 0 ? 2 : 1)) all.add(e);
         });
-        Inventory inv = Inventory.build(Json.write(Map.of("assets", all)), OUI);
+        Inventory inv = Inventory.build(Json.write(Map.of("assets", all)), ouiAll, ouiSources);
         AdvisoryIndex idx = index;
         if (matcherFor != idx) { matcher = new AdvisoryMatcher(Inventory.sanitize(idx)); matcherFor = idx; }
         inv.match(idx.meta, matcher, verified);
@@ -477,11 +520,14 @@ final class Site {
                 Instant old = m.get(k) instanceof String os ? instant(os) : null;
                 if (old == null || (k.equals("firstSeen") ? t.isBefore(old) : t.isAfter(old))) m.put(k, t.toString());
             }
-            if (f.get("source") instanceof String src && FLOW_SOURCES.contains(src)) {
+            if (f.get("source") instanceof String src) {
                 String was = m.get("source") instanceof String x ? x : "";
-                boolean zeek = src.contains("zeek") || was.contains("zeek"), nat = src.contains("native") || was.contains("native");
-                m.put("source", zeek && nat ? "zeek+native" : zeek ? "zeek" : "native");
+                List<String> engines = new ArrayList<>();
+                for (String e : FLOW_ENGINES) if (src.contains(e) || was.contains(e)) engines.add(e);       // the engines that saw it, joined: zeek+native+tshark
+                if (!engines.isEmpty()) m.put("source", String.join("+", engines));
             }
+            if (f.get("portHintSource") instanceof String ps && ps.matches("[a-z0-9._-]{1,32}")) m.put("portHintSource", ps);
+            mergeEvidence(m, f);
             // Provenance is the capture that produced the flow, never something an untrusted posted payload can set.
             if (!Objects.toString(captureId, "").isEmpty()) {
                 @SuppressWarnings("unchecked")
@@ -490,6 +536,67 @@ final class Site {
             }
             mergeOperations(m, f.get("operations"));
         }
+    }
+
+    private static final int MAX_CLASSIFIERS = 4, MAX_ALERTS = 10, MAX_COMMUNITY_IDS = 3;
+    private static final Set<String> CLASSIFIER_TOOLS = Set.of("ndpi", "tshark");
+
+    /**
+     * What other tools said about a conversation, merged across captures: a label per tool (the first one wins), alerts summed
+     * by (kind, sid, signature) and kept most severe first, Community IDs as a set. Untrusted like the rest of a posted payload.
+     */
+    @SuppressWarnings("unchecked")
+    private static void mergeEvidence(Map<String, Object> m, Map<String, Object> f) {
+        List<Object> cls = (List<Object>) m.computeIfAbsent("classifiedBy", k -> new ArrayList<Object>());
+        for (Object o : Json.arr(f.get("classifiedBy"))) {
+            var c = Json.obj(o);
+            if (!(c.get("tool") instanceof String t) || !CLASSIFIER_TOOLS.contains(t) || !(c.get("protocol") instanceof String p) || cls.size() >= MAX_CLASSIFIERS) continue;
+            if (cls.stream().anyMatch(x -> t.equals(Json.obj(x).get("tool")))) continue;
+            Map<String, Object> e = new LinkedHashMap<>();
+            e.put("tool", t);
+            if (c.get("version") instanceof String v && !Inventory.clean(v, 40).isEmpty()) e.put("version", Inventory.clean(v, 40));
+            String proto = Inventory.clean(p, 48);
+            if (proto.isEmpty()) continue;
+            e.put("protocol", proto);
+            e.put("confidence", c.get("confidence") instanceof String cf && Set.of("HIGH", "MEDIUM", "LOW").contains(cf) ? cf : "LOW");
+            e.put("basis", c.get("basis") instanceof String b && Set.of("dpi", "dissector").contains(b) ? b : "dpi");
+            cls.add(e);
+        }
+        if (cls.isEmpty()) m.remove("classifiedBy");
+        List<Object> alerts = (List<Object>) m.computeIfAbsent("alerts", k -> new ArrayList<Object>());
+        for (Object o : Json.arr(f.get("alerts"))) {
+            var a = Json.obj(o);
+            if (!(a.get("signature") instanceof String sg) || !"suricata".equals(a.get("tool"))) continue;
+            String sig = Inventory.clean(sg, 120), kind = "anomaly".equals(a.get("kind")) ? "anomaly" : "alert";
+            if (sig.isEmpty()) continue;
+            Double sid = a.get("sid") instanceof Double ? count(a.get("sid")) : null;
+            Map<String, Object> hit = null;
+            for (Object x : alerts) {
+                var xm = (Map<String, Object>) x;
+                if (sig.equals(xm.get("signature")) && kind.equals(xm.get("kind")) && Objects.equals(sid, xm.get("sid"))) hit = xm;
+            }
+            if (hit != null) { hit.put("count", Math.min(1e12, (double) hit.get("count") + Math.max(1, count(a.get("count"))))); continue; }
+            Map<String, Object> e = new LinkedHashMap<>();
+            e.put("tool", "suricata");
+            if (a.get("version") instanceof String v && !Inventory.clean(v, 40).isEmpty()) e.put("version", Inventory.clean(v, 40));
+            e.put("kind", kind);
+            if (sid != null && sid > 0) e.put("sid", sid);
+            e.put("signature", sig);
+            if (a.get("category") instanceof String c && !Inventory.clean(c, 64).isEmpty()) e.put("category", Inventory.clean(c, 64));
+            double sev = a.get("severity") instanceof Double d && d >= 1 && d <= 4 ? d : 3;
+            e.put("severity", sev);
+            e.put("count", Math.max(1, count(a.get("count"))));
+            alerts.add(e);
+        }
+        alerts.sort(Comparator.comparingDouble((Object x) -> (double) ((Map<String, Object>) x).get("severity"))
+                .thenComparing((x, y) -> Double.compare((double) ((Map<String, Object>) y).get("count"), (double) ((Map<String, Object>) x).get("count"))));
+        while (alerts.size() > MAX_ALERTS) alerts.remove(alerts.size() - 1);
+        if (alerts.isEmpty()) m.remove("alerts");
+        List<Object> ids = (List<Object>) m.computeIfAbsent("communityIds", k -> new ArrayList<Object>());
+        for (Object o : Json.arr(f.get("communityIds"))) {
+            if (o instanceof String id && id.matches("[A-Za-z0-9+/=:]{4,64}") && ids.size() < MAX_COMMUNITY_IDS && !ids.contains(id)) ids.add(id);
+        }
+        if (ids.isEmpty()) m.remove("communityIds");
     }
 
     /** Operations are held as a keyed map while captures merge ({@link #flowList} turns them back into the array). */

@@ -33,6 +33,10 @@ public final class CliCommand {
             printVersion(out);
             return ExitCode.OK;
         }
+        if (first.equals("engines")) {
+            out.print(com.pcap.tools.Engines.table(com.pcap.tools.Env.system()));
+            return ExitCode.OK;
+        }
         if (first.equals("analyze")) {
             tokens.remove(0);
             return runAnalyze(tokens);
@@ -58,6 +62,7 @@ public final class CliCommand {
         AnalysisOptions.Engine engine = null;
         Path zeekLogs = null;
         java.time.Duration zeekTimeout = null;
+        AnalysisOptions.Tools tools = null;
 
         for (int i = 0; i < tokens.size(); i++) {
             String t = tokens.get(i);
@@ -80,6 +85,14 @@ public final class CliCommand {
                         err.println("error: --engine must be native, zeek or auto");
                         return ExitCode.USAGE;
                     }
+                }
+                case "--tools" -> {
+                    String v = i + 1 < tokens.size() ? tokens.get(++i).toLowerCase(Locale.ROOT) : "";
+                    if (!v.equals("auto") && !v.equals("off")) {
+                        err.println("error: --tools must be auto or off");
+                        return ExitCode.USAGE;
+                    }
+                    tools = AnalysisOptions.Tools.valueOf(v.toUpperCase(Locale.ROOT));
                 }
                 case "--zeek-logs" -> {
                     if (i + 1 >= tokens.size()) {
@@ -148,7 +161,7 @@ public final class CliCommand {
         if (zeekLogs != null && engine == null) {
             engine = AnalysisOptions.Engine.ZEEK;                    // pointing at logs is asking for the Zeek engine
         }
-        AnalysisOptions options = new AnalysisOptions(icsOnly, keepScans, engine, zeekLogs, zeekTimeout);
+        AnalysisOptions options = new AnalysisOptions(icsOnly, keepScans, engine, zeekLogs, zeekTimeout, tools);
         return new AnalyzeCommand(input, output, force, verbose, formatJson, post, options, out, err).run();
     }
 
@@ -159,6 +172,7 @@ public final class CliCommand {
         ps.println("  java -jar reconnics-ng.jar --help");
         ps.println("  java -jar reconnics-ng.jar --version");
         ps.println("  java -jar reconnics-ng.jar analyze <file.pcap> [options]");
+        ps.println("  java -jar reconnics-ng.jar engines   (which open-source tools are installed, with versions)");
         ps.println("  java -jar reconnics-ng.jar keygen|build-index|match|serve|inventory ...  (advisory side)");
         ps.println();
         ps.println("Options:");
@@ -174,6 +188,8 @@ public final class CliCommand {
         ps.println("      --engine <e>      native (default): the built-in decoders only, nothing to install");
         ps.println("                        zeek: also run Zeek + ICSNPP and merge (error if Zeek is missing)");
         ps.println("                        auto: Zeek when available, else native with a note on stderr");
+        ps.println("      --tools <t>       auto: also run the optional FOSS tools that are installed (tshark, Suricata, nDPI, p0f;");
+        ps.println("                        PATH or the reconics-tools Docker image); off: none. Default: auto, except with --engine native");
         ps.println("      --zeek-logs <dir> Read Zeek logs already produced for this capture; Zeek is not run");
         ps.println("      --zeek-timeout <s> Stop a Zeek run after this many seconds (default 1800)");
         ps.println("  -v, --verbose         Diagnostic logging on stderr (includes stack traces)");

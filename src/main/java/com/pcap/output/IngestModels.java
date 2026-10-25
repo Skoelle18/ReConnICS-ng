@@ -41,6 +41,10 @@ public final class IngestModels {
         public Object serial;
         /** Device type for role derivation: {@code cip:0xNN} or {@code s7:<module type>}. */
         public Object deviceType;
+        /** Operating system guess (p0f, LOW): a field object like vendor, but never feeds the advisory match. */
+        public Object os;
+        /** Alerts / anomalies a tool raised on this host's traffic: {@code {value: [text], confidence, evidence}} naming the tool. */
+        public Object alerts;
         public Map<String, Object> attributes;
     }
 

@@ -15,6 +15,13 @@ ARG ICSNPP_DNP3=b31dbadeceb1cbcda16aef89c650559cd177dd7e
 ARG ICSNPP_ENIP=3fbd32e3d2838d5e2bcd6c9ed79f036d23a0642e
 ARG ICSNPP_S7COMM=5cf1e1ee397bef97ba1e1daa917703d447f6519f
 
+# Further CISA ICSNPP analyzers that are on the zkg index (zeek/packages, cisagov/zkg.index) are not built by default: each adds build time and
+# a failure of one would break the primary image. Opt in with a space separated list, for example
+#   docker build -t reconics-zeek --build-arg ICSNPP_EXTRA="icsnpp-bacnet icsnpp-opcua-binary icsnpp-ge-srtp" docker/zeek
+# On the index and BSD-3-Clause licensed on 25 Oct 2026: icsnpp-bacnet, icsnpp-opcua-binary (tag v2.0.0), icsnpp-ge-srtp, icsnpp-bsap,
+# icsnpp-genisys, icsnpp-omron-fins, icsnpp-profinet-io-cm, icsnpp-synchrophasor. Not tested in this project's image: see docs/foss-components.md.
+ARG ICSNPP_EXTRA=""
+
 # The ICSNPP analyzers are Spicy parsers that zkg compiles at install time: they need a C++ toolchain, cmake and git.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git cmake make g++ libpcap-dev libssl-dev python3-git python3-semantic-version \
@@ -24,7 +31,8 @@ RUN zkg autoconfig --force \
  && zkg install --force --skiptests --version "${ICSNPP_MODBUS}" icsnpp-modbus \
  && zkg install --force --skiptests --version "${ICSNPP_DNP3}" icsnpp-dnp3 \
  && zkg install --force --skiptests --version "${ICSNPP_ENIP}" icsnpp-enip \
- && zkg install --force --skiptests --version "${ICSNPP_S7COMM}" icsnpp-s7comm
+ && zkg install --force --skiptests --version "${ICSNPP_S7COMM}" icsnpp-s7comm \
+ && for pkg in ${ICSNPP_EXTRA}; do zkg install --force --skiptests "${pkg}" || exit 1; done
 
 # The toolchain is only needed to build the packages.
 RUN apt-get purge -y --auto-remove g++ cmake make git \

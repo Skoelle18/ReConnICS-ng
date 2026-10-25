@@ -1,0 +1,343 @@
+package com.pcap.tools;
+
+import com.pcap.inventory.PortHints;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+/**
+ * Wireshark's command-line tools as a fallback engine.
+ *
+ * <ul>
+ *   <li>{@code capinfos -T -m FILE}: a table report (CSV, header line first; options from the capinfos manual) used as a
+ *       sanity check: file type, encapsulation and packet count of the capture, as Wireshark's own reader sees it.</li>
+ *   <li>{@code tshark -r FILE -n -T fields -E separator=/t -E occurrence=f -e ...}: one line per packet with the fields named in
+ *       {@link #FIELDS} (option syntax from the tshark manual). The packets are folded into conversations (host pair plus server
+ *       port) and the last dissector in {@code frame.protocols} names the conversation ("mbtcp", "bacapp", "tls", ...).
+ *       Wireshark dissects many industrial protocols Zeek has no analyzer for (BACnet, IEC 60870-5-104, OPC UA, PROFINET).</li>
+ * </ul>
+ * The server side of a conversation is the SYN+ACK sender, else the side a SYN came from is the client, else the side with the
+ * well-known port, else the lower port, else the first sender is the client; a guess, and documented as one.
+ */
+public final class TsharkAdapter implements Adapter {
+    static final int MAX_LINES = 3_000_000, MAX_CONVERSATIONS = 20_000;
+    /** The {@code -e} fields, in column order. */
+    static final List<String> FIELDS = List.of("frame.time_epoch", "ip.src", "ip.dst", "ipv6.src", "ipv6.dst", "tcp.srcport", "tcp.dstport",
+            "udp.srcport", "udp.dstport", "tcp.flags", "frame.len", "frame.protocols");
+    /** Layers that say nothing about the application. */
+    private static final Set<String> GENERIC = Set.of("eth", "ethertype", "vlan", "ip", "ipv6", "tcp", "udp", "data", "sll", "null", "loop",
+            "raw", "ipv6.hopopts", "icmp", "icmpv6", "ipcp", "llc", "ppp", "pppoe", "gre", "ipip", "tcp.segments");
+    /** Wireshark dissector names mapped to the names the rest of the product uses (PortHints / Zeek services). */
+    private static final Map<String, String> NAMES = Map.ofEntries(
+            Map.entry("mbtcp", "modbus"), Map.entry("dnp3", "dnp3"), Map.entry("enip", "ethernet-ip"), Map.entry("cip", "ethernet-ip"),
+            Map.entry("cipcm", "ethernet-ip"), Map.entry("cipio", "ethernet-ip"), Map.entry("s7comm", "s7comm"), Map.entry("cotp", "s7comm"),
+            Map.entry("bacapp", "bacnet"), Map.entry("bacnet", "bacnet"), Map.entry("bvlc", "bacnet"), Map.entry("opcua", "opc-ua"),
+            Map.entry("iec60870_104", "iec-104"), Map.entry("iec60870_asdu", "iec-104"), Map.entry("pn_io", "profinet"),
+            Map.entry("pn_rt", "profinet"), Map.entry("mms", "mms"), Map.entry("tpkt", "tpkt"));
+
+    @Override
+    public Components component() {
+        return Components.byId("tshark");
+    }
+
+    @Override
+    public Optional<Launch> detect(Env env) {
+        return env.launch("tshark");
+    }
+
+    @Override
+    public Result run(Env env, Launch l, Path pcap, Path work) throws IOException, InterruptedException {
+        Findings f = Findings.empty();
+        StringBuilder detail = new StringBuilder();
+        Optional<Launch> capinfos = env.launch("capinfos");
+        if (capinfos.isPresent()) {
+            Path out = work.resolve("capinfos.csv"), err = work.resolve("capinfos.err");
+            Exec.Done d = Exec.run(capinfos.get().command(List.of("-T", "-m", "{IN}"), pcap, work), work, out, err, env.timeout());
+            if (d.exit() == 0) {
+                Map<String, String> ci = parseCapinfos(d.stdoutText());
+                if (!ci.isEmpty()) {
+                    f.stats().put("capinfos", ci);
+                    detail.append("capinfos: ").append(ci.getOrDefault("packets", "?")).append(" packets, ")
+                            .append(ci.getOrDefault("encapsulation", "?")).append(". ");
+                }
+            } else {
+                throw new IOException("capinfos cannot read the capture (exit " + d.exit() + "): " + d.stderrTail());
+            }
+        }
+        List<String> args = new ArrayList<>(List.of("-r", "{IN}", "-n", "-T", "fields", "-E", "separator=/t", "-E", "occurrence=f"));
+        for (String e : FIELDS) {
+            args.add("-e");
+            args.add(e);
+        }
+        Path err = work.resolve("tshark.err");
+        Parsed[] holder = new Parsed[1];
+        int exit = Exec.stream(l.command(args, pcap, work), work, err, env.timeout(), r -> holder[0] = parseFields(r, MAX_LINES));
+        Parsed p = holder[0];
+        if (exit > 0 || (exit < 0 && p == null)) {
+            throw new IOException("tshark failed (exit " + exit + "): " + Exec.read(err, 400).replaceAll("\\s+", " ").strip());
+        }
+        f.conversations().addAll(p.conversations);
+        f.stats().put("packetsRead", p.lines);
+        f.stats().put("conversations", p.conversations.size());
+        if (p.truncated) {
+            f.stats().put("truncated", true);
+            detail.append("stopped after ").append(MAX_LINES).append(" packets. ");
+        }
+        detail.append(p.conversations.size()).append(" conversations from ").append(p.lines).append(" packets");
+        return new Result(f, detail.toString());
+    }
+
+    @Override
+    public List<String> versionArgs() {
+        return List.of("--version");
+    }
+
+    @Override
+    public String cleanVersion(String line) {
+        return Adapter.group1("(\\d+\\.\\d+\\.\\d+)", line);
+    }
+
+    // ------------------------------------------------------------------ capinfos
+
+    /** The first data row of {@code capinfos -T -m} keyed by a short name: {@code type}, {@code encapsulation}, {@code packets}, {@code file}. */
+    static Map<String, String> parseCapinfos(String csv) {
+        List<String> lines = new ArrayList<>();
+        for (String s : csv.split("\\R")) {
+            if (!s.isBlank()) {
+                lines.add(s);
+            }
+        }
+        Map<String, String> out = new LinkedHashMap<>();
+        if (lines.size() < 2) {
+            return out;
+        }
+        List<String> head = csvRow(lines.get(0)), row = csvRow(lines.get(1));
+        for (int i = 0; i < head.size() && i < row.size(); i++) {
+            String h = head.get(i).toLowerCase(java.util.Locale.ROOT), v = row.get(i);
+            String key = h.contains("packets") ? "packets" : h.contains("encapsulation") ? "encapsulation" : h.contains("type") ? "type"
+                    : h.contains("file name") ? "file" : null;
+            if (key != null && !out.containsKey(key) && !v.isBlank()) {
+                out.put(key, v.length() > 80 ? v.substring(0, 80) : v);
+            }
+        }
+        return out;
+    }
+
+    /** Comma separated, optionally double-quoted cells. */
+    static List<String> csvRow(String line) {
+        List<String> cells = new ArrayList<>();
+        StringBuilder cur = new StringBuilder();
+        boolean quoted = false;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (quoted) {
+                if (c == '"' && i + 1 < line.length() && line.charAt(i + 1) == '"') {
+                    cur.append('"');
+                    i++;
+                } else if (c == '"') {
+                    quoted = false;
+                } else {
+                    cur.append(c);
+                }
+            } else if (c == '"') {
+                quoted = true;
+            } else if (c == ',') {
+                cells.add(cur.toString());
+                cur.setLength(0);
+            } else {
+                cur.append(c);
+            }
+        }
+        cells.add(cur.toString());
+        return cells;
+    }
+
+    // ------------------------------------------------------------------ -T fields
+
+    record Parsed(List<Findings.Conversation> conversations, long lines, boolean truncated) {
+    }
+
+    private static final class Conv {
+        final String a, b;                         // a < b
+        final String transport;
+        final int aPort, bPort;
+        long pkts, bytes, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
+        String synFrom, synAckFrom, firstFrom;
+        boolean fromA, fromB;
+        final Map<String, Integer> labels = new HashMap<>();
+
+        Conv(String a, int aPort, String b, int bPort, String transport) {
+            this.a = a;
+            this.aPort = aPort;
+            this.b = b;
+            this.bPort = bPort;
+            this.transport = transport;
+        }
+    }
+
+    /** Folds the tab separated lines ({@link #FIELDS} order) into conversations; reads at most {@code maxLines} packets. */
+    static Parsed parseFields(BufferedReader r, int maxLines) {
+        Map<String, Conv> convs = new LinkedHashMap<>();
+        long lines = 0;
+        boolean truncated = false;
+        try {
+            String line;
+            while ((line = r.readLine()) != null) {
+                if (lines >= maxLines) {
+                    truncated = true;
+                    break;
+                }
+                lines++;
+                String[] c = line.split("\t", -1);
+                if (c.length < FIELDS.size()) {
+                    continue;
+                }
+                String src = !c[1].isEmpty() ? c[1] : c[3], dst = !c[2].isEmpty() ? c[2] : c[4];
+                boolean tcp = !c[5].isEmpty() || !c[6].isEmpty();
+                String sp = tcp ? c[5] : c[7], dp = tcp ? c[6] : c[8];
+                if (src.isEmpty() || dst.isEmpty() || sp.isEmpty() || dp.isEmpty() || src.length() > 45 || dst.length() > 45) {
+                    continue;                                          // not an IP conversation (ARP, LLDP, ...)
+                }
+                int srcPort = port(sp), dstPort = port(dp);
+                if (srcPort < 0 || dstPort < 0 || dst.equals("255.255.255.255") || multicast(dst)) {
+                    continue;
+                }
+                String transport = tcp ? "tcp" : "udp";
+                boolean forward = src.compareTo(dst) < 0 || (src.equals(dst) && srcPort <= dstPort);
+                String a = forward ? src : dst, b = forward ? dst : src;
+                int ap = forward ? srcPort : dstPort, bp = forward ? dstPort : srcPort;
+                String key = a + '|' + ap + '|' + b + '|' + bp + '|' + transport;
+                Conv v = convs.get(key);
+                if (v == null) {
+                    if (convs.size() >= MAX_CONVERSATIONS) {
+                        continue;
+                    }
+                    convs.put(key, v = new Conv(a, ap, b, bp, transport));
+                    v.firstFrom = src;
+                }
+                v.pkts++;
+                if (src.equals(v.a) && srcPort == v.aPort) {
+                    v.fromA = true;
+                } else {
+                    v.fromB = true;
+                }
+                v.bytes += number(c[10]);
+                long t = micros(c[0]);
+                if (t > 0) {
+                    v.first = Math.min(v.first, t);
+                    v.last = Math.max(v.last, t);
+                }
+                if (tcp) {
+                    long flags = flags(c[9]);
+                    if ((flags & 0x12) == 0x02 && v.synFrom == null) {
+                        v.synFrom = src;
+                    } else if ((flags & 0x12) == 0x12 && v.synAckFrom == null) {
+                        v.synAckFrom = src;
+                    }
+                }
+                String label = leaf(c[11]);
+                if (label != null && (v.labels.size() < 8 || v.labels.containsKey(label))) {
+                    v.labels.merge(label, 1, Integer::sum);
+                }
+            }
+        } catch (IOException e) {
+            // a stream cut off by a timeout or a killed process keeps what was read
+        }
+        List<Findings.Conversation> out = new ArrayList<>();
+        for (Conv v : convs.values()) {
+            boolean aIsServer = serverIsA(v);
+            String client = aIsServer ? v.b : v.a, server = aIsServer ? v.a : v.b;
+            int serverPort = aIsServer ? v.aPort : v.bPort;
+            String label = v.labels.entrySet().stream().max(Map.Entry.comparingByValue()).map(e -> NAMES.getOrDefault(e.getKey(), e.getKey())).orElse(null);
+            out.add(new Findings.Conversation(client, server, serverPort + "/" + v.transport, v.pkts, v.bytes,
+                    v.first == Long.MAX_VALUE ? 0 : v.first, v.last == Long.MIN_VALUE ? 0 : v.last, label,
+                    v.fromA && v.fromB && (v.transport.equals("udp") || v.synAckFrom != null || v.pkts >= 4)));
+        }
+        return new Parsed(out, lines, truncated);
+    }
+
+    private static boolean serverIsA(Conv v) {
+        if (v.synAckFrom != null) {
+            return v.synAckFrom.equals(v.a);
+        }
+        if (v.synFrom != null) {
+            return v.synFrom.equals(v.b);
+        }
+        boolean ah = PortHints.builtin(v.aPort + "/" + v.transport).isPresent(), bh = PortHints.builtin(v.bPort + "/" + v.transport).isPresent();
+        if (ah != bh) {
+            return ah;
+        }
+        if (v.aPort != v.bPort) {
+            return v.aPort < v.bPort;
+        }
+        return v.firstFrom != null && v.firstFrom.equals(v.b);
+    }
+
+    /** The application layer: the last entry of {@code eth:ethertype:ip:tcp:mbtcp} that is not a link or transport layer. */
+    static String leaf(String protocols) {
+        if (protocols == null || protocols.isEmpty()) {
+            return null;
+        }
+        String[] p = protocols.split(":");
+        for (int i = p.length - 1; i >= 0; i--) {
+            if (!GENERIC.contains(p[i]) && p[i].matches("[a-z0-9_.-]{1,32}")) {
+                return p[i];
+            }
+        }
+        return null;
+    }
+
+    private static boolean multicast(String ip) {
+        if (ip.contains(":")) {
+            return ip.toLowerCase(java.util.Locale.ROOT).startsWith("ff");
+        }
+        try {
+            return Integer.parseInt(ip.substring(0, ip.indexOf('.'))) >= 224;
+        } catch (RuntimeException e) {
+            return true;
+        }
+    }
+
+    private static int port(String s) {
+        try {
+            int p = Integer.parseInt(s.trim());
+            return p >= 0 && p <= 65535 ? p : -1;
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    private static long number(String s) {
+        try {
+            return Math.max(0, Long.parseLong(s.trim()));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    private static long flags(String s) {
+        try {
+            return Long.decode(s.trim());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    private static long micros(String s) {
+        try {
+            double d = Double.parseDouble(s.trim());
+            return Double.isFinite(d) && d > 0 && d < 4e12 ? Math.round(d * 1e6) : 0;
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+}

@@ -89,11 +89,25 @@ class IngestSchemaValidatorTest {
         java.util.Set<String> documented = new java.util.TreeSet<>();
         schema.get("properties").fieldNames().forEachRemaining(documented::add);
         var t = new com.pcap.inventory.FlowTable();
+        java.util.Set<String> written2 = new java.util.TreeSet<>();
         t.flow("10.0.0.1", "10.0.0.2", "modbus", "502/tcp").message("Modbus FC=0x3").traffic(2, 20).seen(1_445_504_401_000_000L)
                 .scanAttempts(1).source("zeek").portHint("modbus").operation("FC3", "read", "g1v1", 1L, 2L, 7L, 1, List.of(1), java.util.Map.of("ok", 1L));
-        t.flow("10.0.0.1", "10.0.0.2", "unknown", "502/tcp").portHint("modbus");     // the hint is written only on an undecoded flow
-        java.util.Set<String> written = new java.util.TreeSet<>(t.toList(true).get(1).keySet());
-        written.addAll(t.toList(true).get(0).keySet());
+        t.flow("10.0.0.1", "10.0.0.2", "unknown", "502/tcp").portHint("modbus")      // the hint is written only on an undecoded flow
+                .classifiedBy("ndpi", "4.2", "TLS", "MEDIUM", "dpi").alert("suricata", "7.0", "alert", 2000001L, "TEST", "cat", 2, 1).communityId("1:x=");
+        var maps = t.toList(true);
+        // portHintSource is added by HostClassifier on a hint that came from a data file, not by FlowTable
+        com.pcap.inventory.PortHints.useSupplement(java.util.Map.of("9/tcp", "discard"));
+        try {
+            t.flow("10.0.0.1", "10.0.0.3", "unknown", "9/tcp");
+            var withSource = t.toList(true);
+            com.pcap.inventory.HostClassifier.apply(withSource, List.of());
+            written2.addAll(withSource.get(2).keySet());
+        } finally {
+            com.pcap.inventory.PortHints.useSupplement(null);
+        }
+        java.util.Set<String> written = new java.util.TreeSet<>(maps.get(1).keySet());
+        written.addAll(maps.get(0).keySet());
+        written.addAll(written2);
         assertEquals(documented, written);
         var op = schema.get("properties").get("operations").get("items").get("properties");
         java.util.Set<String> opDoc = new java.util.TreeSet<>();

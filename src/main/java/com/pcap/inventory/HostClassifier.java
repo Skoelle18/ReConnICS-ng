@@ -78,6 +78,11 @@ public final class HostClassifier {
             var hint = PortHints.of(port);
             if (undecoded && hint.isPresent()) {
                 f.put("portHint", hint.get().name());
+                if (!PortHints.BUILTIN.equals(hint.get().source())) {
+                    f.put("portHintSource", hint.get().source());            // a name from a data file (Nmap's nmap-services), not the curated table
+                } else {
+                    f.remove("portHintSource");
+                }
             }
             Seen cs = byIp.computeIfAbsent(c, k -> new Seen()), ss = byIp.computeIfAbsent(s, k -> new Seen());
             cs.client = true;

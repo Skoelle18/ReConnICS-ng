@@ -11,10 +11,17 @@ public enum DetectionBasis {
     /** Zeek's software / known_services logs: a vendor or product from a banner (spoofable, MEDIUM at best). */
     ZEEK_SOFTWARE,
     /** A field Zeek's ICSNPP analyzers decoded from the protocol itself (Modbus, DNP3, ENIP/CIP, S7comm logs). */
-    ZEEK_ICSNPP;
+    ZEEK_ICSNPP,
+    /** Wireshark's tshark saw the host talk (fallback conversation extraction): nothing was decoded by this product. LOW confidence, weakest evidence. */
+    TSHARK_CONV;
 
     /** True for the bases that come from the Zeek engine rather than the native decoders. */
     public boolean fromZeek() {
         return this == ZEEK_CONN || this == ZEEK_PORT || this == ZEEK_SOFTWARE || this == ZEEK_ICSNPP;
+    }
+
+    /** True for every basis that has no frame number because an external tool, not the native decoders, saw it. */
+    public boolean fromExternalTool() {
+        return fromZeek() || this == TSHARK_CONV;
     }
 }

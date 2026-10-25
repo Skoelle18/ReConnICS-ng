@@ -130,8 +130,8 @@ public final class CandidateDevice {
         if (basis != null) {
             detectionBases.add(basis);
         }
-        if (basis != null && basis.fromZeek()) {
-            return;                                  // Zeek has no frame numbers; firstFrame/lastFrame stay native
+        if (basis != null && basis.fromExternalTool()) {
+            return;                                  // Zeek and tshark observations have no frame numbers; firstFrame/lastFrame stay native
         }
         firstFrame = Math.min(firstFrame, frame);
         lastFrame = Math.max(lastFrame, frame);
