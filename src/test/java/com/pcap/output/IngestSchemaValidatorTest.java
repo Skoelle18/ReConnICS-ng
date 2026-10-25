@@ -107,6 +107,9 @@ class IngestSchemaValidatorTest {
         }
         java.util.Set<String> written = new java.util.TreeSet<>(maps.get(1).keySet());
         written.addAll(maps.get(0).keySet());
+        var rejected = new com.pcap.inventory.FlowTable();                              // note: only on a flow whose ICS decode was rejected
+        rejected.reject(rejected.flow("10.0.0.1", "10.0.0.4", "modbus", "443/tcp"), "ICS decode rejected: test");
+        written.addAll(rejected.toList(true).get(0).keySet());
         written.addAll(written2);
         assertEquals(documented, written);
         var op = schema.get("properties").get("operations").get("items").get("properties");

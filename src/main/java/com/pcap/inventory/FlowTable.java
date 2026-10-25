@@ -77,7 +77,7 @@ public final class FlowTable {
         String protocol;
         long messages, packets, bytes, scanAttempts;
         long firstMicros = Long.MAX_VALUE, lastMicros = Long.MIN_VALUE;
-        String source, portHint;
+        String source, portHint, note;
         /** Names other FOSS tools gave this conversation ({@code tool, version?, protocol, confidence, basis}); never a decoded protocol. */
         final List<Map<String, Object>> classifiedBy = new ArrayList<>();
         /** Suricata alerts and anomalies on this conversation ({@code tool, version?, kind, sid?, signature, category?, severity, count}). */
@@ -296,6 +296,20 @@ public final class FlowTable {
             return java.util.Collections.unmodifiableSet(communityIds);
         }
 
+        /**
+         * True when everything this flow decoded as Modbus was an exception reply: at least one label, every label an exception,
+         * no operation that ended "ok", and room left in the label table (a full table may have dropped a normal message).
+         */
+        public boolean onlyExceptions() {
+            return !labels.isEmpty() && labels.size() < MAX_LABELS && labels.keySet().stream().allMatch(k -> k.contains(" exception"))
+                    && operations.values().stream().noneMatch(o -> o.statuses.containsKey("ok"));
+        }
+
+        /** Decoded messages the labels account for (the flow's {@code messages} may also count packets another engine saw). */
+        public long labelledMessages() {
+            return labels.values().stream().mapToLong(Long::longValue).sum();
+        }
+
         public boolean hasClassifier(String tool) {
             return classifiedBy.stream().anyMatch(c -> tool.equals(c.get("tool")));
         }
@@ -343,6 +357,9 @@ public final class FlowTable {
             }
             if (source != null) {
                 m.put("source", source);
+            }
+            if (note != null) {
+                m.put("note", note);
             }
             if (!classifiedBy.isEmpty()) {
                 m.put("classifiedBy", classifiedBy);
@@ -478,6 +495,27 @@ public final class FlowTable {
             n.absorb(z, true);
             n.source = "zeek+native";
         }
+    }
+
+    /**
+     * An ICS decode that independent evidence contradicts: the flow stays in the table as {@code unknown} (never dropped), its
+     * decode labels and operations are removed and {@code note} says what was rejected and why. A flow already there under
+     * the new name (same direction, port, {@code unknown}) takes the counts instead.
+     */
+    public void reject(Flow f, String note) {
+        flows.remove(keyOf(f));
+        f.protocol = "unknown";
+        f.labels.clear();
+        f.operations.clear();
+        f.note = note;
+        Flow same = flows.get(keyOf(f));
+        if (same == null) {
+            flows.put(keyOf(f), f);
+            return;
+        }
+        same.absorb(f, false);
+        same.note = note;
+        byPair.get(pairKey(f.client, f.server, f.port)).remove(f);
     }
 
     public void add(String client, String server, String protocol, String port, String detail) {

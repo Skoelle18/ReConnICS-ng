@@ -92,17 +92,79 @@ the console's capture queue uses the automatic mode. Environment: `RECONICS_SURI
 
 ### Suricata (optional)
 
-- `suricata -r <pcap> -l <dir> -k none` (offline read; checksum validation off). Only `eve.json` is read, and only the
+- `suricata -r <pcap> -l <dir> -k none --set stream.midstream=true` (offline read; checksum validation off; connections that start
+  mid-stream are followed, see below). Only `eve.json` is read, and only the
   `alert` and `anomaly` event types, with the fields documented in the Suricata EVE reference: `timestamp`, `src_ip`, `src_port`,
   `dest_ip`, `dest_port`, `proto`, `community_id` (needs `community-id: true`), `alert.signature_id`, `alert.signature`,
   `alert.category`, `alert.severity`, `anomaly.type`, `anomaly.event`.
 - The rules are whatever the installation has. The Docker image runs `suricata-update` once at build time (Emerging Threats Open
   rules) and keeps the rules Suricata ships for its own Modbus, DNP3 and ENIP parsers.
+- **`stream.midstream=true`.** Suricata drops a TCP stream whose handshake it never saw, and then never runs the application-layer
+  parser on it. Most public ICS captures (and any span-port or rotated capture) begin in the middle of a conversation, so with
+  Suricata's default they got no Modbus / DNP3 / ENIP parsing at all, and the `*-events.rules` and ET SCADA rules could not match.
+  `--set` overrides the setting of whatever `suricata.yaml` is used, so it works for the image and for a native install
+  (`RECONICS_SURICATA_YAML`). No other flag was needed: `stream.async-oneside` was not tried because the captures here are not
+  one-sided on purpose. Measured on the 23 public captures (Suricata 7.0.10, the `stats.log` application-layer transaction counters;
+  `eve.json` `flow` events carry `app_proto`), default versus midstream:
+
+  | Capture | Application-layer transactions parsed, default | with midstream |
+  |---|---|---|
+  | Modbus.pcap | none | Modbus 55 |
+  | dnp3_test_data_part2.pcap | none | DNP3 22 |
+  | icsnpp_enip_cip_example.pcap | ENIP/TCP 2 | ENIP/TCP 269 |
+  | iti_EIP-FirmwareChange.pcap | none (the ENIP flow was `failed`) | ENIP/TCP 7,869 |
+  | iti_cip_unclean.pcap | ENIP/UDP 735 | ENIP/TCP 18,799 and ENIP/UDP 735 |
+  | iti_EIP-IPAddressChangeAttempt.pcap | ENIP flows 2 | ENIP flows 3 |
+  | icsnpp_modbus_example.pcap | Modbus 23 | Modbus 24 |
+  | mb.pcap | Modbus 122, no ENIP | Modbus about 8,100, ENIP/TCP about 8,800 |
+  | iti_enip_test.pcap | ENIP/TCP 2 | ENIP/TCP 2 (it already had a handshake) |
+  | S7comm and S7comm-plus captures | `failed` | `failed` (Suricata 7.0 has no S7 parser) |
+
+  What this changes in what ReConICS shows: the parsers now run, so a malformed Modbus / DNP3 / ENIP message or a rule match would
+  now appear as an `alert` or `anomaly`. None of these public captures contains one, so their displayed alerts did not change
+  (the adapter does not read the `flow` events or the counters above). One thing did change, and is filtered: with midstream
+  Suricata complains about its own lost TCP state, "SURICATA STREAM ESTABLISHED invalid ack" (sid 2210029), "FIN invalid ack"
+  (2210030), "FIN out of window" (2210038) and "Packet with invalid ack" (2210045). `iti_EIP-IPAddressChangeAttempt.pcap` went from 3
+  alerts to 3,919, 3,916 of them these four, on one TLS connection captured from one side only. They describe the capture, not the
+  network, so, like the invalid-checksum alerts, they are counted (`streamArtifactAlertsIgnored` in the tool status) and not listed.
+  The invalid-checksum filtering (sids 2200073 to 2200079) works as before (628 ignored on that capture, 53,030 on mb.pcap). Other
+  stream rules still alert.
 - Rule licences: the ET Open ruleset is under the BSD licence for most signatures, with some under GPLv2; each rule keeps the
   licence stated by Emerging Threats. Rules are not stored in this repository.
 - Merge: alerts are placed on the conversation by Community ID first, then by host pair and port, and become `alerts` on the
   flow (rule id, signature, category, severity, count) and an `alerts` field on the two assets. They are shown as "Suricata matched
   a rule", never as a decoded protocol and never as proof of an attack.
+
+### Modbus decodes that another tool contradicts
+
+Random bytes of another protocol can parse as a Modbus/TCP frame: the MBAP header only needs two zero bytes in the right place, and
+the function byte then looks like an exception reply. `iti_EIP-IPAddressChangeAttempt.pcap` has one TLS connection
+(192.168.10.106:443 and 192.168.10.200:1462, one direction only in the capture) whose records the native decoder read as five
+Modbus exceptions (function codes 0x20, 0x30, 0x40, 0x60 and 0x70 with the exception bit set) plus one lone "FC16" from the other end. Zeek
+merged its connection into that flow, so the console showed "modbus, 1,959 messages" and both hosts as Modbus servers; nDPI
+said TLS and tshark's dissector chain ended in `tls`. (In this Zeek 8.0.9 image Zeek's own Modbus analyzer wrote no `modbus.log`
+for this capture; the claim came from the native decoder, and a Zeek `modbus.log` that looked the same is handled the same way.)
+
+The rule (`ToolPipeline.rejectIcsMisreads`, run first when the tools' findings are merged), all three conditions needed:
+
+1. Everything decoded as Modbus on the flow is an exception reply: at least one message kind, all of them exceptions, no operation
+   that ended `ok`, and the label table (8 kinds) not full (a full table may have dropped a normal message).
+2. Neither port of the conversation is one an industrial protocol uses (`PortHints`, built-in table: 502, 802, 20000, 44818, 102, ...).
+3. nDPI, or failing that tshark, names the same host pair and ports as something that is not an industrial protocol
+   (`TLS`, `HTTP`, ...; names such as Modbus, EthernetIP, S7, IEC, OPC, BACnet, PROFINET do not count).
+
+Then, instead of a decoded flow: the flow becomes `unknown`, keeps its counts, loses the Modbus labels and operations, gets the
+other tool's label in `classifiedBy` and a `note` saying what was rejected and why; the other direction of the same TCP connection
+(its client port) goes with it, because one connection carries one protocol. The hosts keep their presence (and MAC), lose the
+`modbus` protocol, the HEADER_VALIDATED / ZEEK_CONN evidence and the `server` role, and the host classifier then names them by
+port (`web server (port-inferred)`); an analysis note on stderr says how many decodes were rejected. Nothing is dropped.
+
+Why it does not touch real Modbus: real Modbus is on 502 (or 802) in practice, and off those ports a PLC answers some requests
+successfully, so condition 1 fails; and nDPI / tshark would have to name that same conversation something non-industrial. The 23
+public captures and `assets/modbus.pcap` were analysed before and after (Zeek engine, all tools): flows and assets are identical
+except for the two rejected flows and the two hosts of this one capture. Limits: only Modbus (the one protocol whose false decodes
+look like nothing but exceptions); a false decode that also contains a normal-looking message is not caught; with no nDPI / tshark
+the decode stands, as before; nDPI's confidence was LOW here (it saw one direction only), and is shown.
 
 ### nDPI (optional)
 
@@ -167,8 +229,9 @@ tests on trimmed real output (`src/test/resources/real`, `RealToolOutputTest`, `
 - Suricata's `SURICATA ... invalid checksum` rules (sid 2200073 to 2200079) fire on almost every packet of a capture taken on the
   sending host (offload, loopback, Docker); `-k none` does not silence them. They are counted (`checksumAlertsIgnored`) and left
   out. Suricata 7.0 also ships its Modbus, DNP3 and ENIP parsers switched off; the tools image now turns them on. Without
-  `stream.midstream` Suricata does not parse a capture that starts mid-conversation (most of the public ones), so those get no
-  application-layer alerts; this is left as it is.
+  `stream.midstream` Suricata does not parse a capture that starts mid-conversation (most of the public ones), so those got no
+  application-layer parsing; the adapter now passes `--set stream.midstream=true` (see the Suricata section), and the stream-state
+  alerts that this setting causes are counted and left out like the checksum ones.
 
 The capinfos columns (`File type`, `File encapsulation`, `Number of packets`) and the tshark field list were as expected.
 Wireshark `manuf` and the Nmap data files have not been checked against a real install (neither was installed; the native

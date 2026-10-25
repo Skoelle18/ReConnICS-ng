@@ -527,6 +527,7 @@ final class Site {
                 if (!engines.isEmpty()) m.put("source", String.join("+", engines));
             }
             if (f.get("portHintSource") instanceof String ps && ps.matches("[a-z0-9._-]{1,32}")) m.put("portHintSource", ps);
+            if (f.get("note") instanceof String nt && !m.containsKey("note") && !Inventory.clean(nt, 400).isEmpty()) m.put("note", Inventory.clean(nt, 400));   // why an ICS decode was rejected; the first capture's wording stays
             mergeEvidence(m, f);
             // Provenance is the capture that produced the flow, never something an untrusted posted payload can set.
             if (!Objects.toString(captureId, "").isEmpty()) {

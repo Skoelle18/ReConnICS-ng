@@ -72,6 +72,20 @@ test('an edge shows nDPI as classified-not-decoded and Suricata alerts as eviden
   } finally { app.close(); }
 });
 
+test('a rejected ICS decode is shown on the edge with its reason, as unknown', async () => {
+  const flows = [{ client: '192.168.10.200', server: '192.168.10.106', protocol: 'unknown', port: '443/tcp', transport: 'tcp', messages: 1959, labels: {}, portHint: 'https',
+    note: 'ICS decode rejected: 5 messages decoded as Modbus on 443/tcp, all of them exceptions; no industrial protocol uses this port and nDPI 4.2.0 names the conversation TLS.',
+    classifiedBy: [{ tool: 'ndpi', version: '4.2.0', protocol: 'TLS', confidence: 'LOW', basis: 'dpi' }] }];
+  const app = await loadApp({ routes: defaultRoutes({ flows }), hash: '#/graph' });
+  try {
+    app.window.location.hash = '#/edge/' + encodeURIComponent(app.get('flowKey(S.flows[0])'));
+    await settle();
+    const text = app.text();
+    assert.match(text, /ICS decode rejected[\s\S]*5 messages decoded as Modbus on 443\/tcp, all of them exceptions/);
+    assert.match(text, /classified, not decoded: TLS\?/);
+  } finally { app.close(); }
+});
+
 test('attribute evidence gets a badge for the open-source tool named in it', async () => {
   const app = await loadApp({ routes: defaultRoutes() });
   try {

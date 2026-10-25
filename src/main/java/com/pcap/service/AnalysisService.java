@@ -36,6 +36,8 @@ import java.util.logging.Logger;
 public final class AnalysisService {
     private static final Logger LOG = Logger.getLogger(AnalysisService.class.getName());
 
+    private static final int MAX_HELD = 20_000;
+
     private final PacketParser packetParser = new PacketParser();
     private final ProtocolDetector detector = new ProtocolDetector();
     private final IngestJsonWriter jsonWriter = new IngestJsonWriter();
@@ -128,6 +130,8 @@ public final class AnalysisService {
         TcpReassembler reassembler = new TcpReassembler();
         Map<String, Long> candidates = new HashMap<>();
         Map<String, Long> decoded = new HashMap<>();
+        // Modbus seen on a port no industrial protocol uses waits here for nDPI / tshark (ToolPipeline.mayBeMisread)
+        List<DeviceObservation> held = new ArrayList<>();
         long malformed = 0;
         long truncated = 0;
         long fragmented = 0;
@@ -186,11 +190,11 @@ public final class AnalysisService {
                             continue;
                         }
                         for (DeviceObservation o : obs) {
-                            candidates.merge(o.protocol().wireName(), 1L, Long::sum);
-                            if (o.detectionBasis() == DetectionBasis.MESSAGE_DECODED) {
-                                decoded.merge(o.protocol().wireName(), 1L, Long::sum);
+                            if (held.size() < MAX_HELD && com.pcap.tools.ToolPipeline.mayBeMisread(o)) {   // ponytail: past the cap they are accepted at once, a capture that is mostly odd-port Modbus has no use for the check
+                                held.add(o);
+                                continue;
                             }
-                            aggregator.accept(o);
+                            take(o, candidates, decoded, aggregator);
                         }
                     }
                     case TRUNCATED, MALFORMED -> {
@@ -240,7 +244,13 @@ public final class AnalysisService {
                 zeek = new ZeekLogReader(options.icsOnly(), options.keepScans()).read(logDir);
                 // Zeek's identity, banners and hosts join the native ones through the same aggregator (by IP and MAC); the
                 // resolver prefers a native decoded value over a Zeek one at equal confidence and keeps both as evidence
-                zeek.observations().forEach(aggregator::accept);
+                for (DeviceObservation o : zeek.observations()) {
+                    if (held.size() < MAX_HELD && com.pcap.tools.ToolPipeline.mayBeMisread(o)) {
+                        held.add(o);
+                    } else {
+                        aggregator.accept(o);
+                    }
+                }
                 detector.flows().mergeFrom(zeek.flows());
                 java.util.Set<String> talked = new java.util.HashSet<>();
                 for (var fl : detector.flows().toList(true)) {
@@ -254,7 +264,21 @@ public final class AnalysisService {
             List<com.pcap.tools.ToolPipeline.Outcome> outcomes = toolsRun != null ? toolsRun.join()
                     : com.pcap.tools.ToolPipeline.skipped(options.engine() == AnalysisOptions.Engine.NATIVE
                             ? "not requested: --engine native uses nothing outside the jar (--tools auto to use them)" : "--tools off");
-            com.pcap.tools.ToolPipeline.mergeFlows(detector.flows(), outcomes, options.icsOnly()).observations().forEach(aggregator::accept);
+            com.pcap.tools.ToolPipeline.Merged merged = com.pcap.tools.ToolPipeline.mergeFlows(detector.flows(), outcomes, options.icsOnly());
+            merged.observations().forEach(aggregator::accept);
+            for (DeviceObservation o : held) {
+                if (merged.rejects(o)) {
+                    aggregator.accept(com.pcap.tools.ToolPipeline.presenceOnly(o));       // the host stays, the Modbus claim does not
+                } else if (o.detectionBasis().fromZeek()) {
+                    aggregator.accept(o);
+                } else {
+                    take(o, candidates, decoded, aggregator);
+                }
+            }
+            if (!merged.rejectedIcs().isEmpty()) {
+                notes.add(merged.rejectedIcs().size() + " Modbus decode(s) rejected (only exceptions, on a port no ICS protocol uses, and nDPI or tshark name the conversation "
+                        + "another protocol): kept as unknown flows with a note");
+            }
             outcomes.stream().filter(o -> o.status().id().equals("tshark")).findFirst().ifPresent(o -> {
                 Object n = o.status().produced().get("capinfos") instanceof Map<?, ?> m ? m.get("packets") : null;
                 if (n != null && !n.toString().equals(Long.toString(reader.framesRead()))) {
@@ -349,6 +373,14 @@ public final class AnalysisService {
                     "");
             return new AnalysisResult(report, doc, notes);
         }
+    }
+
+    private static void take(DeviceObservation o, Map<String, Long> candidates, Map<String, Long> decoded, DeviceAggregator aggregator) {
+        candidates.merge(o.protocol().wireName(), 1L, Long::sum);
+        if (o.detectionBasis() == DetectionBasis.MESSAGE_DECODED) {
+            decoded.merge(o.protocol().wireName(), 1L, Long::sum);
+        }
+        aggregator.accept(o);
     }
 
     /** Zeek and ICSNPP lines of {@code source.tools}: Zeek is not an {@code Adapter} (it has its own runner and log reader). */

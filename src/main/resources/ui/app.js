@@ -571,7 +571,8 @@ function edgePanel(key) {
           : pk === 'unknown' ? h('div', { class: 'small muted' }, 'Carried but not decoded: the host pair and port are known, the protocol is not. Messages count data packets.',
             f.portHint ? [' ', h('span', { class: 'badge warn' }, 'port-inferred: ' + protoName(f.portHint) + '?'),
               ' Port ' + f.port + ' is usually ' + protoName(f.portHint) + ' (a hint from the port number only, not decoded'
-              + (f.portHintSource ? '; port name from ' + f.portHintSource : '') + ').'] : null) : null),
+              + (f.portHintSource ? '; port name from ' + f.portHintSource : '') + ').'] : null) : null,
+        f.note ? h('div', { class: 'small' }, h('span', { class: 'badge warn' }, 'ICS decode rejected'), ' ' + f.note) : null),
       h('div', { class: 'card-b facts' },
         fact('Messages', (f.messages || 0).toLocaleString()), pair ? null : fact('Rate', fmtRate(rate)),
         f.packets != null ? fact('Packets', f.packets.toLocaleString()) : null, f.bytes != null ? fact('Bytes', fmtBytes(f.bytes)) : null,

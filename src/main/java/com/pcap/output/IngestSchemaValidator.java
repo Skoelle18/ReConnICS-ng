@@ -172,6 +172,9 @@ public final class IngestSchemaValidator {
             if (f.has("portHintSource") && !(f.get("portHintSource").isTextual() && f.get("portHintSource").asText().length() <= 32)) {
                 errors.add(at + ".portHintSource must be a short name");
             }
+            if (f.has("note") && !(f.get("note").isTextual() && f.get("note").asText().length() <= 400)) {
+                errors.add(at + ".note must be text of at most 400 characters");
+            }
             if (f.has("communityIds")) {
                 JsonNode ids = f.get("communityIds");
                 if (!ids.isArray() || ids.size() > MAX_COMMUNITY_IDS || java.util.stream.StreamSupport.stream(ids.spliterator(), false)

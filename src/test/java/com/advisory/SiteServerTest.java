@@ -450,6 +450,7 @@ class SiteServerTest {
                 {"assets":[{"ip":"10.0.0.9"}],"flows":[
                   {"client":"10.0.0.5","server":"10.0.0.9","protocol":"unknown","port":"45123/tcp","messages":4,"source":"tshark",
                    "portHintSource":"nmap-services","communityIds":["1:abc=","1:abc=","<x>"],
+                   "note":"ICS decode rejected: 5 messages decoded as Modbus on 45123/tcp",
                    "classifiedBy":[{"tool":"ndpi","version":"4.2","protocol":"TLS","confidence":"MEDIUM","basis":"dpi"},
                                    {"tool":"evil","protocol":"x","confidence":"HIGH"}],
                    "alerts":[{"tool":"suricata","version":"7.0","kind":"alert","sid":2000001,"signature":"TEST rule","severity":2,"count":3}]}]}
@@ -468,6 +469,7 @@ class SiteServerTest {
         var f = Json.obj(flows.get(0));
         assertEquals("zeek+tshark", f.get("source"), "engines are joined in a fixed order");
         assertEquals("nmap-services", f.get("portHintSource"));
+        assertEquals("ICS decode rejected: 5 messages decoded as Modbus on 45123/tcp", f.get("note"), "the reason a decode was rejected survives the merge");
         assertEquals(List.of("1:abc="), Json.arr(f.get("communityIds")), "duplicates and unsafe ids are dropped");
         var cls = Json.arr(f.get("classifiedBy"));
         assertEquals(2, cls.size(), cls.toString());

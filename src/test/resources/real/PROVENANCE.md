@@ -38,5 +38,7 @@ What the real logs showed that the hand-made ones did not (each is now covered b
 | `tshark-fields.tsv` | `tshark -r ... -n -T fields -E separator=/t -E occurrence=f -e frame.time_epoch -e ip.src ... -e frame.protocols`, first 12 lines (stdout only: tshark's "Running as user root" warning goes to stderr) | dnp3_test_data_part1 |
 | `eve-dnp3.json` | `suricata -r ... -k none` with the Modbus/DNP3/ENIP parsers enabled (docker/tools/Dockerfile); `alert` and `anomaly` events and the first two `flow` events | dnp3_test_data_part1 |
 | `eve-checksum.json` | same; the first three `alert` events (all "SURICATA TCPv4 invalid checksum", sid 2200074) and one `flow` event | icsnpp_enip_cip_example |
+| `eve-midstream.json` | same, with `--set stream.midstream=true`; the first `alert` of each non-checksum sid, one `anomaly`, one `flow` event with `"app_proto":"enip"`, two more sid 2210029 alerts and one checksum alert (kept to show them counted, not listed) | iti_EIP-IPAddressChangeAttempt |
+| `tshark-fields-tls.tsv` | the same tshark command, only the 12 first packets of the 106:443 - 200:1462 connection (`awk` on the port columns); the dissector chain ends in `tls` | iti_EIP-IPAddressChangeAttempt |
 | `ndpi.csv` | `ndpiReader -q -i ... -C out.csv`; header and one row per distinct protocol. **Comma separated**, not pipe separated | iti_EIP-IPAddressChangeAttempt |
 | `p0f.log` | `p0f -f /etc/p0f/p0f.fp -r ... -o out.log`, whole file; the server-side module is `syn+ack` (with a plus) and one line has `os=???` | iti_EIP-IPAddressChangeAttempt |

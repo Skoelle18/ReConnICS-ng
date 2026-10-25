@@ -52,7 +52,11 @@ public final class ToolPipeline {
     }
 
     /** What merging did to the model: the host observations to feed the aggregator, and counters for the tool statuses. */
-    public record Merged(List<DeviceObservation> observations) {
+    public record Merged(List<DeviceObservation> observations, java.util.Set<String> rejectedIcs) {
+        /** True when {@code o} (a Modbus observation from {@link #mayBeMisread}) belongs to a decode {@code rejectedIcs} threw out. */
+        public boolean rejects(DeviceObservation o) {
+            return o.ip().isPresent() && o.service().isPresent() && rejectedIcs.contains(o.ip().get().value() + "|" + o.service().get());
+        }
     }
 
     /** Starts every adapter on its own thread; the future completes when all have finished and never fails. */
@@ -118,6 +122,8 @@ public final class ToolPipeline {
     /**
      * Folds the engines' findings into {@code flows}.
      * <ol>
+     *   <li>first, {@link #rejectIcsMisreads}: an all-exception Modbus decode on a non-ICS port that nDPI or tshark call another
+     *       protocol is turned back into an {@code unknown} flow with the reason;</li>
      *   <li>tshark conversations: a pair + port the table does not have becomes a flow (protocol {@code unknown}, source
      *       {@code tshark}, the dissector's name in {@code classifiedBy}) unless it never got an answer or {@code icsOnly};
      *       one it has gets the dissector's name when it is still {@code unknown}.</li>
@@ -128,6 +134,7 @@ public final class ToolPipeline {
      */
     public static Merged mergeFlows(FlowTable flows, List<Outcome> outcomes, boolean icsOnly) {
         List<DeviceObservation> obs = new ArrayList<>();
+        java.util.Set<String> rejected = rejectIcsMisreads(flows, outcomes);
         for (Outcome o : outcomes) {
             String tool = o.status().id(), ver = o.version();
             if (!"ran".equals(o.status().state())) {
@@ -204,7 +211,122 @@ public final class ToolPipeline {
                 }
             }
         }
-        return new Merged(obs);
+        return new Merged(obs, rejected);
+    }
+
+    // ------------------------------------------------------------------ ICS decodes that another tool contradicts
+
+    /** What nDPI or tshark called a conversation: the two endpoints' ports ({@code ports}; tshark knows only the server's), its name and who said it. */
+    private record Verdict(String a, String b, java.util.Set<Integer> ports, String transport, String tool, String version, String protocol, String confidence,
+                           String basis) {
+    }
+
+    /** Names of the industrial protocols (nDPI's and tshark's spellings): a conversation labelled one of these is no contradiction. */
+    private static boolean icsName(String label) {
+        for (String t : label.toLowerCase(java.util.Locale.ROOT).split("[^a-z0-9]+")) {
+            if (t.startsWith("modbus") || t.equals("mbtcp") || t.startsWith("dnp3") || t.startsWith("enip") || t.equals("cip") || t.startsWith("ethernet")
+                    || t.startsWith("s7") || t.startsWith("iec") || t.startsWith("opc") || t.startsWith("profinet") || t.startsWith("bacnet")
+                    || t.equals("mms") || t.equals("cotp") || t.equals("tpkt") || t.startsWith("fins") || t.startsWith("melsec") || t.startsWith("srtp")
+                    || t.startsWith("niagara") || t.equals("snmp")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean icsPort(int port, String transport) {
+        return com.pcap.inventory.PortHints.builtin(port + "/" + transport).map(com.pcap.inventory.PortHints.Hint::ics).orElse(false);
+    }
+
+    /**
+     * A Modbus decode is rejected (the flow goes back to {@code unknown}, with {@code note} and the contradicting label in
+     * {@code classifiedBy}) when all three hold:
+     * <ol>
+     *   <li>nothing the decoder saw on the flow was anything but an exception reply (random bytes of another protocol, parsed as
+     *       Modbus/TCP, come out as unanswered exceptions and one-off requests);</li>
+     *   <li>neither port of the conversation is one an industrial protocol is known to use ({@link com.pcap.inventory.PortHints});</li>
+     *   <li>nDPI or tshark name the same conversation as something that is not an industrial protocol (TLS, HTTP, ...).</li>
+     * </ol>
+     * The other direction of that connection (its client port) goes with it: one TCP connection carries one protocol. Real Modbus
+     * has an answered request on port 502 (or 802), or, off those ports, a successful reply; it never meets all three conditions.
+     * Only Modbus: it is the one ICS protocol whose false decodes come out as nothing but exceptions. Returns {@code server|port}
+     * of every flow rejected, to find the host observations that came with it.
+     */
+    static java.util.Set<String> rejectIcsMisreads(FlowTable flows, List<Outcome> outcomes) {
+        List<Verdict> verdicts = new ArrayList<>();
+        for (String tool : new String[]{"ndpi", "tshark"}) {                                  // nDPI reads payload, so it is quoted first
+            for (Outcome o : outcomes) {
+                if (!"ran".equals(o.status().state()) || !tool.equals(o.status().id())) {
+                    continue;
+                }
+                if ("ndpi".equals(tool)) {
+                    for (Findings.Classification c : o.findings().classifications()) {
+                        verdicts.add(new Verdict(c.a(), c.b(), java.util.Set.copyOf(List.of(c.aPort(), c.bPort())), c.transport(), tool, o.version(), c.protocol(), c.confidence(), c.basis()));
+                    }
+                } else {
+                    for (Findings.Conversation c : o.findings().conversations()) {
+                        int slash = c.port().indexOf('/');
+                        if (c.label() != null && slash > 0 && c.port().substring(0, slash).matches("\\d{1,5}")) {
+                            verdicts.add(new Verdict(c.client(), c.server(), java.util.Set.of(Integer.parseInt(c.port().substring(0, slash))), c.port().substring(slash + 1),
+                                    tool, o.version(), c.label(), "MEDIUM", "dissector"));
+                        }
+                    }
+                }
+            }
+        }
+        java.util.Set<String> rejected = new java.util.LinkedHashSet<>();
+        for (Verdict v : verdicts) {
+            if (icsName(v.protocol()) || v.ports().stream().anyMatch(p -> icsPort(p, v.transport()))) {
+                continue;
+            }
+            List<FlowTable.Flow> modbus = flows.all().stream().filter(f -> "modbus".equals(f.protocolName()) && v.transport().equals(transportOf(f))
+                    && portOf(f) >= 0 && v.ports().contains(portOf(f))
+                    && java.util.Set.copyOf(List.of(f.client(), f.server())).equals(java.util.Set.copyOf(List.of(v.a(), v.b())))).toList();
+            if (modbus.stream().noneMatch(FlowTable.Flow::onlyExceptions)) {
+                continue;
+            }
+            for (FlowTable.Flow f : modbus) {
+                String who = v.tool().equals("ndpi") ? "nDPI" : "tshark's dissector chain";
+                String note = "ICS decode rejected: " + f.labelledMessages() + " message" + (f.labelledMessages() == 1 ? "" : "s") + " decoded as Modbus on " + f.port()
+                        + (f.onlyExceptions() ? ", all of them exceptions" : ", on the connection of a Modbus decode that is all exceptions")
+                        + "; no industrial protocol uses this port and " + who + (v.version().isEmpty() ? "" : " " + v.version()) + " names the conversation "
+                        + v.protocol() + ". Kept as unknown: random bytes of another protocol parse as Modbus exceptions.";
+                String server = f.server(), port = f.port();
+                f.classifiedBy(v.tool(), v.version(), v.protocol(), v.confidence(), v.basis());
+                flows.reject(f, note);
+                rejected.add(server + "|" + port);
+            }
+        }
+        return rejected;
+    }
+
+    private static String transportOf(FlowTable.Flow f) {
+        return f.port().endsWith("/udp") ? "udp" : f.port().endsWith("/tcp") ? "tcp" : "";
+    }
+
+    private static int portOf(FlowTable.Flow f) {
+        int slash = f.port().indexOf('/');
+        try {
+            return slash > 0 ? Integer.parseInt(f.port().substring(0, slash)) : -1;
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    /**
+     * A Modbus observation that nothing but the decoder vouches for: no identity field, and the port is none an industrial
+     * protocol uses. It waits until nDPI and tshark have had their say ({@link Merged#rejects}); everything else is accepted at once.
+     */
+    public static boolean mayBeMisread(DeviceObservation o) {
+        return o.protocol() == ProtocolType.MODBUS && o.identityFields().isEmpty() && o.ip().isPresent() && o.service().isPresent()
+                && o.detectionBasis() != DetectionBasis.PORT_HEURISTIC && o.detectionBasis() != DetectionBasis.ZEEK_PORT
+                && !com.pcap.inventory.PortHints.builtin(o.service().get()).map(com.pcap.inventory.PortHints.Hint::ics).orElse(false);
+    }
+
+    /** What stays of a rejected Modbus observation: the host was there (and its MAC), nothing more. LOW presence, protocol unknown. */
+    public static DeviceObservation presenceOnly(DeviceObservation o) {
+        return new DeviceObservation(o.frameNumber(), o.ip().orElse(null), o.mac().orElse(null), ProtocolType.UNKNOWN, DetectionBasis.PORT_HEURISTIC, "", List.of(),
+                "host seen in a conversation whose Modbus decode was rejected (" + o.service().orElse("") + "): presence only").withProtocolName("unknown");
     }
 
     /** A host tshark found that nothing else did: LOW presence evidence, no identity, no protocol. */
