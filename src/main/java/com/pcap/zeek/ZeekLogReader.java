@@ -88,6 +88,8 @@ public final class ZeekLogReader {
     private final Set<String> udpUids = new java.util.HashSet<>();
     /** modbus_detailed_link_id of rows modbus_detailed.log already counted, so the per-function logs do not count them twice. */
     private final Set<String> linkSeen = new java.util.HashSet<>();
+    /** Request rows of the per-function Modbus logs (FC22 / FC23), by modbus_detailed_link_id, until modbus_detailed.log has been read. */
+    private final Map<String, PerFunction> perFunction = new LinkedHashMap<>();
     private final Map<String, ConnAgg> conns = new LinkedHashMap<>();
     private final Map<String, long[]> scans = new LinkedHashMap<>();
     private final Map<String, Host> hosts = new LinkedHashMap<>();
@@ -103,6 +105,10 @@ public final class ZeekLogReader {
                 .streamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(8).maxStringLength(MAX_LINE).maxNumberLength(40).build())
                 .build();
         this.mapper = new ObjectMapper(f);
+    }
+
+    private record PerFunction(String client, String server, String port, String function, String access, Long address, Long quantity,
+                             Long unit, List<Object> samples) {
     }
 
     private record FlowRef(String client, String server, String protocol, String port) {
@@ -151,6 +157,7 @@ public final class ZeekLogReader {
         pending.clear();
         udpUids.clear();
         linkSeen.clear();
+        perFunction.clear();
         conns.clear();
         scans.clear();
         hosts.clear();
@@ -166,13 +173,16 @@ public final class ZeekLogReader {
         each(dir, "dnp3_control.log", this::dnp3Control);
         each(dir, "dnp3.log", this::dnp3);
         each(dir, "modbus.log", this::modbus);
-        each(dir, "modbus_detailed.log", this::modbusDetailed);
+        // the per-function logs are read first: modbus_detailed.log has no address for FC22 / FC23, these logs do
         each(dir, "modbus_mask_write_register.log", this::modbusMaskWrite);
         each(dir, "modbus_read_write_multiple_registers.log", this::modbusReadWrite);
+        each(dir, "modbus_detailed.log", this::modbusDetailed);
+        flushPerFunction();
         each(dir, "modbus_read_device_identification.log", this::modbusIdent);
+        // block transfers first: s7comm.log has a row for the same job (without the block), which must not be counted twice
+        each(dir, "s7comm_upload_download.log", this::s7Transfer);
         each(dir, "s7comm.log", this::s7);
         each(dir, "s7comm_read_szl.log", this::s7Szl);
-        each(dir, "s7comm_upload_download.log", this::s7Transfer);
         each(dir, "s7comm_plus.log", this::s7plus);
         each(dir, "cotp.log", this::cotp);
         each(dir, "enip.log", this::enip);
@@ -194,6 +204,7 @@ public final class ZeekLogReader {
         pending.clear();
         udpUids.clear();
         linkSeen.clear();
+        perFunction.clear();
         return out;
     }
 
@@ -513,6 +524,13 @@ public final class ZeekLogReader {
         int fc = ZeekNames.modbusCode(func);
         String access = ZeekNames.modbusAccess(fc, func);
         List<Object> samples = values(n.get("write".equals(access) ? "request_values" : "response_values"));
+        Long address = numOrNull(n, "address"), quantity = numOrNull(n, "quantity");
+        PerFunction pf = link == null ? null : perFunction.get(link);
+        if (pf != null) {
+            address = address != null ? address : pf.address();
+            quantity = quantity != null ? quantity : pf.quantity();
+            samples = samples.isEmpty() ? pf.samples() : samples;
+        }
         // outcome: ICSNPP writes the exception name on the transaction's matched row; an unmatched request has no answer yet
         String why = ZeekNames.modbusException(text(n, "exception_code"));
         String status = why != null ? "exception: " + why : matched ? "ok" : "unanswered";
@@ -521,11 +539,22 @@ public final class ZeekLogReader {
             object = cap(text(n, "mei_type"), 64);
         }
         OpAgg a = stage(o, r, "modbus", rp + "/" + transport(text(n, "uid"), "tcp"), ZeekNames.modbusFunction(func), access, object,
-                numOrNull(n, "address"), numOrNull(n, "quantity"), numOrNull(n, "unit"), samples, 1);
+                address, quantity, numOrNull(n, "unit"), samples, 1);
         if (a != null) {
             a.status(status);
         }
         return true;
+    }
+
+    /** Per-function rows modbus_detailed.log did not cover (an older ICSNPP, or no detailed row) are counted on their own. */
+    private void flushPerFunction() {
+        for (Map.Entry<String, PerFunction> e : perFunction.entrySet()) {
+            PerFunction p = e.getValue();
+            if (!linkSeen.contains(e.getKey())) {
+                stage(p.client(), p.server(), "modbus", p.port(), p.function(), p.access(), null, p.address(), p.quantity(), p.unit(), p.samples(), 1);
+            }
+        }
+        perFunction.clear();
     }
 
     /** The integer values of a JSON array, the first few only. */
@@ -559,7 +588,7 @@ public final class ZeekLogReader {
         return rr != null ? "REQUEST".equalsIgnoreCase(rr) : n.get("is_orig") != null && n.get("is_orig").asBoolean(false);
     }
 
-    /** modbus_mask_write_register.log: FC22. Counted from its request rows, unless modbus_detailed.log already has the transaction. */
+    /** modbus_mask_write_register.log: FC22. Counted from its request rows, unless modbus_detailed.log has the transaction (it then lends its address). */
     private boolean modbusMaskWrite(JsonNode n) {
         return modbusPerFunction(n, java.util.Arrays.asList(firstNum(n, "and_mask"), firstNum(n, "or_mask")), firstNum(n, "address"), 1L);
     }
@@ -588,17 +617,19 @@ public final class ZeekLogReader {
             return false;
         }
         String link = text(n, "modbus_detailed_link_id");
-        if (link != null && linkSeen.contains(link)) {
-            return true;
-        }
         List<Object> s = new ArrayList<>();
         for (Object v : samples) {
             if (v instanceof Number && s.size() < FlowTable.MAX_SAMPLES) {
                 s.add(v);
             }
         }
-        stage(o, r, "modbus", rp + "/" + transport(text(n, "uid"), "tcp"), ZeekNames.modbusFunction(func),
-                ZeekNames.modbusAccess(ZeekNames.modbusCode(func), func), null, address, quantity, numOrNull(n, "unit"), s, 1);
+        PerFunction p = new PerFunction(o, r, rp + "/" + transport(text(n, "uid"), "tcp"), ZeekNames.modbusFunction(func),
+                ZeekNames.modbusAccess(ZeekNames.modbusCode(func), func), address, quantity, numOrNull(n, "unit"), s);
+        if (link == null) {
+            stage(o, r, "modbus", p.port(), p.function(), p.access(), null, address, quantity, p.unit(), s, 1);
+        } else if (perFunction.size() < MAX_PENDING) {
+            perFunction.putIfAbsent(link, p);               // held until modbus_detailed.log says whether it counted this transaction
+        }
         return true;
     }
 
@@ -814,8 +845,8 @@ public final class ZeekLogReader {
         }
         String key = "s|" + uid + '|' + pdu;
         if (sd.fromClient()) {
-            // a read of an SZL list is counted by s7comm_read_szl.log, which also names the list
-            if (function != null && !function.toLowerCase(java.util.Locale.ROOT).contains("szl")) {
+            // a read of an SZL list is counted by s7comm_read_szl.log, which also names the list; a block transfer by s7comm_upload_download.log
+            if (function != null && !function.toLowerCase(java.util.Locale.ROOT).contains("szl") && !(pdu != null && pending.containsKey(key))) {
                 OpAgg a = stage(sd.client(), sd.server(), "s7comm", portOf(sd, uid, "tcp"), function, ZeekNames.s7Access(function), null, null, null, null, List.of(), 1);
                 if (a != null && uid != null && pdu != null && pending.size() < MAX_PENDING) {
                     pending.put(key, a);
@@ -834,14 +865,15 @@ public final class ZeekLogReader {
     /** s7comm_plus.log: S7comm-Plus messages (newer S7-1200/1500); the client's requests are operations, with no outcome logged. */
     private boolean s7plus(JsonNode n) {
         Sides sd = sides(n, 102);
-        String fn = text(n, "function_name");
+        // ICSNPP s7comm_plus.log columns are version, opcode and opcode_name ("Unknown s7comm-plus opcode-0x69" for opcodes it has no name for)
+        String fn = text(n, "opcode_name");
         if (fn == null) {
-            fn = text(n, "function_code");
+            fn = text(n, "opcode");
         }
         if (sd == null || fn == null) {
             return false;
         }
-        String uid = text(n, "uid"), function = cap("S7plus " + fn.replaceFirst("^(Request|Response): ", ""), 64);
+        String uid = text(n, "uid"), function = cap("S7plus " + fn.replaceFirst("^(Request|Response): ", "").replaceFirst("^Unknown s7comm-plus ", ""), 64);
         FlowTable.Flow f = flowOf(sd, "s7comm", uid, "tcp");
         if (f == null) {
             return true;
@@ -907,9 +939,9 @@ public final class ZeekLogReader {
         if (!sd.fromClient()) {
             return true;
         }
-        String uid = text(n, "uid"), code = idText(n, "function_code");
-        String function = null;
-        if (code != null) {
+        // real rows name the function ("Start Upload", "Download Block"); a build that writes only a code is mapped from the table
+        String uid = text(n, "uid"), code = idText(n, "function_code"), function = cap(text(n, "function_name"), 40);
+        if (function == null && code != null) {
             var m = HEX.matcher(code);
             function = m.matches() ? S7_TRANSFER.get(Integer.parseInt(m.group(1), 16) & 0xFF) : cap(code, 40);
         }
@@ -922,7 +954,11 @@ public final class ZeekLogReader {
         if (f != null) {
             f.source("zeek").seen(micros(n, "ts")).message("S7 " + function);
         }
-        stage(sd.client(), sd.server(), "s7comm", portOf(sd, uid, "tcp"), function, ZeekNames.s7Access(function), object, null, null, null, List.of(), 1);
+        OpAgg a = stage(sd.client(), sd.server(), "s7comm", portOf(sd, uid, "tcp"), function, ZeekNames.s7Access(function), object, null, null, null, List.of(), 1);
+        String pdu = idText(n, "pdu_reference");
+        if (a != null && uid != null && pdu != null && pending.size() < MAX_PENDING) {
+            pending.put("s|" + uid + '|' + pdu, a);          // s7comm.log's acknowledgement of this job lands on it
+        }
         return true;
     }
 
@@ -981,10 +1017,19 @@ public final class ZeekLogReader {
         f.source("zeek").seen(micros(n, "ts")).message("CIP " + service);
         String key = "p|" + uid + '|' + idText(n, "cip_sequence_count");
         if (request) {
-            String cls = text(n, "class_name"), attr = idText(n, "attribute_id");
+            // class_name is "unknown" for a class ICSNPP has no name for; the id is then the better label. instance_id is a hex string ("0x01").
+            String cls = text(n, "class_name"), attr = idText(n, "attribute_id"), clsId = text(n, "class_id");
+            if ((cls == null || "unknown".equalsIgnoreCase(cls)) && clsId != null) {
+                cls = "class " + clsId;
+            }
             String object = cls == null ? null : cap(cls + (attr == null ? "" : " attr " + attr), 64);
+            Long instance = numOrNull(n, "instance_id");
+            if (instance == null && text(n, "instance_id") != null) {
+                var hm = HEX.matcher(text(n, "instance_id"));
+                instance = hm.matches() && hm.group(1).length() <= 8 ? Long.valueOf(Long.parseLong(hm.group(1), 16)) : null;
+            }
             OpAgg a = stage(sd.client(), sd.server(), "ethernet-ip", portOf(sd, uid, "tcp"), cap(service, 64), ZeekNames.cipAccess(service), object,
-                    numOrNull(n, "instance_id"), null, null, List.of(), times);
+                    instance, null, null, List.of(), times);
             if (a != null && uid != null && pending.size() < MAX_PENDING) {
                 pending.put(key, a);
             }
