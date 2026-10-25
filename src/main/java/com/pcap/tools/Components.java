@@ -55,6 +55,7 @@ public record Components(String id, String name, String url, String licence, Str
         m.put("url", url);
         m.put("licence", licence);
         m.put("kind", kind);
+        m.put("optional", optional);
         m.put("role", role);
         return m;
     }

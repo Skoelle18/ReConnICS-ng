@@ -427,7 +427,7 @@ function engines() {
   const section = (title, note, list) => list.length ? h('div', { class: 'card' }, h('div', { class: 'card-h' }, title, h('span', { class: 'muted small' }, note)),
     h('div', { class: 'scroll' }, h('div', { class: 'trow thead g-eng' }, ['Component', 'Status here', 'Used in', 'Licence', 'What it does for ReConnICS'].map((t) => h('span', {}, t))),
       list.map((r) => { const st = r.status || {}; return h('div', { class: 'trow g-eng' },
-        h('span', {}, h('a', { class: 'cell-name', href: r.url, target: '_blank', rel: 'noopener noreferrer' }, r.name), h('span', { class: 'muted small' }, (kindTxt[r.kind] || r.kind) + (r.optional ? ', optional' : ', built in'))),
+        h('span', {}, h('a', { class: 'cell-name', href: r.url, target: '_blank', rel: 'noopener noreferrer' }, r.name), h('span', { class: 'muted small' }, (kindTxt[r.kind] || r.kind) + (r.kind === 'reference' ? '' : r.optional ? ', optional' : ', bundled in the jar'))),
         h('span', { class: 'stack', style: { gap: '2px', alignItems: 'flex-start' } }, toolBadge({ id: '', state: st.state || 'not-installed', version: st.version, via: st.via, detail: st.detail }),
           h('span', { class: 'small muted wrap' }, [st.via, st.detail].filter(Boolean).join(' · '))),
         h('span', { class: 'small' }, r.kind === 'reference' ? '-' : done ? ran(r.id) + ' of ' + done + ' captures' : 'no captures yet'),

@@ -82,7 +82,7 @@ public final class Engines {
         for (Map<String, Object> m : report(env)) {
             @SuppressWarnings("unchecked")
             Map<String, Object> s = (Map<String, Object>) m.get("status");
-            String line = String.format("%-26s %-14s %-9s %-12s %s", m.get("name"), s.get("state"), s.getOrDefault("via", ""), s.getOrDefault("version", ""),
+            String line = String.format("%-30s %-14s %-9s %-12s %s", m.get("name"), s.get("state"), s.getOrDefault("via", ""), s.getOrDefault("version", ""),
                     s.getOrDefault("detail", ""));
             sb.append(line.stripTrailing()).append('\n');
         }
