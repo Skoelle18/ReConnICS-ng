@@ -116,5 +116,7 @@ class RetentionTest {
         var m = d.macs.stream().filter(x -> "00:1c:7f:39:de:5b".equals(x.get("mac"))).findFirst().orElseThrow();
         assertEquals("gateway-like", m.get("kind"));
         assertTrue(m.get("notes").toString().contains("inferred"), m.toString());
+        var odd = run(classicPcap(true, false, 1, tcp(mac("1e:47:1e:47:1e:47"), PLC, "10.200.1.153", "10.50.1.54", 1000, 502, SYN))).macs.get(0);
+        assertTrue(odd.get("notes").toString().contains("locally administered"), odd.toString());
     }
 }

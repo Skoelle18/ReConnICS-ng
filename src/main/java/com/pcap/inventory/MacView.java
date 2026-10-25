@@ -52,6 +52,9 @@ public final class MacView {
                 notes.add((ips >= GATEWAY_IPS ? ips + " source IPs" : toIps + " destination IPs") + " behind this MAC"
                         + ": a router, firewall, NAT or proxy interface, or a host with several addresses (inferred)");
             }
+            if (kind.equals("host") && (Integer.parseInt(mac.substring(0, 2), 16) & 2) != 0) {
+                notes.add("locally administered MAC (not a vendor-assigned address): a virtual NIC, a randomised or a made-up address (inferred)");
+            }
             for (String ip : strings(m.get("ips"))) {
                 List<String> others = new ArrayList<>(macsOfIp.getOrDefault(ip, List.of()));
                 others.remove(mac);
