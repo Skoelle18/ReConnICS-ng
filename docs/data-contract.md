@@ -120,10 +120,15 @@ written before a key existed stay valid and old consumers ignore the keys they d
 - Flows are aggregated **per host pair + protocol + server port**, never per Zeek connection. The 4SICS capture has about 935k
   TCP connections, mostly scan noise; one entry per connection would be unusable.
 - A connection that never completed a handshake (Zeek `conn_state` S0, REJ, or RSTO/RSTOS0 with no data; natively a SYN with no
-  SYN-ACK) is a scan attempt. It adds to `scanAttempts` on its flow and does **not** create an edge on its own: a flow with
-  `messages` 0 and `scanAttempts` above 0 is left out unless the analyzer ran with `--keep-scans`.
-- At most 5 000 flows per capture. Only header-validated or decoded messages make a protocol flow; port-only guesses and
-  broadcast/multicast destinations never do.
+  SYN-ACK) is a scan attempt. It adds to `scanAttempts` on its flow. The flow is **kept by default** (`messages` 0,
+  `scanAttempts` above 0); `--drop-scans` leaves such flows out. The console hides scan-only edges by default behind a toggle.
+- At most 5 000 flows per capture. Only header-validated or decoded messages make a *protocol* flow; port-only guesses stay
+  `unknown` with a `portHint`. Broadcast and multicast destinations are flows to a **group address** (see `groups`), never hosts.
+- ICMP is a flow too: `protocol` `icmp`, `port` `icmp`, one label per message kind (`ICMP echo request`, `ICMP destination
+  unreachable (port)`). Other IP protocols without ports use `port` `ip/<protocol number>`.
+- **Time.** `firstSeen`/`lastSeen` are present only when the capture clock is usable (between 1990 and 2100). A capture whose
+  timestamps are all epoch 0 has flows with no dates; `source.retention.clock.usable` says so. Consumers show "time unknown", never
+  a date near 1970.
 
 ### Hosts seen only through Zeek
 
@@ -138,6 +143,45 @@ values are both kept as evidence, native decoded values win a conflict.
 The console treats a posted `flows` array as untrusted: strings are cleaned, counts clamped, sizes capped. Across merged
 captures it sums `messages`, `packets`, `bytes` and `scanAttempts`, widens `firstSeen`/`lastSeen`, and merges `operations` by key
 within the same caps.
+
+### Everything observed is retained: seen-only hosts, group addresses, MACs
+
+The analyzer never drops a host or conversation because a rule found it uninteresting. See [`retention-audit.md`](retention-audit.md)
+for every rule that used to drop something and what it does now.
+
+**Seen-only assets.** Every unicast IPv4 address seen as the source or destination of any IP traffic (ICMP, a SYN, a DHCP
+broadcast, an ARP, an unreplied UDP datagram) is an asset. One no decoder, Zeek host or tool has evidence for is LOW confidence:
+`attributes.detectionBases` `["OBSERVED"]`, `protocols` `["icmp"]` or `["unknown"]`, `attributes.seenOnly` `true`, and
+`attributes.role` `"seen only: <what it did>"` with `roleBasis` `"seen-only"`. An asset with richer evidence keeps all of it and only
+gains the two tags below. The console treats a basis set of only `PORT_HEURISTIC`/`ZEEK_PORT`/`OBSERVED` as LOW ("... only").
+
+| Attribute | Meaning |
+|---|---|
+| `observed` | map of tag to count: `tcp`, `udp`, `icmp-echo-request`, `icmp-echo-reply`, `icmp-echo-target`, `icmp:<type>`, `dhcp-client`, `group-sender`, `arp-sender`, `arp-asked`, `arp-probe`, `arp-sender-virtual-router-mac`, `source-0.0.0.0`, `syn-target:<port>`, `syn-unanswered:<port>`, `syn-refused:<port>`, `handshake-incomplete:<port>`, `udp-unreplied:<port>` |
+| `behaviour` | classification derived from `observed`: `probe-like` (SYNs nobody answered or refused), `incomplete-handshake` (the server answered SYN-ACK and the client never completed it: a half-open connection, **not** the same as a scan), `addressed-only` (the host never sent a frame) |
+| `seenOnly` | `true` when nothing but weak observation supports the asset |
+| `dhcp` | `{messages, mac, hostName, clientFqdn, vendorClass, requestedAddr, assignedAddr, messageTypes[]}`, from Zeek `dhcp.log`, else tshark `bootp`/`dhcp` fields. Bounded, cleaned text. |
+| `http` | `{requests, server, hosts[], uris[], methods{}, statuses{}, contentTypes[]}` for a web server: `server` is the `Server:` header (Zeek `software.log`/`http.log`, else tshark). Page titles are not extracted. |
+
+**`groups`.** An optional top-level array next to `flows`: destinations that are not hosts. `{address, kind: broadcast|multicast,
+scope, packets, bytes, senders[], ports[], protocols[], firstSeen?, lastSeen?}`. Limited broadcast (255.255.255.255), the directed
+broadcast of an Ethernet broadcast frame to an address ending .255, and 224.0.0.0/4. A group is never an asset, never matched to
+an advisory and never scored. Each sender also has a flow to the group address so the graph can draw the link.
+
+**`macs`.** An optional top-level array, the Ethernet view: `{mac, frames, framesTo, groupFrames, ips[], ipCount, toIps[],
+toIpCount, etherTypes{}, kind: host|gateway-like|virtual-router|group, notes[]}`. The console adds `vendor` from the OUI table.
+`notes` are always worded as inference: one MAC sending as several IPs is "gateway-like (routing, firewall or NAT)"; one IP seen
+from several MACs is a note; two gateway-like MACs sharing a vendor prefix are "possible firewall/HA pair". Nothing here changes
+an asset's identity.
+
+**`source.retention`.** `{frames: {read, notParsed, notParsedReasons{}, ipv6}, clock: {usable, framesWithUsableTime, note?},
+hostsSeen, hostsSeenOnlyAdded, groupAddresses, macs, macOnlyHosts?, overCap?}`. The ledger of what was not turned into anything and
+why, plus the caps that were hit. A cap is the only reason a valid host or flow is left out, and it is counted here.
+
+**Hidden by default (console).** Retention is separate from display. The console shows low-value classes only on request and says
+how many it hides: group addresses (toggle "Show broadcast / multicast", default off), addressed-only hosts, and scan-only edges
+(`messages` 0). Seen-only and probe-like hosts are visible by default, drawn as low-confidence. The "Hidden by default" facet lists
+every hidden class with its count; none of it is removed from the inventory or the API.
 
 ### Document-level `source` fields added for the engines
 

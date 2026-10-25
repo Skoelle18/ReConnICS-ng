@@ -30,7 +30,8 @@ public final class ConversationTracker {
         final int portA, portB;
         final boolean udp;
         int synFrom;                 // 1 = A sent the SYN, 2 = B sent it, 0 = not seen
-        boolean synAck;
+        boolean synAck, ackA, ackB, rstA, rstB;     // ack*: a packet with ACK and no SYN came from that side; rst*: a RST came from that side
+        long pktsA, pktsB;
         long packets, bytes, dataPackets, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
 
         Conn(String ipA, int portA, String ipB, int portB, boolean udp) {
@@ -61,6 +62,13 @@ public final class ConversationTracker {
     private final Map<String, Agg> done = new LinkedHashMap<>();
     private final Map<String, long[]> scans = new LinkedHashMap<>();
     private long scanAttempts, scanAttemptsUncounted;
+    private NetworkObserver observer;
+
+    /** Where the connections that did not go anywhere (unanswered SYN, handshake without a final ACK, UDP nobody answered) are reported as facts about their hosts. */
+    public ConversationTracker observer(NetworkObserver o) {
+        this.observer = o;
+        return this;
+    }
 
     public void observe(ParsedPacket p) {
         if (p.srcIp().isEmpty() || p.dstIp().isEmpty() || (!p.hasTcp() && !p.hasUdp()) || p.srcPort() <= 0 || p.dstPort() <= 0) {
@@ -81,18 +89,37 @@ public final class ConversationTracker {
             live.put(key, c);
         }
         c.packets++;
+        if (srcIsA) {
+            c.pktsA++;
+        } else {
+            c.pktsB++;
+        }
         c.bytes += Math.max(0, p.payloadLength());
         if (p.payloadLength() > 0) {
             c.dataPackets++;
         }
         long t = p.timestampMicros();
-        if (t > 0) {
+        if (com.pcap.util.Timestamps.usable(t)) {
             c.first = Math.min(c.first, t);
             c.last = Math.max(c.last, t);
         }
         if (p.hasTcp()) {
             int f = p.tcpFlags();
             boolean syn = (f & ParsedPacket.TCP_SYN) != 0, ack = (f & ParsedPacket.TCP_ACK) != 0;
+            if (ack && !syn) {
+                if (srcIsA) {
+                    c.ackA = true;
+                } else {
+                    c.ackB = true;
+                }
+            }
+            if ((f & ParsedPacket.TCP_RST) != 0) {
+                if (srcIsA) {
+                    c.rstA = true;
+                } else {
+                    c.rstB = true;
+                }
+            }
             if (syn && !ack && c.synFrom == 0) {
                 c.synFrom = srcIsA ? 1 : 2;
             } else if (syn && ack) {
@@ -121,6 +148,9 @@ public final class ConversationTracker {
         int serverPort = aIsClient ? c.portB : c.portA;
         String port = serverPort + (c.udp ? "/udp" : "/tcp");
         String key = client + '>' + server + '>' + port;
+        if (observer != null) {
+            report(c, aIsClient, client, server, port);
+        }
         if (!c.udp && c.synFrom != 0 && !c.synAck && c.dataPackets == 0) {
             scanAttempts++;
             long[] n = scans.get(key);
@@ -148,6 +178,23 @@ public final class ConversationTracker {
         a.bytes += c.bytes;
         a.first = Math.min(a.first, c.first);
         a.last = Math.max(a.last, c.last);
+    }
+
+    /** Facts about the two hosts of a connection that went nowhere; the connection itself still becomes (or stays out of) a flow as before. */
+    private void report(Conn c, boolean aIsClient, String client, String server, String port) {
+        boolean serverRst = aIsClient ? c.rstB : c.rstA, clientAck = aIsClient ? c.ackA : c.ackB;
+        if (c.udp) {
+            if ((aIsClient ? c.pktsB : c.pktsA) == 0) {
+                observer.tag(client, "udp-unreplied:" + port, 1);
+            }
+        } else if (c.synFrom != 0 && c.dataPackets == 0) {
+            if (!c.synAck) {
+                observer.tag(client, (serverRst ? "syn-refused:" : "syn-unanswered:") + port, 1);
+                observer.tag(server, "syn-target:" + port, 1);
+            } else if (!clientAck) {
+                observer.tag(client, "handshake-incomplete:" + port, 1);
+            }
+        }
     }
 
     /**

@@ -32,7 +32,12 @@ public final class TsharkAdapter implements Adapter {
     static final int MAX_LINES = 3_000_000, MAX_CONVERSATIONS = 20_000;
     /** The {@code -e} fields, in column order. */
     static final List<String> FIELDS = List.of("frame.time_epoch", "ip.src", "ip.dst", "ipv6.src", "ipv6.dst", "tcp.srcport", "tcp.dstport",
-            "udp.srcport", "udp.dstport", "tcp.flags", "frame.len", "frame.protocols");
+            "udp.srcport", "udp.dstport", "tcp.flags", "frame.len", "frame.protocols",
+            // the clear-text facts (HostFacts): what a DHCP client announced and what a web server served; columns past the first 12 are optional on read
+            "bootp.hw.mac_addr", "bootp.ip.client", "dhcp.option.dhcp", "dhcp.option.hostname", "dhcp.option.vendor_class_id",
+            "dhcp.option.requested_ip_address", "http.server", "http.host", "http.request.uri", "http.request.method", "http.response.code");
+    /** Columns every row must have; the fact columns after them are read when present. */
+    static final int BASE_FIELDS = 12;
     /** Layers that say nothing about the application. */
     private static final Set<String> GENERIC = Set.of("eth", "ethertype", "vlan", "ip", "ipv6", "tcp", "udp", "data", "sll", "null", "loop",
             "raw", "ipv6.hopopts", "icmp", "icmpv6", "ipcp", "llc", "ppp", "pppoe", "gre", "ipip", "tcp.segments");
@@ -86,6 +91,7 @@ public final class TsharkAdapter implements Adapter {
             throw new IOException("tshark failed (exit " + exit + "): " + Exec.read(err, 400).replaceAll("\\s+", " ").strip());
         }
         f.conversations().addAll(p.conversations);
+        f.facts().mergeMissing(p.facts);
         f.stats().put("packetsRead", p.lines);
         f.stats().put("conversations", p.conversations.size());
         if (p.truncated) {
@@ -163,7 +169,7 @@ public final class TsharkAdapter implements Adapter {
 
     // ------------------------------------------------------------------ -T fields
 
-    record Parsed(List<Findings.Conversation> conversations, long lines, boolean truncated) {
+    record Parsed(List<Findings.Conversation> conversations, long lines, boolean truncated, com.pcap.inventory.HostFacts facts) {
     }
 
     private static final class Conv {
@@ -187,6 +193,7 @@ public final class TsharkAdapter implements Adapter {
     /** Folds the tab separated lines ({@link #FIELDS} order) into conversations; reads at most {@code maxLines} packets. */
     static Parsed parseFields(BufferedReader r, int maxLines) {
         Map<String, Conv> convs = new LinkedHashMap<>();
+        com.pcap.inventory.HostFacts facts = new com.pcap.inventory.HostFacts();
         long lines = 0;
         boolean truncated = false;
         try {
@@ -198,10 +205,13 @@ public final class TsharkAdapter implements Adapter {
                 }
                 lines++;
                 String[] c = line.split("\t", -1);
-                if (c.length < FIELDS.size()) {
+                if (c.length < BASE_FIELDS) {
                     continue;
                 }
                 String src = !c[1].isEmpty() ? c[1] : c[3], dst = !c[2].isEmpty() ? c[2] : c[4];
+                if (c.length >= FIELDS.size()) {
+                    facts(facts, c, src, dst);
+                }
                 boolean tcp = !c[5].isEmpty() || !c[6].isEmpty();
                 String sp = tcp ? c[5] : c[7], dp = tcp ? c[6] : c[8];
                 if (src.isEmpty() || dst.isEmpty() || sp.isEmpty() || dp.isEmpty() || src.length() > 45 || dst.length() > 45) {
@@ -262,7 +272,47 @@ public final class TsharkAdapter implements Adapter {
                     v.first == Long.MAX_VALUE ? 0 : v.first, v.last == Long.MIN_VALUE ? 0 : v.last, label,
                     v.fromA && v.fromB && (v.transport.equals("udp") || v.synAckFrom != null || v.pkts >= 4)));
         }
-        return new Parsed(out, lines, truncated);
+        return new Parsed(out, lines, truncated, facts);
+    }
+
+    private static final Map<String, String> DHCP_TYPES = Map.of("1", "discover", "2", "offer", "3", "request", "4", "decline", "5", "ack", "6", "nak", "7", "release", "8", "inform");
+
+    /** The DHCP client message or HTTP exchange on one line (columns after {@link #BASE_FIELDS}), as a fact on the client or on the web server. */
+    private static void facts(com.pcap.inventory.HostFacts out, String[] c, String src, String dst) {
+        String mac = c[12], clientIp = c[13];
+        if (!mac.isEmpty() && "68".equals(c[7])) {                                  // a client message: DHCP replies carry the client's MAC too, but come from port 67
+            String key = isIp4(clientIp) && !clientIp.equals("0.0.0.0") ? clientIp : isIp4(src) && !src.equals("0.0.0.0") ? src : "mac:" + mac.toLowerCase(java.util.Locale.ROOT);
+            Map<String, Object> f = out.fact(key, com.pcap.inventory.HostFacts.DHCP);
+            if (f != null) {
+                com.pcap.inventory.HostFacts.bump(f, "messages");
+                com.pcap.inventory.HostFacts.put(f, "mac", mac);
+                com.pcap.inventory.HostFacts.put(f, "hostName", c[15]);
+                com.pcap.inventory.HostFacts.put(f, "vendorClass", c[16]);
+                com.pcap.inventory.HostFacts.put(f, "requestedAddr", c[17]);
+                com.pcap.inventory.HostFacts.add(f, "messageTypes", DHCP_TYPES.getOrDefault(c[14], c[14].isEmpty() ? "no DHCP message type option" : "type " + c[14]));
+                f.putIfAbsent("source", "tshark");
+            }
+        }
+        boolean response = !c[18].isEmpty() || !c[22].isEmpty(), request = !c[21].isEmpty();
+        String server = request ? dst : response ? src : null;
+        if (server != null && isIp4(server)) {
+            Map<String, Object> f = out.fact(server, com.pcap.inventory.HostFacts.HTTP);
+            if (f != null) {
+                if (request) {
+                    com.pcap.inventory.HostFacts.bump(f, "requests");
+                    com.pcap.inventory.HostFacts.add(f, "hosts", c[19]);
+                    com.pcap.inventory.HostFacts.add(f, "uris", c[20]);
+                    com.pcap.inventory.HostFacts.count(f, "methods", c[21]);
+                }
+                com.pcap.inventory.HostFacts.put(f, "server", c[18]);
+                com.pcap.inventory.HostFacts.count(f, "statuses", c[22]);
+                f.putIfAbsent("source", "tshark");
+            }
+        }
+    }
+
+    private static boolean isIp4(String s) {
+        return s != null && s.matches("\\d{1,3}(\\.\\d{1,3}){3}");
     }
 
     private static boolean serverIsA(Conv v) {
@@ -335,7 +385,8 @@ public final class TsharkAdapter implements Adapter {
     private static long micros(String s) {
         try {
             double d = Double.parseDouble(s.trim());
-            return Double.isFinite(d) && d > 0 && d < 4e12 ? Math.round(d * 1e6) : 0;
+            long m = Double.isFinite(d) && d > 0 && d < 4e12 ? Math.round(d * 1e6) : 0;
+            return com.pcap.util.Timestamps.usable(m) ? m : 0;
         } catch (NumberFormatException e) {
             return 0;
         }

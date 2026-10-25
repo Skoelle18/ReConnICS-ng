@@ -143,19 +143,25 @@ public final class ToolPipeline {
             Map<String, Object> st = o.status().produced();
             switch (tool) {
                 case "tshark" -> {
-                    long added = 0, labelled = 0, skipped = 0;
+                    long added = 0, labelled = 0, skipped = 0, unanswered = 0;
                     for (Findings.Conversation c : o.findings().conversations()) {
                         FlowTable.Flow f = flows.match(c.client(), c.server(), c.port());
                         if (f == null) {
-                            if (icsOnly || !c.answered()) {
-                                skipped++;
+                            if (icsOnly) {
+                                skipped++;                             // --ics-only is the user asking for decoded protocols only: counted, not silent
                                 continue;
                             }
                             f = flows.flow(c.client(), c.server(), "unknown", c.port());
                             if (f == null) {
                                 continue;
                             }
-                            f.source("tshark").messages(c.packets()).traffic(c.packets(), c.bytes()).seen(c.firstMicros()).seen(c.lastMicros());
+                            f.source("tshark").traffic(c.packets(), c.bytes()).seen(c.firstMicros()).seen(c.lastMicros());
+                            if (c.answered()) {
+                                f.messages(c.packets());
+                            } else {
+                                f.scanAttempts(1);                     // no answer: kept, as a scan-only conversation (a classification, not a reason to drop it)
+                                unanswered++;
+                            }
                             added++;
                             obs.addAll(hostObservations(c));
                         }
@@ -168,6 +174,9 @@ public final class ToolPipeline {
                     st.put("flowsLabelled", labelled);
                     if (skipped > 0) {
                         st.put("conversationsSkipped", skipped);
+                    }
+                    if (unanswered > 0) {
+                        st.put("conversationsUnanswered", unanswered);
                     }
                 }
                 case "ndpi" -> {

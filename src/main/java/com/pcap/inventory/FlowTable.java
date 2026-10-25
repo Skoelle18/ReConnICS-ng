@@ -123,8 +123,9 @@ public final class FlowTable {
             return this;
         }
 
+        /** Widens first/last seen; a time that is not a real clock reading (epoch 0, unset, or the "none" sentinel) is ignored: unknown time, not 1970. */
         public Flow seen(long micros) {
-            if (micros > 0) {
+            if (com.pcap.util.Timestamps.usable(micros)) {
                 firstMicros = Math.min(firstMicros, micros);
                 lastMicros = Math.max(lastMicros, micros);
             }

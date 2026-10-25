@@ -96,11 +96,11 @@ class FlowTableTest {
     @Test
     void mergingZeekFlowsIntoNativeOnesDoesNotDoubleCount() {
         FlowTable nat = new FlowTable();
-        nat.flow("10.0.0.5", "10.0.0.9", "unknown", "502/tcp").messages(4).traffic(8, 100).seen(2_000_000L).labelCount("Modbus FC3", 4).scanAttempts(2).source("native");
+        nat.flow("10.0.0.5", "10.0.0.9", "unknown", "502/tcp").messages(4).traffic(8, 100).seen(1_700_000_002_000_000L).labelCount("Modbus FC3", 4).scanAttempts(2).source("native");
         nat.flow("10.0.0.5", "10.0.0.7", "snmp", "161/udp").message("SNMP GetResponse").source("native");
         FlowTable zk = new FlowTable();
         // Zeek calls the same conversation the other way round, names the protocol, and has the whole connection's counters
-        zk.flow("10.0.0.9", "10.0.0.5", "modbus", "502/tcp").messages(6).traffic(40, 900).seen(1_000_000L).seen(9_000_000L)
+        zk.flow("10.0.0.9", "10.0.0.5", "modbus", "502/tcp").messages(6).traffic(40, 900).seen(1_700_000_001_000_000L).seen(1_700_000_009_000_000L)
                 .labelCount("Modbus FC3", 6).labelCount("Modbus FC16", 1).operation("FC3 read holding registers", "read", null, 0L, 10L, 6, List.of(1)).scanAttempts(1).source("zeek");
         zk.flow("10.0.0.5", "10.0.0.11", "http", "80/tcp").messages(3).source("zeek");
         nat.mergeFrom(zk);
@@ -115,8 +115,8 @@ class FlowTableTest {
         assertEquals(2L, mb.get("scanAttempts"), "the larger of 2 and 1");
         assertEquals(6L, ((Map<?, ?>) mb.get("labels")).get("Modbus FC3"), "the larger per label, not the sum");
         assertEquals(1L, ((Map<?, ?>) mb.get("labels")).get("Modbus FC16"));
-        assertEquals("1970-01-01T00:00:01Z", mb.get("firstSeen"));
-        assertEquals("1970-01-01T00:00:09Z", mb.get("lastSeen"));
+        assertEquals("2023-11-14T22:13:21Z", mb.get("firstSeen"));
+        assertEquals("2023-11-14T22:13:29Z", mb.get("lastSeen"));
         assertEquals(1, ((List<?>) mb.get("operations")).size());
         assertEquals("zeek+native", mb.get("source"));
         assertEquals("native", l.stream().filter(f -> "snmp".equals(f.get("protocol"))).findFirst().orElseThrow().get("source"));

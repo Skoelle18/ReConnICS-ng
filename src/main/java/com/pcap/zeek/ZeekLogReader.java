@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.StreamReadConstraints;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pcap.inventory.FlowTable;
+import com.pcap.inventory.IcmpNames;
 import com.pcap.model.Confidence;
 import com.pcap.model.DetectionBasis;
 import com.pcap.model.DeviceObservation;
@@ -133,10 +134,12 @@ public final class ZeekLogReader {
         long packets, bytes, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
         /** conn.log {@code community_id} (policy/protocols/conn/community-id-logging) of the first few connections; empty when the script was not loaded. */
         final List<String> cids = new ArrayList<>(3);
+        /** ICMP message kinds ("ICMP echo request") to their count; empty for TCP and UDP. */
+        final Map<String, Long> kinds = new LinkedHashMap<>();
     }
 
     private static final class Host {
-        boolean client, server;
+        boolean client, server, present;
         /** Ports the host answered on ("502/tcp") to the service conn.log named there ("modbus", or "unknown"). */
         final Map<String, String> ports = new LinkedHashMap<>();
     }
@@ -290,13 +293,15 @@ public final class ZeekLogReader {
         return v != null && v.isIntegralNumber() && v.canConvertToInt() && v.asInt() >= 0 && v.asInt() <= 65535 ? v.asInt() : -1;
     }
 
+    /** Microseconds since the epoch; 0 when the capture's clock is not a real one (epoch 0, 1970 + a few seconds); -1 when the field is not a number at all. */
     private static long micros(JsonNode n, String k) {
         JsonNode v = n.get(k);
         if (v == null || !v.isNumber()) {
             return -1;
         }
         double d = v.asDouble();
-        return Double.isFinite(d) && d > 0 && d < 4.2e9 ? (long) (d * 1_000_000) : -1;
+        long m = Double.isFinite(d) && d > 0 && d < 4.2e9 ? (long) (d * 1_000_000) : 0;
+        return com.pcap.util.Timestamps.usable(m) ? m : 0;
     }
 
     /** A unicast IPv4 host address in canonical form, or null (IPv6 and junk are not hosts here). */
@@ -334,31 +339,42 @@ public final class ZeekLogReader {
         if (proto == null) {
             return false;                                     // no transport at all: malformed
         }
-        if (!"tcp".equals(proto) && !"udp".equals(proto)) {
-            return true;                                      // icmp and the like are not conversations
-        }
         String os = text(n, "id.orig_h"), rs = text(n, "id.resp_h");
         if (isV6(os) || isV6(rs)) {
+            stats.ipv6Connections++;                          // the inventory is IPv4: counted and reported (source.zeek.ipv6Connections), not silent
             return true;
         }
+        boolean tcp = "tcp".equals(proto), icmp = "icmp".equals(proto);
         int rp = port(n, "id.resp_p");
         long ts = micros(n, "ts");
-        if (os == null || rs == null || !IPV4.matcher(os).matches() || !IPV4.matcher(rs).matches() || rp < 0 || ts < 0) {
+        if (os == null || rs == null || !IPV4.matcher(os).matches() || !IPV4.matcher(rs).matches() || (!icmp && rp < 0) || ts < 0) {
             return false;                                     // malformed row
         }
         String o = ip4(os), r = ip4(rs);
-        if (o == null || r == null) {
-            return true;                                      // broadcast, multicast, 0.0.0.0: not hosts
+        String group = r == null ? groupKind(rs) : null;      // 255.255.255.255 / 224.0.0.0/4: a destination every host in range listens on
+        if (o == null || (r == null && group == null)) {
+            stats.connectionsNotUnicast++;                    // 0.0.0.0 as a source or an unusable address: counted; the native pass keeps the MAC
+            return true;
+        }
+        if (!tcp && !"udp".equals(proto) && !icmp) {
+            stats.otherTransportConnections++;                // unknown_transport (GRE, OSPF, ...): the host pair is kept as presence, Zeek names no protocol
+            host(o).present = true;
+            if (r != null) {
+                host(r).present = true;
+            }
+            return true;
         }
         stats.connections++;
-        boolean tcp = "tcp".equals(proto);
         String cuid = text(n, "uid");
         if (!tcp && cuid != null && udpUids.size() < MAX_CONN_KEYS) {
             udpUids.add(cuid);
         }
         long ob = num(n, "orig_bytes", 0), rb = num(n, "resp_bytes", 0);
-        String port = rp + "/" + proto;
-        if (tcp && scanState(text(n, "conn_state"), ob + rb)) {
+        String port = icmp ? "icmp" : rp + "/" + proto;
+        if (group != null) {
+            stats.groupConnections++;
+        }
+        if (tcp && r != null && scanState(text(n, "conn_state"), ob + rb)) {
             stats.scanAttempts++;
             String key = o + '>' + r + '>' + port;
             long[] c = scans.get(key);
@@ -369,18 +385,26 @@ public final class ZeekLogReader {
             } else {
                 stats.scanAttemptsUncounted++;
             }
-            host(o).client = true;                            // the prober exists; the host it probed has not been shown to
+            host(o).client = true;                            // the prober exists; the host it probed is present (an address someone sent to) but not shown to initiate or serve
+            host(r).present = true;
             return true;
         }
         host(o).client = true;
-        Host hr = host(r);
-        hr.server = true;
-        String svc = ZeekNames.protocolOf(text(n, "service"));
-        if (hr.ports.size() < 8 || hr.ports.containsKey(port) || (hr.ports.size() < 16 && (!"unknown".equals(svc) || portHint(port) != null))) {
-            hr.ports.merge(port, svc, (old, now) -> "unknown".equals(old) ? now : old);
+        String svc = icmp ? "icmp" : ZeekNames.protocolOf(text(n, "service"));
+        if (r != null) {
+            if (icmp) {
+                host(r).present = true;
+            } else {
+                Host hr = host(r);
+                hr.server = true;
+                if (hr.ports.size() < 8 || hr.ports.containsKey(port) || (hr.ports.size() < 16 && (!"unknown".equals(svc) || portHint(port) != null))) {
+                    hr.ports.merge(port, svc, (old, now) -> "unknown".equals(old) ? now : old);
+                }
+            }
         }
+        String server = r != null ? r : rs;
         // one conversation per host pair + server port + protocol: two protocols on one port (a probe and a master) stay two flows
-        String key = o + '>' + r + '>' + port + '>' + svc;
+        String key = o + '>' + server + '>' + port + '>' + svc;
         ConnAgg a = conns.get(key);
         if (a == null) {
             if (conns.size() >= MAX_CONN_KEYS) {
@@ -389,9 +413,20 @@ public final class ZeekLogReader {
             }
             conns.put(key, a = new ConnAgg());
             a.client = o;
-            a.server = r;
+            a.server = server;
             a.port = port;
             a.protocol = svc;
+        }
+        if (icmp) {
+            // Zeek logs an ICMP exchange with the message type and code where the ports go (id.orig_p, id.resp_p)
+            int type = port(n, "id.orig_p"), code = Math.max(port(n, "id.resp_p"), 0);
+            String kind = type >= 0 ? IcmpNames.label(type, code) : null;
+            if (kind != null && (a.kinds.size() < 8 || a.kinds.containsKey(kind))) {
+                a.kinds.merge(kind, Math.max(1, num(n, "orig_pkts", 1)), Long::sum);
+                if (type == 8 && num(n, "resp_pkts", 0) > 0 && (a.kinds.size() < 8 || a.kinds.containsKey("ICMP echo reply"))) {
+                    a.kinds.merge("ICMP echo reply", num(n, "resp_pkts", 0), Long::sum);
+                }
+            }
         }
         String cid = text(n, "community_id");
         if (cid != null && cid.length() <= 64 && a.cids.size() < 3 && !a.cids.contains(cid)) {
@@ -399,10 +434,21 @@ public final class ZeekLogReader {
         }
         a.packets += num(n, "orig_pkts", 0) + num(n, "resp_pkts", 0);
         a.bytes += ob + rb;
-        a.first = Math.min(a.first, ts);
-        JsonNode d = n.get("duration");
-        a.last = Math.max(a.last, ts + (d != null && d.isNumber() && Double.isFinite(d.asDouble()) && d.asDouble() >= 0 && d.asDouble() < 4e6 ? (long) (d.asDouble() * 1_000_000) : 0));
+        if (ts > 0) {                                         // a row without a usable clock still counts; it just carries no time
+            a.first = Math.min(a.first, ts);
+            JsonNode d = n.get("duration");
+            a.last = Math.max(a.last, ts + (d != null && d.isNumber() && Double.isFinite(d.asDouble()) && d.asDouble() >= 0 && d.asDouble() < 4e6 ? (long) (d.asDouble() * 1_000_000) : 0));
+        }
         return true;
+    }
+
+    private static String groupKind(String ip) {
+        try {
+            IpAddress a = IpAddress.parse(ip);
+            return a == null ? null : a.groupKind();
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     private Host host(String ip) {
@@ -442,6 +488,7 @@ public final class ZeekLogReader {
                 f.portHint(portHint(a.port));                 // nothing dissected it: say what the port usually means, as a hint
             }
             f.traffic(a.packets, a.bytes).seen(a.first).seen(a.last);
+            a.kinds.forEach(f::labelCount);
             a.cids.forEach(f::communityId);
             if (f.messageCount() == 0) {
                 f.messages(a.packets);                        // undecoded: Zeek's conn.log has no payload-packet count
@@ -1367,9 +1414,13 @@ public final class ZeekLogReader {
                 addObs(new DeviceObservation(0, ip, null, ProtocolType.UNKNOWN, DetectionBasis.ZEEK_CONN, "server", List.of(), "host seen in Zeek conn.log")
                         .withProtocolName("unknown"));
             }
-            if (h.client || !h.server) {
+            if (h.client) {
                 addObs(new DeviceObservation(0, ip, null, ProtocolType.UNKNOWN, DetectionBasis.ZEEK_CONN, "client", List.of(), "host seen in Zeek conn.log")
                         .withProtocolName(h.server ? first : "unknown"));
+            } else if (!h.server) {
+                // only ever the other end of an ICMP exchange, a probe or an unnamed IP protocol: present, but not shown to initiate or serve
+                addObs(new DeviceObservation(0, ip, null, ProtocolType.UNKNOWN, DetectionBasis.ZEEK_CONN, "", List.of(),
+                        "host seen in Zeek conn.log (the other end of ICMP, a probe or an unnamed IP protocol)").withProtocolName("unknown"));
             }
         }
     }

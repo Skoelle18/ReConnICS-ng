@@ -11,10 +11,10 @@ import java.util.Map;
  * only parse; {@link ToolPipeline} merges these into the flow table and the asset list.
  */
 public record Findings(List<Conversation> conversations, List<Classification> classifications, List<Alert> alerts,
-                       List<HostOs> hostOs, Map<String, Object> stats) {
+                       List<HostOs> hostOs, Map<String, Object> stats, com.pcap.inventory.HostFacts facts) {
 
     public static Findings empty() {
-        return new Findings(new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new LinkedHashMap<>());
+        return new Findings(new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new LinkedHashMap<>(), new com.pcap.inventory.HostFacts());
     }
 
     /** {@code port} is the server port with transport ({@code 502/tcp}); {@code label} the tool's protocol name or null;

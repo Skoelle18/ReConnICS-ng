@@ -9,7 +9,7 @@ import com.pcap.util.MacAddress;
  */
 public final class PacketParser {
     public ParsedPacket parse(PacketRecord record) {
-        ParsedPacket.Builder b = ParsedPacket.builder(record.frameNumber(), record.timestampMicros());
+        ParsedPacket.Builder b = ParsedPacket.builder(record.frameNumber(), record.timestampMicros()).wireLength(record.dataLength());
         if (record.linkType() == LinkType.UNSUPPORTED) {
             return b.status(ParseStatus.UNSUPPORTED,
                     "unsupported link-layer type code=" + record.linkType().code()).build();
@@ -72,6 +72,10 @@ public final class PacketParser {
                     .payload(record.data(), udp.payloadOffset(), udp.payloadLength())
                     .status(ParseStatus.OK, "").build();
         }
+        if (ip.protocol() == 1 && ip.payloadLength() >= 2) {
+            // ICMP: type and code are the first two bytes; the observer turns them into a flow (docs/retention-audit.md)
+            b.icmp(record.data()[ip.payloadOffset()] & 0xFF, record.data()[ip.payloadOffset() + 1] & 0xFF);
+        }
         return b.status(ParseStatus.SKIPPED, "non-TCP/UDP ipProtocol=" + ip.protocol()).build();
     }
 
@@ -90,6 +94,6 @@ public final class PacketParser {
             return b.status(ParseStatus.SKIPPED, "non-Ethernet/IPv4 ARP").build();
         }
         b.srcMac(MacAddress.of(data, off + 8)).srcIp(IpAddress.ipv4(data, off + 14)).dstIp(IpAddress.ipv4(data, off + 24));
-        return b.arp(true).payload(data, off, 0).status(ParseStatus.OK, "ARP").build();
+        return b.arp(true).arpOp(op).payload(data, off, 0).status(ParseStatus.OK, "ARP").build();
     }
 }

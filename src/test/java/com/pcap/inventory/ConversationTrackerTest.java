@@ -79,9 +79,11 @@ class ConversationTrackerTest {
     }
 
     @Test
-    void connectionsThatNeverCompletedAreScanAttemptsNotEdges() throws Exception {
-        var f = flows(capture(concat2(WEB, PROBES)), AnalysisOptions.DEFAULT);
-        assertEquals(1, f.size(), "three probes add no edges: " + f);
+    void dropScansHidesConnectionsThatNeverCompleted() throws Exception {
+        var kept = flows(capture(concat2(WEB, PROBES)), AnalysisOptions.DEFAULT);
+        assertEquals(4, kept.size(), "retained by default, classified as scan attempts: " + kept);
+        var f = flows(capture(concat2(WEB, PROBES)), new AnalysisOptions(false, false));
+        assertEquals(1, f.size(), "--drop-scans: three probes add no edges: " + f);
         assertEquals("80/tcp", f.get(0).get("port"));
         var doc = new AnalysisService().analyze(writeTempPcap("conv2.pcap", capture(concat2(WEB, PROBES))), false).document();
         assertEquals(3L, doc.source.get("scanAttempts"));

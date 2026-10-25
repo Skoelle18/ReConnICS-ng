@@ -76,7 +76,7 @@ parsers read the same capture. The native decoders always run too, and the two r
 | `--zeek-logs DIR` | Read JSON logs you already produced for this capture; Zeek is not run (implies `--engine zeek`). |
 | `--zeek-timeout SECONDS` | Stop a Zeek run after this long (default 1800). |
 | `--ics-only` | No edges for traffic that is not a decoded ICS protocol. |
-| `--keep-scans` | Also draw edges for conversations that only ever saw scan attempts (default: counted in `scanAttempts`, not drawn). |
+| `--drop-scans` | Leave out flows that only ever saw scan attempts (default: kept, with `scanAttempts`; the console hides them behind a toggle). `--keep-scans` is accepted and is the default. |
 
 Zeek is run from an argument list (never a shell) in a fresh empty directory, reads the capture and nothing else, and its output
 is treated as untrusted input: every field is length-capped and validated, and a bad line is skipped and counted

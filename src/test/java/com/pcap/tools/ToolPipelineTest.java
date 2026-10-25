@@ -131,7 +131,7 @@ class ToolPipelineTest {
     }
 
     @Test
-    void tsharkAddsOnlyAnsweredConversationsAndNeverDecodesThem() {
+    void tsharkAddsConversationsAndNeverDecodesThem() {
         var t = new FlowTable();
         t.flow("10.0.0.5", "10.0.0.9", "modbus", "502/tcp").message("Modbus FC=0x3");
         Findings f = Findings.empty();
@@ -140,7 +140,8 @@ class ToolPipelineTest {
         f.conversations().add(new Findings.Conversation("10.0.0.5", "10.0.0.21", "23/tcp", 2, 120, 1_000_000, 1_000_100, null, false));
         var merged = ToolPipeline.mergeFlows(t, List.of(ran("tshark", "4.4.19", f)), false);
 
-        assertEquals(2, t.all().size() , "the modbus flow Zeek/native had, plus the one only tshark saw; the unanswered SYN is dropped");
+        assertEquals(3, t.all().size(), "the modbus flow Zeek/native had, the one only tshark saw, and the unanswered SYN kept as a scan attempt");
+        assertEquals(1L, m(t, "10.0.0.5", "10.0.0.21", "23/tcp").get("scanAttempts"));
         var opc = t.match("10.0.0.5", "10.0.0.20", "4840/tcp");
         assertEquals("unknown", opc.protocolName(), "a Wireshark dissector name is a label, not a decode");
         var map = m(t, "10.0.0.5", "10.0.0.20", "4840/tcp");
@@ -150,8 +151,8 @@ class ToolPipelineTest {
         assertEquals("tshark", cls.get(0).get("tool"));
         assertEquals("4.4.19", cls.get(0).get("version"));
         assertEquals("dissector", cls.get(0).get("basis"));
-        assertEquals(2, merged.observations().size(), "both ends of the new conversation become LOW presence observations");
-        assertNull(t.match("10.0.0.5", "10.0.0.21", "23/tcp"));
+        assertEquals(4, merged.observations().size(), "both ends of each new conversation become LOW presence observations");
+        assertNotNull(t.match("10.0.0.5", "10.0.0.21", "23/tcp"), "unanswered is a classification of the flow, not a reason to drop it");
     }
 
     @Test

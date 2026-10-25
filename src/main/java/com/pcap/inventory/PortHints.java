@@ -134,6 +134,8 @@ public final class PortHints {
         tcp(3268, "ldap-gc", false, "directory server");
         tcp(9389, "ad-ws", false, "Active Directory host");
         tcp(2049, "nfs", false, "NFS server");
+        udp(67, "dhcp", false, "DHCP server");
+        udp(68, "dhcp", false, "DHCP client");
         udp(69, "tftp", false, "TFTP server");
         udp(520, "rip", false, "router");
         udp(1812, "radius", false, "RADIUS server");

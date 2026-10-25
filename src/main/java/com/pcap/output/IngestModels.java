@@ -20,6 +20,10 @@ public final class IngestModels {
         public List<Asset> assets;
         /** Directed client-to-server conversations ({@code client, server, protocol, port, messages, labels}); absent when none were seen. */
         public List<Map<String, Object>> flows;
+        /** Broadcast and multicast destinations with their senders: nodes that are not assets. Absent when the capture had none. */
+        public List<Map<String, Object>> groups;
+        /** The Ethernet view: one entry per MAC with frame counts and the IPs seen behind it. Absent when the capture had no Ethernet frames. */
+        public List<Map<String, Object>> macs;
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

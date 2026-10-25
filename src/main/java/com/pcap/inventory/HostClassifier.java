@@ -38,6 +38,15 @@ public final class HostClassifier {
         final Map<String, Integer> initiated = new LinkedHashMap<>();     // ICS-looking protocol it opened conversations to
     }
 
+    private static boolean isGroup(String ip) {
+        try {
+            var a = com.pcap.util.IpAddress.parse(ip);
+            return a != null && a.groupKind() != null;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     /** Mutates {@code doc}: flows get {@code portHint}; assets lacking a decoded ICS role get {@code attributes.role}. */
     public static void apply(IngestModels.Document doc) {
         if (doc == null || doc.flows == null || doc.assets == null) {
@@ -83,6 +92,12 @@ public final class HostClassifier {
                 } else {
                     f.remove("portHintSource");
                 }
+            }
+            // ICMP, a group-address destination and a conversation without one data packet (an unanswered SYN, a handshake that never completed)
+            // say nothing about what a host serves or initiates: the seen-only role (NetworkObserver) describes those hosts instead
+            long exchanged = f.get("messages") instanceof Number n ? n.longValue() : 0;
+            if ("icmp".equals(proto) || proto.startsWith("ip-proto") || isGroup(s) || exchanged == 0) {
+                continue;
             }
             Seen cs = byIp.computeIfAbsent(c, k -> new Seen()), ss = byIp.computeIfAbsent(s, k -> new Seen());
             cs.client = true;

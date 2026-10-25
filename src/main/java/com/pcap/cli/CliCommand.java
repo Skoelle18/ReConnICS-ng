@@ -58,7 +58,7 @@ public final class CliCommand {
         boolean formatJson = false;
         String post = null;
         boolean icsOnly = false;
-        boolean keepScans = false;
+        boolean keepScans = true;      // scan-only conversations are kept (retain everything observed); --drop-scans opts out
         AnalysisOptions.Engine engine = null;
         Path zeekLogs = null;
         java.time.Duration zeekTimeout = null;
@@ -74,6 +74,7 @@ public final class CliCommand {
                 case "--force", "-f" -> force = true;
                 case "--ics-only" -> icsOnly = true;
                 case "--keep-scans" -> keepScans = true;
+                case "--drop-scans" -> keepScans = false;
                 case "--engine" -> {
                     if (i + 1 >= tokens.size()) {
                         err.println("error: --engine requires native, zeek or auto");
@@ -183,7 +184,8 @@ public final class CliCommand {
         ps.println("      --post <url>      POST ingest JSON to a loopback ingest API, e.g.");
         ps.println("                        http://127.0.0.1:8088/api/v1/assets (see 'serve')");
         ps.println("      --ics-only        Only decoded ICS protocols as edges; no unknown-protocol host pairs");
-        ps.println("      --keep-scans      Also draw edges for conversations that only saw scan attempts");
+        ps.println("      --keep-scans      Edges for conversations that only saw scan attempts (the default; kept so nothing observed is dropped)");
+        ps.println("      --drop-scans      Leave scan-only conversations out of the flows (they are still counted in source.scanAttempts)");
         ps.println("                        (connections whose handshake never completed); default: counted only");
         ps.println("      --engine <e>      native (default): the built-in decoders only, nothing to install");
         ps.println("                        zeek: also run Zeek + ICSNPP and merge (error if Zeek is missing)");

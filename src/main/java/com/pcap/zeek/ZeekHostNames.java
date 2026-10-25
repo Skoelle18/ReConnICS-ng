@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.StreamReadConstraints;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pcap.inventory.HostFacts;
 import com.pcap.model.Confidence;
 import com.pcap.model.DetectionBasis;
 import com.pcap.model.DeviceObservation;
@@ -87,6 +88,67 @@ public final class ZeekHostNames {
                 out.add(obs(e.getKey(), null, e.getValue().iterator().next(), Confidence.LOW, "dns.log A answer"));
             }
         }
+        return out;
+    }
+
+    /**
+     * What the DHCP clients announced and what the web servers served, from three base logs: {@code dhcp.log} (host name, FQDN, vendor
+     * class, requested address, message types), {@code http.log} (per server: requests, Host headers, URIs, status codes, content types)
+     * and {@code software.log} (the {@code Server} banner of an HTTP server). Evidence only; see {@link HostFacts}.
+     */
+    public HostFacts facts(Path dir) {
+        HostFacts out = new HostFacts();
+        each(dir.resolve("dhcp.log"), n -> {
+            String ip = ip4(first(n, "client_addr", "assigned_addr")), mac = text(n, "mac");
+            String key = ip != null ? ip : mac != null && mac.matches("[0-9a-fA-F:.-]{11,17}") ? "mac:" + mac.toLowerCase(java.util.Locale.ROOT).replace('-', ':') : null;
+            Map<String, Object> f = key == null ? null : out.fact(key, HostFacts.DHCP);
+            if (f == null) {
+                return;
+            }
+            HostFacts.bump(f, "messages");
+            HostFacts.put(f, "mac", mac);
+            HostFacts.put(f, "hostName", text(n, "host_name"));
+            HostFacts.put(f, "clientFqdn", text(n, "client_fqdn"));
+            HostFacts.put(f, "vendorClass", text(n, "client_software"));
+            HostFacts.put(f, "requestedAddr", text(n, "requested_addr"));
+            HostFacts.put(f, "assignedAddr", text(n, "assigned_addr"));
+            JsonNode types = n.get("msg_types");
+            for (int i = 0; types != null && types.isArray() && i < types.size() && i < 8; i++) {
+                HostFacts.add(f, "messageTypes", types.get(i).asText());
+            }
+            f.putIfAbsent("source", "zeek dhcp.log");
+        });
+        each(dir.resolve("http.log"), n -> {
+            String server = ip4(text(n, "id.resp_h"));
+            Map<String, Object> f = server == null ? null : out.fact(server, HostFacts.HTTP);
+            if (f == null) {
+                return;
+            }
+            HostFacts.bump(f, "requests");
+            HostFacts.add(f, "hosts", text(n, "host"));
+            HostFacts.add(f, "uris", text(n, "uri"));
+            HostFacts.count(f, "methods", text(n, "method"));
+            JsonNode code = n.get("status_code");
+            if (code != null && code.isIntegralNumber()) {
+                HostFacts.count(f, "statuses", Long.toString(code.asLong()));
+            }
+            JsonNode mimes = n.get("resp_mime_types");
+            for (int i = 0; mimes != null && mimes.isArray() && i < mimes.size() && i < 4; i++) {
+                HostFacts.add(f, "contentTypes", mimes.get(i).asText());
+            }
+            f.putIfAbsent("source", "zeek http.log");
+        });
+        each(dir.resolve("software.log"), n -> {
+            String ip = ip4(text(n, "host")), type = text(n, "software_type"), banner = text(n, "unparsed_version");
+            if (ip == null || !"HTTP::SERVER".equals(type) || banner == null) {
+                return;
+            }
+            Map<String, Object> f = out.fact(ip, HostFacts.HTTP);
+            if (f != null) {
+                HostFacts.put(f, "server", banner);                  // the Server: header, as Zeek's software.log reads it
+                f.putIfAbsent("source", "zeek software.log");
+            }
+        });
         return out;
     }
 

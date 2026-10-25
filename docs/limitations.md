@@ -134,11 +134,11 @@ A small curated ODVA vendor-ID table is included for common IDs (checked against
   53 replies of `dnp3_test_data_part1.pcap` Zeek's number equals Wireshark's `dnp3.al.iin` (tshark 4.4.19; 0x1000 is "need time",
   0x8000 "device restart").
 - **Scan filtering.** A TCP connection whose SYN was never answered and that carried no data (native), or whose Zeek `conn_state`
-  is `S0`, `REJ`, `RSTOS0`, `SH`, or `RSTO` with no bytes exchanged, is a *scan attempt*: counted in `scanAttempts`, not drawn
-  unless `--keep-scans`. UDP has no handshake, so UDP scans are not recognised. Native and Zeek count slightly differently
+  is `S0`, `REJ`, `RSTOS0`, `SH`, or `RSTO` with no bytes exchanged, is a *scan attempt*: counted in `scanAttempts` and kept as a flow
+  (`--drop-scans` leaves it out; the console hides it by default). UDP has no handshake, so UDP scans are not recognised. Native and Zeek count slightly differently
   (a SYN-ACK followed by a reset counts only in Zeek's `RSTO` rule), so a merged flow keeps the larger number. To stay bounded,
   the scan table holds 100,000 targets; further attempts are counted in the total (`source.zeek.scanAttemptsUncounted`), but
-  attach to no flow. A host that only answered scan probes is not an asset.
+  attach to no flow. A host that only answered scan probes, or only sent a SYN, is a seen-only asset tagged `probe-like` (docs/retention-audit.md).
 - **Direction of undecoded flows is a guess.** For `unknown` flows the client is the SYN sender; with no SYN in the capture, and
   for UDP, the side with the higher port number. In native mode a host pair only draws an edge when both hosts are assets, which
   needs an ARP sender or a decoded message; with Zeek every host in `conn.log` is an asset.

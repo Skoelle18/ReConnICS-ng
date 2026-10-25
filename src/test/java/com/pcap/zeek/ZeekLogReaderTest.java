@@ -225,11 +225,12 @@ class ZeekLogReaderTest {
     }
 
     @Test
-    void scannedHostsThatNeverAnsweredAreNotAssets() throws Exception {
+    void scannedHostsThatNeverAnsweredAreStillSeen() throws Exception {
         Path dir = logs(conn("10.0.0.5", "10.0.0.77", 23, "tcp", "S0", 0, 0, null) + conn("10.0.0.5", "10.0.0.9", 80, "tcp", "SF", 10, 10, "http"));
         ZeekData d = new ZeekLogReader(false, false).read(dir);
         var ips = d.observations().stream().map(o -> o.ip().get().value()).collect(Collectors.toSet());
-        assertEquals(java.util.Set.of("10.0.0.5", "10.0.0.9"), ips);
+        assertEquals(java.util.Set.of("10.0.0.5", "10.0.0.9", "10.0.0.77"), ips, "the scan target is an observed host, presence only");
+        assertEquals("unknown", obs(d, "10.0.0.77", DetectionBasis.ZEEK_CONN).protocolName().orElse("?"));
         assertEquals("unknown", d.observations().stream().filter(o -> o.ip().get().value().equals("10.0.0.5")).findFirst().orElseThrow().protocolName().orElse("?"));
         assertEquals("http", obs(d, "10.0.0.9", DetectionBasis.ZEEK_CONN).protocolName().orElse("?"));
     }
@@ -272,9 +273,13 @@ class ZeekLogReaderTest {
                 + "{\"ts\":1.0,\"id.orig_h\":\"10.0.0.5\",\"id.resp_h\":\"255.255.255.255\",\"id.resp_p\":67,\"proto\":\"udp\"}\n"      // broadcast
                 + "{\"ts\":1.0,\"id.orig_h\":\"10.0.0.5\",\"id.resp_h\":\"10.0.0.9\",\"id.resp_p\":0,\"proto\":\"icmp\"}\n";
         ZeekData d = new ZeekLogReader(false, false).read(logs(good + huge + deep + bad + ignorable + good));
-        assertEquals(1, d.flows().toList().size(), "the two good rows are one flow");
-        assertEquals(2 * 5L, d.flows().toList().get(0).get("packets"));
-        assertEquals(1 + 1 + 4 + 7 - 1, d.stats().rowsSkipped("conn.log") + 0, "huge line, deep nesting, 4 non-objects/garbage, 6 bad rows: " + d.stats().toMap());
+        var fl = d.flows().toList();
+        assertEquals(3, fl.size(), "the two good rows are one flow; the broadcast and the ICMP row are kept as their own: " + fl);
+        assertEquals(2 * 5L, fl.stream().filter(f -> "http".equals(f.get("protocol"))).findFirst().orElseThrow().get("packets"));
+        assertTrue(fl.stream().anyMatch(f -> "icmp".equals(f.get("protocol"))));
+        assertEquals(1L, d.stats().toMap().get("ipv6Connections"), "IPv6 is counted, not silently ignored");
+        assertEquals(1L, d.stats().toMap().get("groupConnections"));
+        assertEquals(1 + 1 + 4 + 4, d.stats().rowsSkipped("conn.log") + 0, "huge line, deep nesting, 4 non-objects/garbage, 4 bad rows (an unusable time is kept as unknown time, not a reason to drop the row): " + d.stats().toMap());
     }
 
     @Test

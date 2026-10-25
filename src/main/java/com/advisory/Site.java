@@ -231,7 +231,7 @@ final class Site {
         }
         try {
             var result = new AnalysisService().analyze(captureDir.resolve(id + ".pcap"), false,
-                    new com.pcap.service.AnalysisOptions(false, false).withEngine(com.pcap.service.AnalysisOptions.Engine.valueOf(System.getProperty("reconics.engine", "AUTO")), null, null));   // Zeek when installed, else native; -Dreconics.engine=NATIVE to skip Zeek
+                    new com.pcap.service.AnalysisOptions(false, true).withEngine(com.pcap.service.AnalysisOptions.Engine.valueOf(System.getProperty("reconics.engine", "AUTO")), null, null));   // Zeek when installed, else native; -Dreconics.engine=NATIVE to skip Zeek
             String obs = result.document() == null ? "{\"assets\":[]}" : new com.pcap.output.IngestJsonWriter().mapper().writeValueAsString(result.document());
             var r = result.report();
             Map<String, Object> summary = new LinkedHashMap<>();

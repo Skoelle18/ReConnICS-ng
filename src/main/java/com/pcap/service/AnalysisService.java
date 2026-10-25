@@ -2,6 +2,7 @@ package com.pcap.service;
 
 import com.pcap.inventory.ConversationTracker;
 import com.pcap.inventory.DeviceAggregator;
+import com.pcap.inventory.NetworkObserver;
 import com.pcap.model.DetectionBasis;
 import com.pcap.model.DeviceObservation;
 import com.pcap.output.IngestJsonWriter;
@@ -125,7 +126,8 @@ public final class AnalysisService {
                                        ZeekRunner.Engine zeekEngine, CompletableFuture<ZeekRunner.Run> zeekRun, ZeekRunner runner,
                                        CompletableFuture<List<com.pcap.tools.ToolPipeline.Outcome>> toolsRun)
             throws IOException, PcapException {
-        ConversationTracker conversations = new ConversationTracker();
+        NetworkObserver observer = new NetworkObserver();
+        ConversationTracker conversations = new ConversationTracker().observer(observer);
         DeviceAggregator aggregator = new DeviceAggregator();
         TcpReassembler reassembler = new TcpReassembler();
         Map<String, Long> candidates = new HashMap<>();
@@ -168,11 +170,13 @@ public final class AnalysisService {
                     parsed = packetParser.parse(record);
                 } catch (RuntimeException e) {
                     malformed++;
+                    observer.notParsed("parser exception on a frame (counted, nothing kept)");
                     if (verbose) {
                         LOG.log(Level.FINE, "parse error frame " + record.frameNumber(), e);
                     }
                     continue;
                 }
+                observer.observe(parsed);
                 switch (parsed.status()) {
                     case OK -> {
                         conversations.observe(parsed);
@@ -219,7 +223,11 @@ public final class AnalysisService {
             }
 
             conversations.mergeInto(detector.flows(), options.icsOnly(), options.keepScans());
+            if (!options.icsOnly()) {
+                observer.addFlows(detector.flows());             // ICMP and group-address conversations; --ics-only asks for decoded protocols only
+            }
             ZeekData zeek = null;
+            com.pcap.inventory.HostFacts facts = new com.pcap.inventory.HostFacts();   // DHCP and web-server evidence: Zeek's logs, tshark's fields where Zeek has none
             String zeekVersion = "";
             String zeekHow = "";
             if (useZeek) {
@@ -257,7 +265,9 @@ public final class AnalysisService {
                     talked.add(String.valueOf(fl.get("client")));
                     talked.add(String.valueOf(fl.get("server")));
                 }
-                new com.pcap.zeek.ZeekHostNames().read(logDir, talked::contains).forEach(aggregator::accept);   // DHCP host names, unambiguous DNS A answers, for hosts already in the capture
+                com.pcap.zeek.ZeekHostNames hostNames = new com.pcap.zeek.ZeekHostNames();
+                hostNames.read(logDir, talked::contains).forEach(aggregator::accept);
+                facts = hostNames.facts(logDir);   // DHCP host names, unambiguous DNS A answers, for hosts already in the capture
             }
 
             // The optional tools beyond Zeek: their conversations, labels and alerts join the flow table the same way Zeek's did
@@ -323,6 +333,13 @@ public final class AnalysisService {
             com.pcap.inventory.PortHints.useSupplement(ref == null ? null : ref.services());   // Nmap's nmap-services, when installed: names for ports the table lacks
             com.pcap.inventory.HostClassifier.apply(doc);        // port hints for undecoded flows, roles for hosts no decoder explained
             com.pcap.tools.ToolPipeline.applyAssets(doc, outcomes);
+            observer.apply(doc, detector.flows());
+            for (var o : outcomes) {
+                if ("ran".equals(o.status().state())) {
+                    facts.mergeMissing(o.findings().facts());
+                }
+            }
+            facts.apply(doc);               // every address, group address and MAC the capture showed, as sourced low-confidence facts
             // connections that never completed a handshake: edges only with --keep-scans, but the total is worth knowing
             long scanTotal = Math.max(conversations.scanAttempts(), zeek == null ? 0 : zeek.stats().scanAttempts());
             if (scanTotal > 0) {

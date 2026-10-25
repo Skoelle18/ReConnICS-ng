@@ -15,6 +15,7 @@ import java.util.Set;
 public final class IngestSchemaValidator {
     private static final Set<String> CONFIDENCE = Set.of("HIGH", "MEDIUM", "LOW");
     private static final Set<String> TRANSPORT = Set.of("tcp", "udp");
+    private static final Set<String> GROUP_KINDS = Set.of("broadcast", "multicast");
     private static final Set<String> ACCESS = Set.of("read", "write", "control", "other");
     /** A flow's {@code source} is the engines that saw it joined by "+": zeek, native, tshark (in that order). */
     private static final Set<String> FLOW_ENGINES = Set.of("zeek", "native", "tshark");
@@ -52,6 +53,12 @@ public final class IngestSchemaValidator {
             assets = root.get("assets");
             if (root.has("flows")) {
                 validateFlows(root.get("flows"), errors);
+            }
+            if (root.has("groups")) {
+                validateGroups(root.get("groups"), errors);
+            }
+            if (root.has("macs")) {
+                validateMacs(root.get("macs"), errors);
             }
         } else {
             errors.add("root must be an array or object");
@@ -212,6 +219,66 @@ public final class IngestSchemaValidator {
             }
             if (f.has("operations")) {
                 validateOperations(f.get("operations"), at, errors);
+            }
+        }
+    }
+
+    /** {@code groups}: broadcast / multicast destinations seen on the wire. Not hosts: they are never assets and are never matched to advisories. */
+    private void validateGroups(JsonNode groups, List<String> errors) {
+        if (!groups.isArray()) {
+            errors.add("'groups' must be an array when present");
+            return;
+        }
+        for (int i = 0; i < groups.size(); i++) {
+            JsonNode g = groups.get(i);
+            String at = "groups[" + i + "]";
+            if (!g.isObject() || text(g, "address") == null) {
+                errors.add(at + " must be an object with an address");
+                continue;
+            }
+            if (!(g.has("kind") && g.get("kind").isTextual() && GROUP_KINDS.contains(g.get("kind").asText()))) {
+                errors.add(at + ".kind must be broadcast|multicast");
+            }
+            for (String k : List.of("packets", "bytes", "sendersNotListed")) {
+                if (g.has(k) && !count(g.get(k))) {
+                    errors.add(at + "." + k + " must be a non-negative integer");
+                }
+            }
+            for (String k : List.of("senders", "ports", "protocols")) {
+                if (g.has(k) && !g.get(k).isArray()) {
+                    errors.add(at + "." + k + " must be an array");
+                }
+            }
+            for (String k : List.of("firstSeen", "lastSeen")) {
+                if (g.has(k) && !instant(g.get(k))) {
+                    errors.add(at + "." + k + " must be an ISO-8601 UTC timestamp");
+                }
+            }
+        }
+    }
+
+    /** {@code macs}: the Ethernet view, one entry per source MAC with the addresses it carried. */
+    private void validateMacs(JsonNode macs, List<String> errors) {
+        if (!macs.isArray()) {
+            errors.add("'macs' must be an array when present");
+            return;
+        }
+        for (int i = 0; i < macs.size(); i++) {
+            JsonNode m = macs.get(i);
+            String at = "macs[" + i + "]";
+            if (!m.isObject() || text(m, "mac") == null) {
+                errors.add(at + " must be an object with a mac");
+                continue;
+            }
+            for (String k : List.of("frames", "framesTo", "groupFrames", "ipCount", "toIpCount")) {
+                if (m.has(k) && !count(m.get(k))) {
+                    errors.add(at + "." + k + " must be a non-negative integer");
+                }
+            }
+            for (String k : List.of("ips", "toIps", "notes")) {
+                if (m.has(k) && !m.get(k).isArray()) {
+                    errors.add(at + "." + k + " must be an array");
+                }
             }
         }
     }

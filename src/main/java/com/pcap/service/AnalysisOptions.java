@@ -7,7 +7,7 @@ import java.time.Duration;
  * What the analysis runs and keeps.
  *
  * @param icsOnly     leave out the unknown-protocol host-pair flows (CLI {@code --ics-only}); decoded protocols only
- * @param keepScans   give conversations that only ever saw scan attempts an edge of their own (CLI {@code --keep-scans})
+ * @param keepScans   give conversations that only ever saw scan attempts an edge of their own (default; CLI {@code --drop-scans} turns it off, {@code --keep-scans} is accepted and means the default)
  * @param engine      which engines read the capture (CLI {@code --engine}); the native decoders always run
  * @param zeekLogs    read Zeek logs that already exist instead of running Zeek (CLI {@code --zeek-logs}); null = run Zeek
  * @param zeekTimeout how long a Zeek run may take (CLI {@code --zeek-timeout}); null = the runner's default
@@ -26,7 +26,7 @@ public record AnalysisOptions(boolean icsOnly, boolean keepScans, Engine engine,
      */
     public enum Tools { DEFAULT, AUTO, OFF }
 
-    public static final AnalysisOptions DEFAULT = new AnalysisOptions(false, false);
+    public static final AnalysisOptions DEFAULT = new AnalysisOptions(false, true);
 
     public AnalysisOptions(boolean icsOnly, boolean keepScans) {
         this(icsOnly, keepScans, Engine.NATIVE, null, null, Tools.DEFAULT);
