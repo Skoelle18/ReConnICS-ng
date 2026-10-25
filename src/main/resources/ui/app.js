@@ -33,7 +33,7 @@ const SITE_DEFAULTS = { lifecycle: 'In service' };
 const S = { engines: null, inv: null, rank: [], site: {}, flows: [], caps: [], changes: [], index: null, search: '', level: 'ALL', kevOnly: false, unvalOnly: false,
   openCap: null, openAdv: null, tab: 'attrs', editing: false, staged: null,
   color: 'role', showAdv: true, layout: 'force', path: null,
-  hideUnknown: false, hideScans: false, protoOff: new Set(),
+  hideUnknown: false, hideScans: true, hideSeenOnly: false, showGroups: false, groups: [], macs: [], protoOff: new Set(),
   capAssets: {}, assetCaps: new Map(), capOff: new Set() };
 
 // ------------------------------------------------------------------ helpers
@@ -111,9 +111,9 @@ function purdueOf(a) {
 
 // ------------------------------------------------------------------ flows (edges)
 
-const PROTO_NAME = { modbus: 'Modbus', dnp3: 'DNP3', s7comm: 'S7', 'ethernet-ip': 'ENIP', snmp: 'SNMP', unknown: 'Unknown' };
+const PROTO_NAME = { modbus: 'Modbus', dnp3: 'DNP3', s7comm: 'S7', 'ethernet-ip': 'ENIP', snmp: 'SNMP', icmp: 'ICMP', unknown: 'Unknown' };
 // One colour per protocol on the graph; anything unnamed (including a service name Zeek made up) is grey like unknown.
-const PROTO_COLOR = { modbus: '#38BDF8', dnp3: '#F472B6', 'ethernet-ip': '#A3E635', s7comm: '#FB923C', snmp: '#C084FC', unknown: '#7B8696' };
+const PROTO_COLOR = { modbus: '#38BDF8', dnp3: '#F472B6', 'ethernet-ip': '#A3E635', s7comm: '#FB923C', snmp: '#C084FC', icmp: '#FACC15', unknown: '#7B8696' };
 const protoKey = (p) => (PROTO_COLOR[p] ? p : 'unknown');
 const protoColor = (p) => PROTO_COLOR[protoKey(p)];
 const protoName = (p) => PROTO_NAME[p] || p;
@@ -208,6 +208,7 @@ const reviewCount = () => new Set(reviewGroups().flatMap((g) => g.items.map((i) 
 async function loadAll() {
   const [inv, caps, idx] = await Promise.all([api('GET', 'inventory'), api('GET', 'captures'), api('GET', 'index')]);
   S.inv = inv.inventory; S.rank = inv.rank; S.site = inv.site; S.flows = inv.flows || []; S.caps = caps; S.index = idx;
+  S.groups = inv.groups || []; S.macs = inv.macs || [];
   S.capAssets = inv.captureAssets || {};
   S.assetCaps = new Map();
   Object.entries(S.capAssets).forEach(([id, ids]) => (ids || []).forEach((a) => {
@@ -218,7 +219,7 @@ async function loadAll() {
 // ------------------------------------------------------------------ chrome
 
 function chrome(route) {
-  document.querySelectorAll('[data-nav]').forEach((n) => n.classList.toggle('on', n.dataset.nav === route || ((route === 'asset' || route === 'edge') && n.dataset.nav === 'graph')));
+  document.querySelectorAll('[data-nav]').forEach((n) => n.classList.toggle('on', n.dataset.nav === route || ((route === 'asset' || route === 'edge' || route === 'group') && n.dataset.nav === 'graph')));
   const active = S.caps.filter((c) => c.state === 'queued' || c.state === 'running').length;
   $('n-queue').textContent = active || '';
   $('n-review').textContent = reviewCount() || '';
@@ -238,6 +239,20 @@ function chrome(route) {
   else if (ix.warning) banner.append(h('div', { class: 'banner warn' }, ix.warning));
 }
 
+/**
+ * Nothing the analyzer retained is dropped; classes of low value are only left off the graph, and each one is listed here with how many
+ * it holds, whether it is hidden now, and a button to flip it (docs/data-contract.md, "Hidden by default").
+ */
+const isSeenOnly = (a) => !!a.seenOnly;
+function hiddenClasses() {
+  return [
+    { label: 'Broadcast / multicast addresses', n: S.groups.length, hidden: !S.showGroups, flip: () => { S.showGroups = !S.showGroups; relayoutSoon(); } },
+    { label: 'Scan-only conversations', n: S.flows.filter(isScan).length, hidden: S.hideScans, flip: () => { S.hideScans = !S.hideScans; } },
+    { label: 'Seen-only hosts (low confidence)', n: assets().filter(isSeenOnly).length, hidden: S.hideSeenOnly, flip: () => { S.hideSeenOnly = !S.hideSeenOnly; } },
+    { label: 'Unknown-protocol conversations', n: S.flows.filter((f) => protoKey(f.protocol) === 'unknown' && !isScan(f)).length, hidden: S.hideUnknown, flip: () => { S.hideUnknown = !S.hideUnknown; } },
+  ];
+}
+
 /** Filter button: the match-level / KEV / validation filters and how the graph is drawn. */
 function filterPanel() {
   const p = $('pop-filter');
@@ -247,7 +262,9 @@ function filterPanel() {
   p.replaceChildren(
     group('Advisory match', ['ALL', ...LEVELS].map((l) => on(l === 'ALL' ? 'All levels' : l, S.level === l, () => { S.level = l; }))),
     group('Show only', on('KEV only', S.kevOnly, () => { S.kevOnly = !S.kevOnly; }), on('Not validated', S.unvalOnly, () => { S.unvalOnly = !S.unvalOnly; })),
-    group('Show conversations', on('Unknown protocol', !S.hideUnknown, () => { S.hideUnknown = !S.hideUnknown; }), on('Scan attempts', !S.hideScans, () => { S.hideScans = !S.hideScans; })),
+    h('div', { class: 'stack', style: { gap: '6px' }, id: 'hidden-facet' }, h('div', { class: 'small strong' }, 'Hidden by default'),
+      hiddenClasses().map((c) => h('div', { class: 'row small' },
+        on(c.hidden ? 'Show' : 'Hide', !c.hidden, c.flip), h('span', {}, c.label + ': ' + c.n), h('span', { class: 'muted' }, c.n === 0 ? 'none' : c.hidden ? 'hidden, kept in the inventory' : 'shown')))),
     group('Protocols', Object.keys(PROTO_COLOR).filter((k) => k !== 'unknown').map((k) => h('label', { class: 'chip proto' + (S.protoOff.has(k) ? '' : ' on'), style: { borderLeft: '4px solid ' + PROTO_COLOR[k] } },
       h('input', { type: 'checkbox', class: 'sr', checked: S.protoOff.has(k) ? null : true, 'aria-label': 'Show ' + protoName(k) + ' conversations',
         onchange: () => { if (S.protoOff.has(k)) S.protoOff.delete(k); else S.protoOff.add(k); render(); } }), protoName(k)))),
@@ -274,7 +291,7 @@ function focusCapture(id) {
 /** Clear every view filter and selection; captures, edits and the change log stay untouched. */
 function resetView() {
   S.search = ''; S.level = 'ALL'; S.kevOnly = false; S.unvalOnly = false;
-  S.hideUnknown = false; S.hideScans = false; S.protoOff = new Set(); S.capOff = new Set();
+  S.hideUnknown = false; S.hideScans = true; S.hideSeenOnly = false; S.showGroups = false; S.protoOff = new Set(); S.capOff = new Set();
   S.color = 'role'; S.showAdv = true; S.layout = 'force'; S.path = null; S.openCap = null; S.openAdv = null;
   $('q').value = ''; $('start').value = ''; $('target').value = '';
   lastRoute = '';
@@ -290,6 +307,7 @@ function legendPanel() {
     h('div', { class: 'stack', style: { gap: '4px' } }, S.color === 'risk' ? [...LEVELS, 'UNRUN'].map((l) => sw(LEVEL_COLOR[l], l === 'UNRUN' ? 'NOT RUN' : l)) : Object.keys(ROLE_COLOR).map((g) => sw(ROLE_COLOR[g], g))),
     h('div', { class: 'strong' }, 'Edge colour: protocol'),
     h('div', { class: 'stack', style: { gap: '4px' } }, Object.keys(PROTO_COLOR).map((k) => sw(PROTO_COLOR[k], protoName(k) + (k === 'unknown' ? ' (carried, not decoded)' : '')))),
+    h('div', { class: 'small' }, 'Dashed ring: a host only seen on the wire (low confidence). Grey broadcast node: a broadcast or multicast address, not a device.'),
     h('div', { class: 'small' }, 'Red ring: KEV-listed advisory at model. Check badge: validated. Triangle: advisory (red when KEV-listed). Dashed grey edge: unit or slot behind a gateway.'),
     h('div', { class: 'small' }, 'Arrows run client to server and are labelled with the message kind seen (Modbus FC43/14, ListIdentity, S7 SZL). Thicker means more messages. Click an edge for its operations, rate and times. Unknown edges are host pairs that were counted, not decoded.'),
     h('div', { class: 'small muted' }, 'Keyboard: Tab to a node, Enter opens it. On the graph: arrows pan, + and - zoom, 0 fits.'),
@@ -481,7 +499,9 @@ function asset(id) {
       h('div', { class: 'card-b head', style: { alignItems: 'flex-start' } },
         h('div', { class: 'stack', style: { gap: '6px' } },
           h('div', { class: 'row' }, h('h1', {}, nameOf(a)), levelBadge(levelOf(a)), a.match && a.match.kevAtModel ? h('span', { class: 'badge kev' }, 'KEV at model') : null,
-            h('span', { class: 'badge ' + (isValidated(a) ? 'ok' : 'lv-NONE') }, isValidated(a) ? 'Validated' : 'Pending validation')),
+            h('span', { class: 'badge ' + (isValidated(a) ? 'ok' : 'lv-NONE') }, isValidated(a) ? 'Validated' : 'Pending validation'),
+            a.seenOnly ? h('span', { class: 'badge warn', title: 'Only seen on the wire: no decoder, Zeek host or tool has evidence beyond that' }, 'seen only') : null,
+            (a.behaviour || []).filter((b) => b !== 'addressed-only').map((b) => h('span', { class: 'badge warn' }, b))),
           h('div', { class: 'mono muted' }, a.id + ' · ' + (str(val(a, 'mac')) || 'no MAC (sub-unit or routed)')),
           a.subaddr ? h('div', { class: 'small muted' }, 'Sub-unit ' + a.subaddr + '. Inherits IP, protocols and ports from its parent.') : null,
           h('div', { class: 'small row' }, h('span', { class: 'muted' }, 'Seen in:'), capturesOf(a).length
@@ -493,7 +513,7 @@ function asset(id) {
           fact('Lifecycle', site.lifecycle || 'In service'))),
       c.nextStep ? h('div', { class: 'note' }, h('strong', {}, 'Next step to raise the match: '), c.nextStep) : null,
       h('div', { class: 'tabs' }, tab('attrs', 'Attributes'), tab('advs', 'Advisories (' + advs.length + ')'), tab('conv', 'Conversations (' + convs.length + ')'), tab('hist', 'History (' + hist.length + ')'))),
-    S.tab === 'attrs' ? attrsCard(a, site, role) : S.tab === 'conv' ? convCard(convs, a.id) : S.tab === 'advs' ? h('div', { class: 'card' },
+    S.tab === 'attrs' ? [attrsCard(a, site, role), observedCard(a)] : S.tab === 'conv' ? convCard(convs, a.id) : S.tab === 'advs' ? h('div', { class: 'card' },
       advs.length ? advs.map((x) => h('div', { class: 'card-b stack', style: { gap: '8px', borderBottom: '1px solid var(--line2)' } },
         h('div', { class: 'row' }, h('span', { class: 'mono strong' }, x.advisory), levelBadge(x.level), (x.kev || []).length ? h('span', { class: 'badge kev' }, 'KEV') : null,
           h('span', { class: 'badge lv-NONE' }, 'CVSS ' + (x.cvss || 0).toFixed(1))),
@@ -509,19 +529,75 @@ function asset(id) {
   ];
 }
 
+const OBSERVED_TEXT = { 'icmp-echo-request': 'sent ICMP echo requests', 'icmp-echo-reply': 'answered ICMP echo', 'icmp-echo-target': 'was pinged', 'dhcp-client': 'sent DHCP',
+  'group-sender': 'sent to a broadcast / multicast address', 'arp-sender': 'sent ARP', 'arp-asked': 'was asked for in ARP', 'arp-probe': 'sent an ARP probe', 'source-0.0.0.0': 'sent from 0.0.0.0',
+  'arp-sender-virtual-router-mac': 'sent ARP from a virtual-router MAC' };
+const BEHAVIOUR_TEXT = { 'probe-like': 'SYNs nobody answered or a port refused: it behaves like a probe', 'incomplete-handshake': 'the server answered SYN-ACK and this client never completed the handshake (half-open; not the same as a refused or unanswered probe)',
+  'addressed-only': 'only ever the destination: it never sent a frame in these captures' };
+/** What the analyzer saw on the wire without being able to decode it: tags, DHCP details, the web server's identity, traffic to group addresses. */
+function observedCard(a) {
+  const obs = a.observed || {}, tags = Object.entries(obs), d = a.dhcp, w = a.http, ip = str(val(a, 'ip')) || a.id.split('/')[0];
+  const groups = S.flows.filter((f) => f.client === ip && S.groups.some((g) => g.address === f.server));
+  if (!tags.length && !d && !w && !groups.length && !(a.behaviour || []).length) return null;
+  const line = (label, text) => h('div', {}, h('span', { class: 'muted small' }, label + ' '), h('span', { class: 'wrap' }, text));
+  return h('div', { class: 'card', id: 'observed' }, h('div', { class: 'card-h' }, 'Observed on the wire', h('span', { class: 'muted small' }, 'evidence, not a decode')),
+    h('div', { class: 'card-b stack', style: { gap: '6px' } },
+      (a.behaviour || []).map((b) => line(b + ':', BEHAVIOUR_TEXT[b] || b)),
+      tags.length ? h('div', { class: 'small row' }, tags.map(([k, n]) => h('span', { class: 'badge lv-NONE' }, (OBSERVED_TEXT[k] || k.replace(/^icmp:/, 'ICMP ')) + ' ×' + n))) : null,
+      groups.map((f) => line('To ' + f.server + ' ' + f.port + ':', (f.messages || f.packets || 0) + ' messages, ' + (f.protocol === 'unknown' ? (f.portHint ? protoName(f.portHint) + '?' : 'not decoded') : f.protocol))),
+      d ? h('div', { class: 'stack small', style: { gap: '2px' } }, h('strong', {}, 'DHCP'), d.hostName ? line('Host name', d.hostName) : null, d.clientFqdn ? line('FQDN', d.clientFqdn) : null,
+        d.vendorClass ? line('Vendor class', d.vendorClass) : null, d.requestedAddr ? line('Requested address', d.requestedAddr) : null, d.mac ? line('Client MAC', d.mac) : null,
+        (d.messageTypes || []).length ? line('Messages', d.messageTypes.join(', ') + (d.messages ? ' (' + d.messages + ')' : '')) : null,
+        !d.hostName && !d.vendorClass && !d.requestedAddr ? h('span', { class: 'muted' }, 'The DHCP packets carry no host name, vendor class or requested address.') : null) : null,
+      w ? h('div', { class: 'stack small', style: { gap: '2px' } }, h('strong', {}, 'Web server'), w.server ? line('Server header', w.server) : null,
+        (w.hosts || []).length ? line('Host', w.hosts.join(', ')) : null, (w.uris || []).length ? line('URIs', w.uris.join('  ')) : null,
+        w.statuses ? line('Status codes', Object.entries(w.statuses).map(([k, n]) => k + ' ×' + n).join(', ')) : null, (w.contentTypes || []).length ? line('Content types', w.contentTypes.join(', ')) : null,
+        w.requests ? line('Requests', String(w.requests)) : null) : null));
+}
+
 /** Observed conversations of one asset (the graph's edges touching it), with the message kinds as evidence. */
 const convsOf = (a) => graphModel().edges.filter((e) => e.kind === 'flow' && (e.from === a.id || e.to === a.id));
 function convCard(convs, id) {
   return h('div', { class: 'card' }, convs.length ? convs.map((e) => {
-    const out = e.from === id, peer = byId(out ? e.to : e.from);
+    const out = e.from === id, peerId = out ? e.to : e.from, grp = peerId.startsWith('grp:'), peer = grp ? { id: peerId.slice(4) } : byId(peerId);
     return h('div', { class: 'card-b stack', style: { gap: '6px', borderBottom: '1px solid var(--line2)' } },
-      h('div', { class: 'row' }, h('span', { class: 'badge lv-NONE' }, out ? 'to' : 'from'), h('a', { class: 'strong', href: '#/asset/' + encodeURIComponent(peer.id) }, nameOf(peer)),
+      h('div', { class: 'row' }, h('span', { class: 'badge lv-NONE' }, out ? 'to' : 'from'), h('a', { class: 'strong', href: (grp ? '#/group/' : '#/asset/') + encodeURIComponent(peer.id) }, grp ? peer.id : nameOf(peer)),
         h('span', { class: 'mono small muted' }, peer.id), h('span', { class: 'badge c-LOW', style: { borderLeft: '4px solid ' + protoColor(e.f.protocol) } }, e.f.protocol + ' ' + e.f.port + (e.f.portHint ? ' (' + e.f.portHint + '?)' : '')),
         h('span', { class: 'small muted' }, e.n + (e.n === 1 ? ' message' : ' messages') + ' · ' + fmtRate(flowRate(e.f))),
         h('a', { class: 'btn sm', href: '#/edge/' + encodeURIComponent(e.key) }, 'Details')),
       h('div', { class: 'small' }, Object.entries(e.f.labels || {}).map(([k, n]) => k + ' ×' + n).join(' · ') || 'no message kinds recorded'),
       (e.f.operations || []).length ? h('div', { class: 'small muted' }, 'Operations: ' + opsSummary(e.f, 3) + ((e.f.operations || []).length > 3 ? ' · +' + (e.f.operations.length - 3) + ' more' : '')) : null);
   }) : h('div', { class: 'empty' }, 'No conversation seen for this asset yet. Edges come from decoded Modbus, DNP3, EtherNet/IP, S7comm and SNMP messages, and from TCP/UDP host pairs the analyzer could not decode (shown as unknown).'));
+}
+
+/** The side panel of a broadcast or multicast address: not an asset, so no match, no role, no score. */
+function groupPanel(address) {
+  const back = h('a', { class: 'btn sm', href: '#/graph' }, '‹ Graph');
+  const g = S.groups.find((x) => x.address === address);
+  if (!g) return [back, h('div', { class: 'card empty' }, 'No such address in the current inventory.')];
+  const fs = S.flows.filter((f) => f.server === address);
+  return [h('div', { class: 'row' }, back), h('div', { class: 'card' },
+    h('div', { class: 'card-b stack', style: { gap: '8px' } }, h('h1', {}, address), h('div', { class: 'row' }, h('span', { class: 'badge lv-NONE' }, g.kind), g.scope ? h('span', { class: 'small muted' }, g.scope) : null),
+      h('div', { class: 'small muted' }, 'A group address is where frames are sent to be heard by many hosts. It is not a device: it is never an asset, never matched to an advisory and never scored.')),
+    h('div', { class: 'card-b facts' }, fact('Packets', (g.packets || 0).toLocaleString()), fact('Bytes', fmtBytes(g.bytes || 0)), g.firstSeen ? fact('First seen', fmtStamp(g.firstSeen)) : fact('Time', 'unknown'),
+      g.lastSeen ? fact('Last seen', fmtStamp(g.lastSeen)) : null, (g.ports || []).length ? fact('Ports', g.ports.join(', '), true) : null, (g.protocols || []).length ? fact('Protocols', g.protocols.join(', ')) : null)),
+  h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Senders (' + (g.senders || []).length + ')'),
+    h('div', { class: 'card-b stack', style: { gap: '4px' } }, (g.senders || []).map((ip) => h('div', {}, endLink(ip), (fs.find((f) => f.client === ip) ? h('span', { class: 'small muted' }, '  ' + fs.filter((f) => f.client === ip).map((f) => f.port + ' ×' + (f.messages || 0)).join(', ')) : null)))))];
+}
+
+/** The Ethernet view: one row per MAC with the maker, frame counts and the IPs behind it; the gateway, firewall and NAT notes are inference. */
+function ethernet() {
+  const rows = S.macs;
+  const notes = rows.filter((m) => (m.notes || []).length);
+  return [h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Ethernet', h('span', { class: 'muted small' }, rows.length + ' MAC addresses')),
+    h('div', { class: 'card-b small muted' }, 'Per source MAC address: who made the network card, how many frames it sent and received, and which IP addresses were seen behind it. A MAC that carries several IPs is often a router, firewall or NAT interface; every such note below is inferred from addresses, not observed.')),
+  notes.length ? h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Inferred topology notes'),
+    h('div', { class: 'card-b stack', style: { gap: '6px' } }, notes.slice(0, 40).map((m) => h('div', { class: 'small' }, h('span', { class: 'mono strong' }, m.mac), m.vendor ? ' (' + m.vendor + ')' : '', ' ', h('span', { class: 'badge warn' }, m.kind), ' ', m.notes.join('; '))))) : null,
+  h('div', { class: 'card' }, rows.length ? h('div', { class: 'scroll' },
+    h('div', { class: 'trow thead g-mac' }, ['MAC', 'Maker', 'Frames sent', 'Received', 'Kind', 'IPs behind it'].map((t) => h('span', {}, t))),
+    rows.slice(0, 500).map((m) => h('div', { class: 'trow g-mac' }, h('span', { class: 'mono small' }, m.mac), h('span', { class: 'small wrap' }, m.vendor || '—'),
+      h('span', { class: 'mono' }, (m.frames || 0).toLocaleString()), h('span', { class: 'mono' }, (m.framesTo || 0).toLocaleString()), h('span', {}, m.kind && m.kind !== 'host' ? h('span', { class: 'badge warn' }, m.kind) : m.kind || ''),
+      h('span', { class: 'mono small wrap' }, (m.ips || []).slice(0, 6).join(', ') + ((m.ipCount || 0) > 6 ? ' +' + (m.ipCount - 6) + ' more' : ''))))) : h('div', { class: 'empty' }, 'No Ethernet data yet. It comes from analyzing a capture with this version.'))];
 }
 
 /** One asset as a link, from the IP a conversation names. */
@@ -577,6 +653,7 @@ function edgePanel(key) {
         fact('Messages', (f.messages || 0).toLocaleString()), pair ? null : fact('Rate', fmtRate(rate)),
         f.packets != null ? fact('Packets', f.packets.toLocaleString()) : null, f.bytes != null ? fact('Bytes', fmtBytes(f.bytes)) : null,
         f.firstSeen ? fact('First seen', fmtStamp(f.firstSeen)) : null, f.lastSeen ? fact('Last seen', fmtStamp(f.lastSeen)) : null,
+        !pair && !f.firstSeen && !f.lastSeen ? fact('Time', 'unknown (the capture has no usable timestamps)') : null,
         fmtSpan(f) ? fact('Span', fmtSpan(f)) : null, f.scanAttempts ? fact('Scan attempts', f.scanAttempts.toLocaleString()) : null)),
     ...kindsAndOps(f),
     ...toolEvidence(f),
@@ -766,6 +843,7 @@ const ICONS = {   // 24x24 line icons, drawn dark on the bright node colour
   Drive: 'M12 8a4 4 0 1 0 .01 0 M3 12h3 M18 12h3', 'Comms adapter': 'M4 12h16 M8 8l-4 4 4 4 M16 8l4 4-4 4',
   Other: 'M6 6h12v12H6z', Unknown: 'M9 9a3 3 0 1 1 4.5 2.6c-1 .6-1.5 1.1-1.5 2.4 M12 17.5h.01',
 };
+const GROUP_ICON = 'M4 12a8 8 0 0 1 16 0 M7.5 12a4.5 4.5 0 0 1 9 0 M12 12h.01 M12 12v7';   // radiating arcs: a broadcast
 const GR = { pos: new Map(), view: { x: 0, y: 0, k: 1 }, fitted: false, sig: '', vp: null, els: null, drag: null, moved: false };
 
 /** "ListIdentity" -> "ENIP ListIdentity"; the top message kind of a conversation, "+n" when there are more. */
@@ -775,12 +853,13 @@ function flowLabel(f) {
   if (!kinds.length) return protoKey(f.protocol) === 'unknown' ? (f.port || 'unknown') + (f.portHint ? ' (' + protoName(f.portHint) + '?)'
     : f.classifiedBy && f.classifiedBy.length ? ' (' + f.classifiedBy[0].protocol + '?)' : '') : protoName(f.protocol);
   const pre = protoName(f.protocol);
-  const top = /^(Modbus|DNP3|SNMP|S7|EtherNet\/IP|CIP)/.test(kinds[0]) ? kinds[0] : pre + ' ' + kinds[0];
+  const top = /^(Modbus|DNP3|SNMP|S7|EtherNet\/IP|CIP|ICMP)/.test(kinds[0]) ? kinds[0] : pre + ' ' + kinds[0];
   return top + (kinds.length > 1 ? ' +' + (kinds.length - 1) : '');
 }
 
 function graphModel() {
-  const all = assets().filter(assetVisible), nodes = all.map((a) => ({ id: a.id, a })), edges = [];
+  const all = assets().filter((a) => assetVisible(a) && !(S.hideSeenOnly && isSeenOnly(a))), nodes = all.map((a) => ({ id: a.id, a })), edges = [];
+  const groupAt = new Map(S.groups.map((g) => [g.address, g]));       // broadcast / multicast destinations: drawn as grey nodes only when asked for
   const ipOf = (a) => str(val(a, 'ip')) || a.id.split('/')[0];
   const owner = new Map();                                              // IP -> the asset that owns it (a unit/slot only when nothing else does)
   for (const a of all) if (!a.subaddr) owner.set(ipOf(a), a.id);
@@ -788,8 +867,10 @@ function graphModel() {
   for (const a of all) if (a.subaddr && owner.get(ipOf(a)) !== a.id) edges.push({ id: 'u:' + a.id, kind: 'unit', from: owner.get(ipOf(a)), to: a.id, label: a.subaddr });
   const byPair = new Map();                                             // from>to -> its flows; a busy pair becomes one edge, not one per port
   S.flows.forEach((f, i) => {
-    const from = owner.get(f.client), to = owner.get(f.server);
+    const from = owner.get(f.client), g = groupAt.get(f.server);
+    const to = g ? (S.showGroups ? 'grp:' + g.address : null) : owner.get(f.server);
     if (!(from && to && from !== to) || flowHidden(f)) return;
+    if (g && !nodes.some((n) => n.id === to)) nodes.push({ id: to, g });
     const k = from + '\n' + to;
     (byPair.get(k) || byPair.set(k, []).get(k)).push({ f, i, from, to });
   });
@@ -813,6 +894,7 @@ function graphModel() {
 }
 
 function nodeLabel(n) {
+  if (n.g) return n.g.kind + ' address ' + n.g.address + ', not a device; ' + (n.g.senders || []).length + ' sender' + ((n.g.senders || []).length === 1 ? '' : 's');
   if (n.adv) return 'Advisory ' + n.adv.id + ', CVSS ' + n.adv.cvss.toFixed(1) + (n.adv.kev ? ', KEV listed' : '') + ', affects ' + n.adv.hits.length + (n.adv.hits.length === 1 ? ' asset' : ' assets');
   const a = n.a, vm = [str(val(a, 'vendor')), str(val(a, 'model'))].filter(Boolean).join(' ');
   return nameOf(a) + ', ' + a.id + ', ' + roleGroup(a) + (vm ? ', ' + vm : '') + ', advisory match ' + (levelOf(a) === 'UNRUN' ? 'not run' : levelOf(a))
@@ -950,7 +1032,7 @@ function findPath(from, to) {
     while (queue.length && !prev.has(to)) {
       const u = queue.shift();
       for (const e of edges) {
-        if (e.kind === 'adv') continue;
+        if (e.kind === 'adv' || e.to.startsWith('grp:')) continue;            // a path through a broadcast address is no path
         const v = e.from === u ? e.to : !directed && e.to === u ? e.from : null;
         if (v && !prev.has(v)) { prev.set(v, { u, e: e.id }); queue.push(v); }
       }
@@ -965,12 +1047,14 @@ function findPath(from, to) {
 }
 
 function nodeColor(n) {
+  if (n.g) return '#5B6676';
   if (n.adv) return n.adv.kev ? LEVEL_COLOR.EXACT : LEVEL_COLOR.PROBABLE;
   return S.color === 'risk' ? LEVEL_COLOR[levelOf(n.a)] : ROLE_COLOR[roleGroup(n.a)];
 }
 
 function pickNode(id) {
-  if (id.startsWith('adv:')) { S.openAdv = id.slice(4); location.hash = '#/advisories'; } else location.hash = '#/asset/' + encodeURIComponent(id);
+  if (id.startsWith('grp:')) location.hash = '#/group/' + encodeURIComponent(id.slice(4));
+  else if (id.startsWith('adv:')) { S.openAdv = id.slice(4); location.hash = '#/advisories'; } else location.hash = '#/asset/' + encodeURIComponent(id);
 }
 
 function drawGraph() {
@@ -981,7 +1065,7 @@ function drawGraph() {
   if (!GR.fitted) fitView();
   $('graph-empty').hidden = nodes.length > 0;
 
-  const r = route(), sel = r.name === 'asset' ? r.arg : null, selEdge = r.name === 'edge' ? r.arg : null, byNode = (id) => (id.startsWith('adv:') ? id.slice(4) : nameOf(byId(id)) === id ? id : nameOf(byId(id)) + ' (' + id + ')');
+  const r = route(), sel = r.name === 'asset' ? r.arg : null, selEdge = r.name === 'edge' ? r.arg : null, byNode = (id) => (id.startsWith('adv:') || id.startsWith('grp:') ? id.slice(4) : nameOf(byId(id)) === id ? id : nameOf(byId(id)) + ' (' + id + ')');
   const near = new Set(sel ? [sel] : []);
   if (sel) edges.forEach((e) => { if (e.from === sel) near.add(e.to); if (e.to === sel) near.add(e.from); });
   if (selEdge) edges.forEach((e) => { if (e.key === selEdge) { near.add(e.from); near.add(e.to); } });
@@ -1013,17 +1097,17 @@ function drawGraph() {
       sv('title', {}, edgeLabel(e, byNode)), hit, path, label);
   });
   const nodeEls = nodes.map((n) => {
-    const a = n.a, dim = !on.has(n.id), kev = n.adv ? n.adv.kev : !!(a.match && a.match.kevAtModel);
-    const name = n.adv ? n.adv.id : nameOf(a), short = name.length > 22 ? name.slice(0, 21) + '…' : name;
-    const g = sv('g', { class: 'node' + (dim ? ' dim' : '') + (n.id === sel ? ' sel' : '') + (n.adv ? ' adv' : ''), tabindex: '0', role: 'button', 'data-id': n.id, 'aria-label': nodeLabel(n),
+    const a = n.a, dim = !on.has(n.id), kev = a ? !!(a.match && a.match.kevAtModel) : !!(n.adv && n.adv.kev);
+    const name = n.adv ? n.adv.id : n.g ? n.g.address : nameOf(a), short = name.length > 22 ? name.slice(0, 21) + '…' : name;
+    const g = sv('g', { class: 'node' + (dim ? ' dim' : '') + (n.id === sel ? ' sel' : '') + (n.adv ? ' adv' : '') + (n.g ? ' grp' : '') + (a && isSeenOnly(a) ? ' seen' : ''), tabindex: '0', role: 'button', 'data-id': n.id, 'aria-label': nodeLabel(n),
       onclick: () => { if (GR.moved) { GR.moved = false; return; } pickNode(n.id); },
       onkeydown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); pickNode(n.id); } },
       onpointerdown: (ev) => { if (ev.button) return; GR.moved = false; GR.drag = { id: n.id, x: ev.clientX, y: ev.clientY }; ev.stopPropagation(); } },
     sv('title', {}, nodeLabel(n)),
     kev && !n.adv ? sv('circle', { class: 'ring-kev', r: NODE_R + 5 }) : null,
     n.adv ? sv('path', { class: 'disc', d: 'M0 -21 L19 13 L-19 13 Z', fill: nodeColor(n) }) : sv('circle', { class: 'disc', r: NODE_R, fill: nodeColor(n) }),
-    sv('path', { class: 'icon', d: n.adv ? 'M0 -6v8M0 6.5h.01' : ICONS[roleGroup(a)], transform: n.adv ? null : 'translate(-9 -9) scale(.75)' }),
-    !n.adv && isValidated(a) ? sv('g', { class: 'badge-ok', transform: 'translate(13 -13)' }, sv('circle', { r: 7 }), sv('path', { d: 'M-3.5 0l2.5 2.5 4.5-5' })) : null,
+    sv('path', { class: 'icon', d: n.adv ? 'M0 -6v8M0 6.5h.01' : n.g ? GROUP_ICON : ICONS[roleGroup(a)], transform: n.adv ? null : 'translate(-9 -9) scale(.75)' }),
+    a && isValidated(a) ? sv('g', { class: 'badge-ok', transform: 'translate(13 -13)' }, sv('circle', { r: 7 }), sv('path', { d: 'M-3.5 0l2.5 2.5 4.5-5' })) : null,
     sv('text', { class: 'nlabel', y: NODE_R + 5, 'text-anchor': 'middle', 'paint-order': 'stroke' }, short));
     els.nodes.set(n.id, g);
     return g;
@@ -1114,8 +1198,8 @@ function render() {
   if (!S.inv) return;
   if (r.name + r.arg !== lastRoute) { S.tab = 'attrs'; S.editing = false; lastRoute = r.name + r.arg; }
   chrome(r.name);
-  const screens = { overview, engines, captures, review, advisories, index: indexScreen, log, asset: () => asset(r.arg), edge: () => edgePanel(r.arg) };
-  const main = $('main'), open = r.name !== 'graph', side = r.name === 'asset' || r.name === 'edge';
+  const screens = { overview, engines, captures, review, advisories, index: indexScreen, log, ethernet, asset: () => asset(r.arg), edge: () => edgePanel(r.arg), group: () => groupPanel(r.arg) };
+  const main = $('main'), open = r.name !== 'graph', side = r.name === 'asset' || r.name === 'edge' || r.name === 'group';
   main.hidden = !open;
   main.className = side ? 'panel' : 'sheet';
   $('stage').toggleAttribute('inert', open && !side);                         // a sheet covers the graph; the side panel does not
@@ -1143,7 +1227,7 @@ async function refresh(background) {
     if (route().name === 'log' || route().name === 'asset') S.changes = await api('GET', 'changes');
     if (route().name === 'engines') S.engines = await api('GET', 'engines').catch(() => S.engines || []);
   } catch (e) { if (background) { schedulePoll(); return; } toast('Cannot reach the console: ' + e.message); }
-  const sig = JSON.stringify([S.inv, S.rank, S.site, S.flows, S.caps, S.index, S.changes, S.engines]);
+  const sig = JSON.stringify([S.inv, S.rank, S.site, S.flows, S.groups, S.macs, S.caps, S.index, S.changes, S.engines]);
   if (!background || sig !== lastSig) { lastSig = sig; if (!S.editing) render(); else chrome(route().name); }
   schedulePoll();
 }

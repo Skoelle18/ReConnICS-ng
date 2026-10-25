@@ -329,11 +329,15 @@ function richInventory() {
   return inv;
 }
 const richApp = (hash = '#/graph') => loadApp({ routes: defaultRoutes({ inventory: richInventory(), flows: RICH_FLOWS }), hash });
+/** The "Hidden by default" facet row of one class (its label starts with `label`): the row text and its Show/Hide button. */
+const facetRow = (app, label) => app.$$('#hidden-facet .row').find((r) => r.textContent.includes(label));
+const showScans = async (app) => { facetRow(app, 'Scan-only').querySelector('button').click(); await settle(); };
 
 test('edges', async (t) => {
   await t.test('each protocol has its own edge colour, unknown is grey, and width grows with the message count', async () => {
     const app = await richApp();
     try {
+      await showScans(app);
       const colours = new Map(flowEdges(app).map((e) => [[...e.classList].find((c) => c.startsWith('p-')), stroke(e)]));
       assert.equal(colours.get('p-modbus'), app.get('PROTO_COLOR').modbus);
       assert.equal(colours.get('p-dnp3'), app.get('PROTO_COLOR').dnp3);
@@ -424,28 +428,30 @@ test('edges', async (t) => {
   await t.test('the filter toggles hide unknown edges, scan edges and single protocols', async () => {
     const app = await richApp();
     try {
+      assert.equal(flowEdges(app).length, 3, 'scan-only conversations are in the data but hidden by default');
+      assert.match(facetRow(app, 'Scan-only').textContent, /Scan-only conversations: 1.*hidden, kept in the inventory/);
+      await showScans(app);
       assert.equal(flowEdges(app).length, 4);
-      const chip = (label) => app.$$('#pop-filter button, #pop-filter label').find((b) => b.textContent === label);
-      chip('Unknown protocol').click();
+      const hideUnknown = () => facetRow(app, 'Unknown-protocol').querySelector('button').click();
+      hideUnknown();
       await settle();
       assert.equal(app.get('S').hideUnknown, true);
       assert.deepEqual(flowEdges(app).map((e) => [...e.classList].find((c) => c.startsWith('p-'))).sort(), ['p-dnp3', 'p-modbus'], 'both unknown edges (host pair and scan) go');
-      chip('Unknown protocol').click();
+      hideUnknown();
       await settle();
-      chip('Scan attempts').click();
+      facetRow(app, 'Scan-only').querySelector('button').click();
       await settle();
       assert.equal(flowEdges(app).length, 3);
       assert.equal(flowEdges(app).some((e) => e.classList.contains('scan')), false);
       assert.ok(edgeOf(app, 'unknown'), 'the decoded-less host pair stays');
-      chip('Scan attempts').click();
-      await settle();
+      await showScans(app);
       const box = app.$$('#pop-filter input[type=checkbox]').find((c) => /Modbus/.test(c.getAttribute('aria-label')));
       box.checked = false;
       box.dispatchEvent(new app.window.Event('change', { bubbles: true }));
       await settle();
       assert.equal(edgeOf(app, 'modbus'), undefined);
       assert.ok(edgeOf(app, 'dnp3'));
-      assert.deepEqual(app.$$('#pop-filter input[type=checkbox]').map((c) => /DNP3|Modbus|ENIP|S7|SNMP/.exec(c.getAttribute('aria-label'))[0]), ['Modbus', 'DNP3', 'ENIP', 'S7', 'SNMP']);
+      assert.deepEqual(app.$$('#pop-filter input[type=checkbox]').map((c) => /DNP3|Modbus|ENIP|S7|SNMP|ICMP/.exec(c.getAttribute('aria-label'))[0]), ['Modbus', 'DNP3', 'ENIP', 'S7', 'SNMP', 'ICMP']);
     } finally { app.close(); }
   });
 

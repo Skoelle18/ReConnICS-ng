@@ -47,6 +47,10 @@ button, input, select { font: inherit; color: inherit; }
 .edge.hot .epath { stroke: var(--accent); }
 .elabel { fill: var(--ink); font-size: var(--efs, 11px); stroke: var(--ground); stroke-width: var(--lsw, 4px); stroke-linejoin: round; dominant-baseline: central; pointer-events: none; }
 .node.dim, .edge.dim { opacity: .18; }
+.node.seen .disc { stroke-dasharray: 5 3; opacity: .72; }
+.node.grp .disc { stroke-dasharray: 2 3; opacity: .85; }
+.node.grp .nlabel { opacity: .8; }
+.g-mac { grid-template-columns: minmax(120px, 1.3fr) minmax(100px, 1.4fr) 80px 80px 100px minmax(120px, 2fr); min-width: 0; }
 
 /* ---- floating panels ---- */
 .panel, .pop { background: rgba(55, 61, 69, .97); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 20px rgba(0, 0, 0, .35); }

@@ -73,6 +73,8 @@ final class Inventory {
         final List<Map<String, Object>> missing = new ArrayList<>();
         final List<String> alerts = new ArrayList<>();
         String macHint, nextStep;
+        /** What the analyzer saw but could not name (docs/data-contract.md, "Everything observed is retained"): seenOnly, observed, behaviour, dhcp, http. */
+        final Map<String, Object> extra = new LinkedHashMap<>();
         int filled;
         AdvisoryMatcher.Level ceiling;
         MatchResult match;
@@ -147,6 +149,7 @@ final class Inventory {
         String ip, mac, subaddr;
         final Map<String, Field> f = new LinkedHashMap<>();
         final Set<String> dirs = new TreeSet<>();
+        final Map<String, Object> extra = new LinkedHashMap<>();
         Obs(int index) { this.index = index; }
     }
 
@@ -201,7 +204,10 @@ final class Inventory {
             catch (IllegalArgumentException x) { reject(idx, en.getKey(), x.getMessage()); }
         }
         // reconnics-ng writes its direction hint as attributes.role (data-contract.md); a top-level role wins.
-        if (!entry.containsKey("role") && Json.obj(entry.get("attributes")).get("role") instanceof String ar) {
+        o.extra.putAll(extraOf(Json.obj(entry.get("attributes"))));
+        boolean seenRole = "seen-only".equals(Json.obj(entry.get("attributes")).get("roleBasis"));
+        if (seenRole && Json.obj(entry.get("attributes")).get("role") instanceof String sr) o.extra.put("seenRole", clean(sr, 80));   // weaker than any other LOW role: used only when nothing else names one
+        else if (!entry.containsKey("role") && Json.obj(entry.get("attributes")).get("role") instanceof String ar) {
             String basis = Json.obj(entry.get("attributes")).get("roleBasis") instanceof String rb ? " (" + clean(rb, 32) + ")" : "";
             try { parseField(o, "role", Map.of("value", ar, "confidence", "LOW", "evidence", "reconnics-ng attributes.role" + basis)); }
             catch (IllegalArgumentException x) { reject(idx, "role", x.getMessage()); }
@@ -220,6 +226,72 @@ final class Inventory {
         return o;
     }
 
+    private static final Set<String> BEHAVIOUR = Set.of("probe-like", "incomplete-handshake", "addressed-only");
+
+    /** The retained-observation attributes of one entry, cleaned and capped: it is untrusted input like the rest. */
+    static Map<String, Object> extraOf(Map<String, Object> attrs) {
+        Map<String, Object> x = new LinkedHashMap<>();
+        if (Boolean.TRUE.equals(attrs.get("seenOnly"))) x.put("seenOnly", true);
+        if (attrs.get("observed") instanceof Map<?, ?> om) {
+            Map<String, Object> obs = new TreeMap<>();
+            for (var e : Json.obj(om).entrySet()) {
+                String k = clean(String.valueOf(e.getKey()), 48);
+                if (!k.isEmpty() && obs.size() < 40 && e.getValue() instanceof Double d && Double.isFinite(d)) obs.put(k, Math.max(0, Math.min(d, 1e12)));
+            }
+            if (!obs.isEmpty()) x.put("observed", obs);
+        }
+        if (attrs.get("behaviour") instanceof List<?> bl) {
+            List<String> b = new ArrayList<>();
+            for (Object o : bl) if (o instanceof String t && BEHAVIOUR.contains(t) && !b.contains(t)) b.add(t);
+            if (!b.isEmpty()) x.put("behaviour", b);
+        }
+        for (String k : List.of("dhcp", "http")) {
+            Object v = facts(attrs.get(k), 0);
+            if (v instanceof Map<?, ?> m && !m.isEmpty()) x.put(k, v);
+        }
+        return x;
+    }
+
+    /** Text, counts, short lists and one level of count maps: the shape of attributes.dhcp / attributes.http. */
+    private static Object facts(Object v, int depth) {
+        if (v instanceof String s) { String c = clean(s, 120); return c.isEmpty() ? null : c; }
+        if (v instanceof Double d) return Double.isFinite(d) ? Math.max(0, Math.min(d, 1e12)) : null;
+        if (depth >= 2) return null;
+        if (v instanceof List<?> l) {
+            List<Object> out = new ArrayList<>();
+            for (Object o : l) { Object c = facts(o, depth + 1); if (c != null && out.size() < 8) out.add(c); }
+            return out.isEmpty() ? null : out;
+        }
+        if (v instanceof Map<?, ?> m) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            for (var e : Json.obj(m).entrySet()) {
+                String k = clean(String.valueOf(e.getKey()), 40);
+                Object c = k.isEmpty() || out.size() >= 12 ? null : facts(e.getValue(), depth + 1);
+                if (c != null) out.put(k, c);
+            }
+            return out.isEmpty() ? null : out;
+        }
+        return null;
+    }
+
+    /** Across captures: counts add, behaviour unions, seenOnly holds only if every observation says so, dhcp/http come from the latest. */
+    private static void mergeExtra(Rec r, List<Obs> obs) {
+        boolean all = !obs.isEmpty() && obs.stream().allMatch(o -> o.extra.containsKey("seenOnly"));
+        if (all) r.extra.put("seenOnly", true);
+        Map<String, Double> seen = new TreeMap<>();
+        Set<String> beh = new LinkedHashSet<>();
+        for (Obs o : obs) {
+            if (o.extra.get("observed") instanceof Map<?, ?> m) m.forEach((k, v) -> seen.merge(String.valueOf(k), (Double) v, (a, b) -> Math.min(1e12, a + b)));
+            if (o.extra.get("behaviour") instanceof List<?> l) l.forEach(b -> beh.add(String.valueOf(b)));
+            for (String k : List.of("dhcp", "http")) if (o.extra.get(k) != null) r.extra.put(k, o.extra.get(k));
+        }
+        if (obs.stream().anyMatch(o -> !(o.extra.get("behaviour") instanceof List<?> l && l.contains("addressed-only")))) beh.remove("addressed-only");   // one capture saw it speak
+        if (!seen.isEmpty()) r.extra.put("observed", seen);
+        if (!beh.isEmpty()) r.extra.put("behaviour", new ArrayList<>(beh));
+        if (all && !r.f.containsKey("role"))
+            for (Obs o : obs) if (o.extra.get("seenRole") instanceof String sr) { r.f.put("role", new Field(sr, Conf.LOW, "reconnics-ng attributes.role (seen-only)")); break; }
+    }
+
     private static final Set<String> HEADER_KEYS = Set.of("ip", "mac", "protocols", "ports");
 
     /**
@@ -233,7 +305,7 @@ final class Inventory {
         if (b.isEmpty()) return null;
         String frames = attrs.get("firstFrame") instanceof Double f && attrs.get("lastFrame") instanceof Double l
                 && Double.isFinite(f) && Double.isFinite(l) ? ", frames " + f.longValue() + "-" + l.longValue() : "";
-        boolean portOnly = Set.of("PORT_HEURISTIC", "ZEEK_PORT").containsAll(b);   // the protocol was inferred from a port, never seen
+        boolean portOnly = Set.of("PORT_HEURISTIC", "ZEEK_PORT", "OBSERVED").containsAll(b);   // inferred from a port, or only seen on the wire: never decoded
         return "reconnics-ng " + String.join("+", b) + (portOnly ? " only" : "") + frames;
     }
 
@@ -423,6 +495,7 @@ final class Inventory {
         if (sub != null) r.macHint = "Behind a gateway or backplane; a MAC does not apply.";
         else assignMac(r, obs, gateway, oui, replaced);
         role(r, obs);
+        mergeExtra(r, obs);
         return r;
     }
 

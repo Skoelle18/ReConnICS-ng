@@ -280,7 +280,8 @@ final class IngestServer {
             } catch (IllegalArgumentException e) { reason = e.getMessage(); }   // Asset.from messages are fixed text (field names only)
             if (rejected.size() < 1000) rejected.add(Map.of("index", (double) i, "reason", reason));
         }
-        if (site != null && !ok.isEmpty()) site.addPosted(ok, doc instanceof List ? List.of() : Json.arr(Json.obj(doc).get("flows")), actor(ex));   // the UI reads only the Site inventory
+        if (site != null && !ok.isEmpty()) site.addPosted(ok, doc instanceof List ? List.of() : Json.arr(Json.obj(doc).get("flows")), doc instanceof List ? List.of() : Json.arr(Json.obj(doc).get("groups")),
+                doc instanceof List ? List.of() : Json.arr(Json.obj(doc).get("macs")), actor(ex));   // the UI reads only the Site inventory
         send(ex, rejected.isEmpty() ? 200 : 207, Json.write(Map.of("accepted", (double) accepted, "rejected", rejected)));
     }
 
