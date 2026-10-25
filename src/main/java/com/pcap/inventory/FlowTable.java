@@ -20,6 +20,8 @@ public final class FlowTable {
     static final int MAX_LABELS = 8;
     public static final int MAX_OPERATIONS = 50;
     public static final int MAX_SAMPLES = 8;
+    /** Distinct outcome labels kept per operation row. */
+    public static final int MAX_STATUSES = 6;
     private static final java.util.regex.Pattern DROP = java.util.regex.Pattern.compile(
             "\\s+(\\(|(unit|txn|objects|code|items|session|status|index|ret|rosctr|param|data|len|count|link)=).*$");
 
@@ -28,16 +30,19 @@ public final class FlowTable {
     /** One row of {@code operations}: what was asked of the server, aggregated over (function, address, quantity). */
     public static final class Operation {
         final String function, access, object;
-        final Long address, quantity;
+        final Long address, quantity, unit;
         long count;
         final List<Object> samples = new ArrayList<>();
+        /** How the calls ended (label to count): "ok", "exception: illegal data address", "unanswered", a DNP3 status or IIN flag. */
+        final Map<String, Long> statuses = new LinkedHashMap<>();
 
-        Operation(String function, String access, String object, Long address, Long quantity) {
+        Operation(String function, String access, String object, Long address, Long quantity, Long unit) {
             this.function = function;
             this.access = access;
             this.object = object;
             this.address = address;
             this.quantity = quantity;
+            this.unit = unit;
         }
 
         Map<String, Object> toMap() {
@@ -53,7 +58,13 @@ public final class FlowTable {
             if (quantity != null) {
                 m.put("quantity", quantity);
             }
+            if (unit != null) {
+                m.put("unit", unit);
+            }
             m.put("count", count);
+            if (!statuses.isEmpty()) {
+                m.put("statuses", statuses);
+            }
             if (!samples.isEmpty()) {
                 m.put("sampleValues", samples);
             }
@@ -66,7 +77,7 @@ public final class FlowTable {
         String protocol;
         long messages, packets, bytes, scanAttempts;
         long firstMicros = Long.MAX_VALUE, lastMicros = Long.MIN_VALUE;
-        String source;
+        String source, portHint;
         final Map<String, Long> labels = new LinkedHashMap<>();
         final Map<String, Operation> operations = new LinkedHashMap<>();
 
@@ -124,20 +135,42 @@ public final class FlowTable {
             return this;
         }
 
-        /** Adds {@code n} calls of one operation; new (function, address, quantity) rows stop at {@link #MAX_OPERATIONS}. */
+        /** A port-inferred protocol name for a flow nothing decoded ({@code protocol} "unknown"); never set on a decoded flow. */
+        public Flow portHint(String hint) {
+            portHint = hint;
+            return this;
+        }
+
         public Flow operation(String function, String access, String object, Long address, Long quantity, long n, List<?> values) {
+            return operation(function, access, object, address, quantity, null, n, values, null);
+        }
+
+        /**
+         * Adds {@code n} calls of one operation; new (function, object, address, quantity, unit) rows stop at {@link #MAX_OPERATIONS}.
+         * {@code statuses} (label to count, may be null) says how the calls ended.
+         */
+        public Flow operation(String function, String access, String object, Long address, Long quantity, Long unit, long n,
+                              List<?> values, Map<String, Long> statuses) {
             if (function == null || function.isEmpty()) {
                 return this;
             }
-            String key = function + '|' + access + '|' + object + '|' + address + '|' + quantity;
+            String key = function + '|' + access + '|' + object + '|' + address + '|' + quantity + '|' + unit;
             Operation o = operations.get(key);
             if (o == null) {
                 if (operations.size() >= MAX_OPERATIONS) {
                     return this;
                 }
-                operations.put(key, o = new Operation(function, access, object, address, quantity));
+                operations.put(key, o = new Operation(function, access, object, address, quantity, unit));
             }
             o.count += Math.max(1, n);
+            if (statuses != null) {
+                for (Map.Entry<String, Long> e : statuses.entrySet()) {
+                    String k = e.getKey();
+                    if (k != null && !k.isEmpty() && e.getValue() > 0 && (o.statuses.size() < MAX_STATUSES || o.statuses.containsKey(k))) {
+                        o.statuses.merge(k.length() > 64 ? k.substring(0, 64) : k, e.getValue(), Long::sum);
+                    }
+                }
+            }
             if (values != null) {
                 for (Object v : values) {
                     if (o.samples.size() >= MAX_SAMPLES) {
@@ -166,8 +199,15 @@ public final class FlowTable {
                     labels.merge(l, n, into ? Math::max : Long::sum);
                 }
             });
-            z.operations.values().forEach(o -> operation(o.function, o.access, o.object, o.address, o.quantity, o.count, o.samples));
+            z.operations.values().forEach(o -> operation(o.function, o.access, o.object, o.address, o.quantity, o.unit, o.count, o.samples, o.statuses));
+            if (portHint == null) {
+                portHint = z.portHint;
+            }
             scanAttempts = into ? Math.max(scanAttempts, z.scanAttempts) : scanAttempts + z.scanAttempts;
+        }
+
+        public String protocolName() {
+            return protocol;
         }
 
         public long messageCount() {
@@ -200,6 +240,9 @@ public final class FlowTable {
                 m.put("lastSeen", iso(lastMicros));
             }
             m.put("labels", labels);
+            if (portHint != null && "unknown".equals(protocol)) {
+                m.put("portHint", portHint);
+            }
             if (!operations.isEmpty()) {
                 List<Map<String, Object>> ops = new ArrayList<>();
                 operations.values().forEach(o -> ops.add(o.toMap()));

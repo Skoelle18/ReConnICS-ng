@@ -104,6 +104,9 @@ public final class IngestSchemaValidator {
             if (f.has("transport") && !(f.get("transport").isTextual() && TRANSPORT.contains(f.get("transport").asText()))) {
                 errors.add(at + ".transport must be tcp|udp");
             }
+            if (f.has("portHint") && !(f.get("portHint").isTextual() && f.get("portHint").asText().length() <= 32)) {
+                errors.add(at + ".portHint must be a protocol name of at most 32 characters");
+            }
             if (f.has("source") && !(f.get("source").isTextual() && FLOW_SOURCE.contains(f.get("source").asText()))) {
                 errors.add(at + ".source must be zeek|native|zeek+native");
             }
@@ -156,9 +159,21 @@ public final class IngestSchemaValidator {
             if (o.has("access") && !(o.get("access").isTextual() && ACCESS.contains(o.get("access").asText()))) {
                 errors.add(oat + ".access must be read|write|control|other");
             }
-            for (String k : List.of("address", "quantity", "count")) {
+            for (String k : List.of("address", "quantity", "count", "unit")) {
                 if (o.has(k) && !count(o.get(k))) {
                     errors.add(oat + "." + k + " must be a non-negative integer");
+                }
+            }
+            if (o.has("statuses")) {
+                JsonNode st = o.get("statuses");
+                if (!st.isObject() || st.size() > 6) {
+                    errors.add(oat + ".statuses must be an object of at most 6 counts");
+                } else {
+                    st.fields().forEachRemaining(e -> {
+                        if (!count(e.getValue())) {
+                            errors.add(oat + ".statuses." + e.getKey() + " must be a non-negative integer");
+                        }
+                    });
                 }
             }
             if (o.has("sampleValues")) {

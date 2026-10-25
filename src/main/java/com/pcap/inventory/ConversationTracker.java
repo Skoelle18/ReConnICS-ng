@@ -161,6 +161,7 @@ public final class ConversationTracker {
                 FlowTable.Flow f = table.flow(a.client, a.server, "unknown", a.port);
                 if (f != null) {
                     f.messages(a.messages).traffic(a.packets, a.bytes).source("native");
+                    f.portHint(com.pcap.protocol.PortHints.of(a.port));
                     f.seen(a.first).seen(a.last);
                 }
             }
