@@ -40,11 +40,15 @@ final class Site {
     static final Map<String, String> OUI = loadBundledOui();
 
     private static Map<String, String> loadBundledOui() {
-        try (InputStream in = Site.class.getResourceAsStream("/oui-ics.csv")) {
-            return in == null ? null : Inventory.loadOui(AdvisoryIndex.utf8(in.readAllBytes()));
-        } catch (IOException e) {
-            return null;                                     // no OUI fallback; everything else still works
+        Map<String, String> m = new HashMap<>();
+        for (String res : List.of("/oui-ics.csv", "/oui-ma-l.csv")) {      // curated ICS names first: putIfAbsent keeps them over the registry's
+            try (InputStream in = Site.class.getResourceAsStream(res)) {
+                if (in != null) Inventory.loadOui(AdvisoryIndex.utf8(in.readAllBytes())).forEach(m::putIfAbsent);
+            } catch (IOException e) {
+                // a missing table only means fewer NIC makers; everything else still works
+            }
         }
+        return m.isEmpty() ? null : m;
     }
 
     static final long MAX_PCAP = 4L << 30;
@@ -156,12 +160,45 @@ final class Site {
         return l;
     }
 
-    synchronized void removeCapture(String id) throws IOException {
+    /**
+     * Removes one capture. A merged one takes its contribution with it, because the inventory is rebuilt from the
+     * remaining captures: an asset also seen in another capture stays (only this capture's provenance goes), an asset
+     * seen nowhere else is dropped unless a person edited it (edits are never deleted, so it stays with just those
+     * fields). Returns what happened for a merged capture, null for a queued or failed one (nothing was merged).
+     */
+    synchronized Map<String, Object> removeCapture(String id, String actor) throws IOException {
         var c = find(id);
-        if (!Set.of("queued", "failed").contains(c.get("state"))) throw new Conflict("only queued or failed captures can be removed");
+        boolean done = "done".equals(c.get("state"));
+        if (!done && !Set.of("queued", "failed").contains(c.get("state"))) throw new Conflict("only merged, queued or failed captures can be removed");
+        List<String> mine = List.of();
+        if (done) {
+            inventory();                                          // refreshes cachedCaptureAssets
+            mine = cachedCaptureAssets.getOrDefault(id, List.of());
+        }
         captures.remove(c);
         cached = null;
         for (String ext : List.of(".pcap", ".json", ".obs.json")) Files.deleteIfExists(captureDir.resolve(id + ext));
+        if (!done) return null;
+        Set<String> after = inventory().records.stream().map(r -> r.id).collect(java.util.stream.Collectors.toSet());
+        Set<String> elsewhere = new HashSet<>();
+        cachedCaptureAssets.values().forEach(elsewhere::addAll);
+        List<String> dropped = new ArrayList<>(), kept = new ArrayList<>(), edited = new ArrayList<>();
+        for (String a : mine) {
+            if (!after.contains(a)) dropped.add(a);
+            else if (elsewhere.contains(a)) kept.add(a);
+            else edited.add(a);                                   // nothing else saw it: only a human edit keeps it
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("removed", id);
+        out.put("file", c.get("file"));
+        out.put("assetsDropped", (double) dropped.size());
+        out.put("assetsKeptSeenElsewhere", (double) kept.size());
+        out.put("assetsKeptWithEdits", (double) edited.size());
+        String src = "capture " + id;
+        int budget = MAX_MERGE_LOG;
+        for (String a : dropped) if (budget-- > 0) log(actor, a, "(asset)", "", "removed with " + c.get("file"), src);
+        log(actor, "(site)", "capture", "", c.get("file") + " removed: " + Json.write(out), src);
+        return out;
     }
 
     private Map<String, Object> find(String id) {
@@ -318,6 +355,8 @@ final class Site {
             Path p = captureDir.resolve(c.get("id") + ".obs.json");
             if (!Files.exists(p)) continue;
             var doc = Json.obj(Json.parse(Files.readString(p)));
+            try { com.pcap.inventory.HostClassifier.apply(Json.arr(doc.get("flows")), Json.arr(doc.get("assets"))); }   // also names captures analyzed before it existed
+            catch (RuntimeException e) { /* an odd shape in untrusted input: merge the document as it is */ }
             all.addAll(Json.arr(doc.get("assets")));
             addFlows(flows, doc.get("flows"), String.valueOf(c.get("id")));
             List<String> ids = assetIds(doc);
@@ -427,6 +466,7 @@ final class Site {
                     labels.merge(k, count(l.getValue()), (a, b) -> (double) a + (double) b);
             }
             if (f.get("transport") instanceof String t && (t.equals("tcp") || t.equals("udp"))) m.put("transport", t);
+            if (!m.containsKey("portHint") && f.get("portHint") instanceof String ph && !Inventory.clean(ph, 32).isEmpty()) m.put("portHint", Inventory.clean(ph, 32));   // port-inferred name of an undecoded flow
             for (String k : List.of("packets", "bytes", "scanAttempts")) {
                 double n = count(f.get(k));
                 if (n > 0) m.merge(k, n, (a, b) -> Math.min(1e12, (double) a + (double) b));

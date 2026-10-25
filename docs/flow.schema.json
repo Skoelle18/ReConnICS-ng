@@ -43,7 +43,8 @@
       }
     },
     "scanAttempts": {"$ref": "#/$defs/count"},
-    "source": {"enum": ["zeek", "native", "zeek+native"]}
+    "source": {"enum": ["zeek", "native", "zeek+native"]},
+    "portHint": {"type": "string", "maxLength": 32}
   },
   "$defs": {
     "count": {"type": "integer", "minimum": 0}

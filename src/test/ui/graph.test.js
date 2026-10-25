@@ -58,6 +58,52 @@ test('graph', async (t) => {
     } finally { app.close(); }
   });
 
+  await t.test('regression: Details on a merged busy-pair edge opens its panel (it used to link to #/edge/null: "No such conversation")', async () => {
+    const many = Array.from({ length: 5 }, (_, i) => ({ client: '10.0.1.50', server: '10.0.1.40', protocol: i < 3 ? 'modbus' : 'unknown', port: (500 + i) + '/tcp', messages: 3 + i,
+      labels: i < 3 ? { ['Modbus FC' + i]: 2, 'Modbus FC17 exception': 1 } : {}, operations: i === 0 ? [{ function: 'FC0 x', access: 'read', count: 2 }] : [] }));
+    const app = await loadApp({ routes: defaultRoutes({ flows: many }), hash: '#/asset/10.0.1.50' });
+    try {
+      app.$$('#main button.tab').find((b) => /^Conversations/.test(b.textContent)).click();
+      await settle();
+      const details = app.$$('#main a.btn').filter((a) => a.textContent === 'Details');
+      assert.equal(details.length, 1, 'one merged card');
+      assert.doesNotMatch(details[0].getAttribute('href'), /null|undefined/);
+      assert.match(app.text(), /Modbus FC17 exception ×3/, 'the card lists every message kind');
+      await app.go(details[0].getAttribute('href'));
+      assert.doesNotMatch(app.text(), /No such conversation/);
+      assert.match(app.text(), /5 conversations/);
+      assert.match(app.text(), /Modbus FC17 exception ×3/, 'the panel shows the same kinds as the card');
+      assert.match(app.text(), /FC0 x/, 'merged operations are listed too');
+      assert.equal(app.$$('#main a.btn').filter((a) => a.textContent === 'Details').length, 5, 'each member conversation links to its own panel');
+      await app.go(app.$$('#main a.btn').filter((a) => a.textContent === 'Details')[0].getAttribute('href'));
+      assert.doesNotMatch(app.text(), /No such conversation/);
+      app.window.location.hash = '#/graph';
+      await settle();
+      app.$$('#graph .edge.flow')[0].dispatchEvent(new app.window.MouseEvent('click', { bubbles: true }));
+      await settle();
+      assert.match(app.window.location.hash, /^#\/edge\/pair%3A/, 'clicking the merged edge opens the same panel');
+    } finally { app.close(); }
+  });
+
+  await t.test('link distance grows with the messages a pair exchanges, up to a cap, still one spring per pair', async () => {
+    const flows = [
+      { client: '10.0.1.50', server: '10.0.1.40', protocol: 'modbus', port: '502/tcp', messages: 2, labels: { 'Modbus FC3': 2 } },
+      { client: '10.0.1.20', server: '10.0.1.10', protocol: 'modbus', port: '502/tcp', messages: 1000000, labels: { 'Modbus FC3': 1000000 } },
+    ];
+    const app = await loadApp({ routes: defaultRoutes({ flows }), hash: '#/graph' });
+    try {
+      assert.equal(app.get('linkStretch(0)'), 1, 'no traffic: the base spacing');
+      assert.ok(app.get('linkStretch(150)') > app.get('linkStretch(10)'), 'more messages, more distance');
+      assert.equal(app.get('linkStretch(1e12)'), app.get('LINK_MAX'), 'capped');
+      const d = (a, b) => app.get(`Math.hypot(GR.pos.get('${a}').x - GR.pos.get('${b}').x, GR.pos.get('${a}').y - GR.pos.get('${b}').y)`);
+      const quiet = d('10.0.1.50', '10.0.1.40'), busy = d('10.0.1.20', '10.0.1.10');
+      assert.ok(busy > quiet * 1.5, `busy pair ${busy.toFixed(0)} px vs quiet pair ${quiet.toFixed(0)} px`);
+      assert.ok(busy < app.get('K') * app.get('LINK_MAX') * 1.3, 'and the cap keeps it readable');
+      assert.equal(app.get('springsOf(graphModel().edges, new Map(graphModel().nodes.map((n, i) => [n.id, i]))).size'),
+        new Set(app.get('graphModel().edges').map((e) => [e.from, e.to].sort().join())).size, 'one spring per pair');
+    } finally { app.close(); }
+  });
+
   await t.test('gateway units and slots hang off their parent; advisories hang off matched assets', async () => {
     const app = await loadApp({ routes: defaultRoutes(), hash: '#/graph' });
     try {
@@ -354,6 +400,17 @@ test('edges', async (t) => {
       await app.go('#/edge/' + encodeURIComponent('10.0.1.60>10.0.1.20>unknown>23/tcp'));
       assert.match(app.text(), /scan attempts only/);
       assert.match(app.text(), /Scan attempts\s*4/);
+    } finally { app.close(); }
+  });
+
+  await t.test('an undecoded flow shows its port-inferred hint as a hint, and keeps the grey unknown colour', async () => {
+    const flows = [{ client: '10.0.1.50', server: '10.0.1.60', protocol: 'unknown', port: '22/tcp', transport: 'tcp', messages: 4, portHint: 'ssh', labels: {} }];
+    const app = await loadApp({ routes: defaultRoutes({ flows }), hash: '#/edge/' + encodeURIComponent('10.0.1.50>10.0.1.60>unknown>22/tcp') });
+    try {
+      assert.match(app.text(), /Carried but not decoded.*Port 22\/tcp is usually ssh \(a hint from the port number only/);
+      await app.go('#/graph');
+      assert.equal(app.$$('#graph .edge.flow')[0].querySelector('text').textContent, '22/tcp ssh?');
+      assert.ok(app.$$('#graph .edge.flow')[0].classList.contains('p-unknown'));
     } finally { app.close(); }
   });
 
