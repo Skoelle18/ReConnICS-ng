@@ -492,7 +492,9 @@ function edgePanel(key) {
           h('span', { class: 'mono small' }, f.port || ''), f.transport && !String(f.port || '').includes('/') ? h('span', { class: 'mono small' }, f.transport) : null,
           f.source ? h('span', { class: 'badge lv-NONE', title: 'which engine produced this conversation' }, f.source) : null,
           isScan(f) ? h('span', { class: 'badge warn' }, 'scan attempts only') : null),
-        pk === 'unknown' ? h('div', { class: 'small muted' }, 'Carried but not decoded: the host pair and port are known, the protocol is not. Messages count data packets.') : null),
+        pk === 'unknown' ? h('div', { class: 'small muted' }, 'Carried but not decoded: the host pair and port are known, the protocol is not. Messages count data packets.') : null,
+        pk === 'unknown' && f.portHint ? h('div', { class: 'small' }, h('span', { class: 'badge warn' }, 'port-inferred: ' + protoName(f.portHint) + '?'),
+          ' Port ' + f.port + ' is usually ' + protoName(f.portHint) + ', but no ' + protoName(f.portHint) + ' message was decoded. Treat it as a hint, not as a finding.') : null),
       h('div', { class: 'card-b facts' },
         fact('Messages', (f.messages || 0).toLocaleString()), fact('Rate', fmtRate(rate)),
         f.packets != null ? fact('Packets', f.packets.toLocaleString()) : null, f.bytes != null ? fact('Bytes', fmtBytes(f.bytes)) : null,
@@ -504,7 +506,10 @@ function edgePanel(key) {
       ops.length ? h('div', { class: 'scroll' },
         h('div', { class: 'trow thead g-op' }, ['Function', 'Access', 'Address', 'Qty', 'Count', 'Sample values'].map((t) => h('span', {}, t))),
         ops.slice().sort((a, b) => (b.count || 0) - (a.count || 0)).map((o) => h('div', { class: 'trow g-op' },
-          h('span', { class: 'small wrap' }, o.function, o.object ? h('span', { class: 'mono muted' }, ' ' + o.object) : null),
+          h('span', { class: 'small wrap' }, o.function, o.object ? h('span', { class: 'mono muted' }, ' ' + o.object) : null,
+            o.unit != null ? h('span', { class: 'mono muted', title: 'Modbus unit id' }, ' unit ' + o.unit) : null,
+            // how the calls ended: ok, a Modbus exception, a DNP3 IIN flag or control status, an S7/CIP error
+            Object.keys(o.statuses || {}).length ? h('div', { class: 'small' }, Object.entries(o.statuses).map(([k, n]) => h('span', { class: 'badge ' + (k === 'ok' ? 'lv-NONE' : 'warn'), style: { marginRight: '4px' } }, k + ' ×' + n))) : null),
           h('span', {}, h('span', { class: 'badge ' + (o.access === 'write' || o.access === 'control' ? 'warn' : 'lv-NONE') }, o.access || 'other')),
           h('span', { class: 'mono small' }, o.address != null ? o.address : '—'), h('span', { class: 'mono small' }, o.quantity != null ? o.quantity : '—'),
           h('span', { class: 'mono' }, o.count != null ? o.count : ''), h('span', { class: 'mono small wrap' }, (o.sampleValues || []).map(String).join(', ') || '—'))))
@@ -678,7 +683,7 @@ const GR = { pos: new Map(), view: { x: 0, y: 0, k: 1 }, fitted: false, sig: '',
 function flowLabel(f) {
   const kinds = Object.entries(f.labels || {}).sort((a, b) => b[1] - a[1]).map((x) => x[0]);
   if (isScan(f)) return 'scan ×' + f.scanAttempts;
-  if (!kinds.length) return protoKey(f.protocol) === 'unknown' ? (f.port || 'unknown') : protoName(f.protocol);
+  if (!kinds.length) return protoKey(f.protocol) === 'unknown' ? (f.port || 'unknown') + (f.portHint ? ' (' + protoName(f.portHint) + '?)' : '') : protoName(f.protocol);
   const pre = protoName(f.protocol);
   const top = /^(Modbus|DNP3|SNMP|S7|EtherNet\/IP|CIP)/.test(kinds[0]) ? kinds[0] : pre + ' ' + kinds[0];
   return top + (kinds.length > 1 ? ' +' + (kinds.length - 1) : '');
