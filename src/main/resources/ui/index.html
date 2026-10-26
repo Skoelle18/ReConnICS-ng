@@ -55,6 +55,7 @@
 </aside>
 <div id="stage">
   <svg id="graph" tabindex="0" role="group" aria-label="Asset conversation graph. Each asset is a focusable node; Enter opens its details. Plus and minus zoom, zero fits the graph."></svg>
+  <div id="floats"></div>
   <div id="graph-chips" aria-label="Protocol filters"></div>
   <div id="graph-layout" aria-label="Graph display options"></div>
   <div id="graph-empty" role="status" aria-live="polite" hidden><span id="graph-empty-text"></span><button class="btn sm" id="graph-reset" type="button">Reset filters</button></div>
@@ -72,41 +73,27 @@
   </div>
   <div id="pop-filter" class="pop" hidden></div>
 </section>
+  <div class="toolbar" role="toolbar" aria-label="Graph tools" aria-orientation="vertical">
+  <button class="ib" id="tb-refresh" aria-label="Refresh now" title="Refresh"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>
+  <button class="ib" id="tb-layout" aria-label="Re-run the graph layout and fit it to the window" title="Layout"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8 7l8 1M7 8l4 8M17 10l-4 6"/></svg></button>
+  <button class="ib" id="z-in" aria-label="Zoom in" title="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+  <button class="ib" id="z-fit" aria-label="Fit graph to window" title="Fit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7M6 10v10h12V10"/></svg></button>
+  <button class="ib" id="z-out" aria-label="Zoom out" title="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+  <button class="ib" id="tb-info" aria-label="Legend and index status" title="Info" aria-expanded="false" aria-controls="pop-info"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg></button>
+  </div>
 </div>
 <datalist id="asset-list"></datalist>
 <div id="banner"></div>
 <div id="load-error" role="alert" aria-live="assertive" hidden><div class="strong">Console data could not be loaded</div><div id="load-error-text"></div><button class="btn pri" id="retry-load" type="button">Retry</button></div>
 
-<div class="toolbar" role="toolbar" aria-label="Tools" aria-orientation="vertical">
-  <button class="ib" id="tb-refresh" aria-label="Refresh now" title="Refresh"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>
-  <button class="ib" id="tb-import" aria-label="Import: add PCAP files to the capture queue" title="Import PCAPs"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0-4 4m4-4 4 4M4 16v4h16v-4"/></svg><span class="tb-count" id="tb-queue"></span></button>
-  <input type="file" id="import-pick" class="sr" multiple accept=".pcap,.pcapng,.cap" tabindex="-1" aria-hidden="true">
-  <button class="ib" id="tb-export" aria-label="Export inventory" title="Export" aria-expanded="false" aria-controls="pop-export"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12m0 0-4-4m4 4 4-4M4 20h16"/></svg></button>
-  <button class="ib" id="tb-layout" aria-label="Re-run the graph layout and fit it to the window" title="Layout"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8 7l8 1M7 8l4 8M17 10l-4 6"/></svg></button>
-  <a class="ib" id="tb-review" href="#/review" aria-label="Review queue" title="Review queue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l2 2 4-4"/><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/></svg><span class="tb-count" id="tb-review-n"></span></a>
-  <a class="ib" id="tb-overview" href="#/overview" aria-label="Site overview" title="Overview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V4M4 20h16M8 16v-5M13 16V8M18 16v-3"/></svg></a>
-  <button class="ib" id="tb-settings" aria-label="Settings: your name and role" title="Settings" aria-expanded="false" aria-controls="pop-settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg></button>
-  <button class="ib" id="tb-info" aria-label="Legend and index status" title="Info" aria-expanded="false" aria-controls="pop-info"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg></button>
-</div>
+<input type="file" id="import-pick" class="sr" multiple accept=".pcap,.pcapng,.cap" tabindex="-1" aria-hidden="true">
 <div id="pop-export" class="pop side-pop" hidden>
   <a class="btn sm" href="/api/v1/export/inventory.csv" download="inventory.csv">inventory.csv</a>
   <a class="btn sm" href="/api/v1/export/inventory.json" download="inventory.json">inventory.json</a>
   <a class="btn sm" href="/api/v1/export/report.html" download="report.html">report.html</a>
 </div>
-<div id="pop-settings" class="pop side-pop who" hidden>
-  <label for="actor" class="small strong">Your name</label>
-  <input id="actor" autocomplete="name" placeholder="e.g. R. Analyst">
-  <label for="role" class="small strong">Role</label>
-  <select id="role"><option value="collector">Collector</option><option value="validator">Validator</option></select>
-  <div class="muted small">Edits are logged under this name. No login: the console only listens on 127.0.0.1.</div>
-</div>
 <div id="pop-info" class="pop side-pop" hidden></div>
 
-<div class="zoom" role="group" aria-label="Zoom">
-  <button class="ib" id="z-in" aria-label="Zoom in" title="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
-  <button class="ib" id="z-fit" aria-label="Fit graph to window" title="Fit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7M6 10v10h12V10"/></svg></button>
-  <button class="ib" id="z-out" aria-label="Zoom out" title="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
-</div>
 
 <main id="main" class="sheet" tabindex="-1" hidden></main>
 <div id="toast" role="status" aria-live="polite"></div>

@@ -116,20 +116,22 @@ test('graph', async (t) => {
     } finally { app.close(); }
   });
 
-  await t.test('clicking a node opens the details side panel; keyboard Enter does too', async () => {
+  await t.test('clicking a node floats its panel beside it, several at once; a second click closes it; dock moves it to the route', async () => {
     const app = await loadApp({ routes: defaultRoutes(), hash: '#/graph' });
     try {
       node(app, '10.0.1.40').dispatchEvent(new app.window.MouseEvent('click', { bubbles: true }));
-      await settle();
-      assert.equal(app.window.location.hash, '#/asset/10.0.1.40');
-      assert.equal(app.$('#main').className, 'panel');
-      assert.match(app.text(), /CISA high-priority attributes/);
-      assert.ok(node(app, '10.0.1.40').classList.contains('sel'));
-      assert.ok(node(app, '10.0.1.20').classList.contains('dim') === false, 'a neighbour stays lit');
-      assert.ok(node(app, '10.0.1.60').classList.contains('dim'), 'unrelated assets dim');
       node(app, '10.0.1.50').dispatchEvent(new app.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       await settle();
-      assert.equal(app.window.location.hash, '#/asset/10.0.1.50');
+      assert.equal(app.window.location.hash, '#/graph', 'floating does not navigate');
+      assert.deepEqual(app.$$('#floats .float').map((f) => f.dataset.id), ['10.0.1.40', '10.0.1.50']);
+      assert.match(app.text('#floats'), /CISA high-priority attributes/);
+      assert.match(app.$('#floats .float').style.transform, /translate\(.*\) scale\(/, 'placed against its node');
+      node(app, '10.0.1.50').dispatchEvent(new app.window.MouseEvent('click', { bubbles: true }));
+      assert.equal(app.$$('#floats .float').length, 1);
+      app.$('#floats .float-dock').click(); await settle();
+      assert.equal(app.window.location.hash, '#/asset/10.0.1.40');
+      assert.equal(app.$$('#floats .float').length, 0, 'one panel docks at a time');
+      assert.equal(app.$('#main').className, 'panel');
     } finally { app.close(); }
   });
 
@@ -246,7 +248,7 @@ test('graph', async (t) => {
   await t.test('colour by advisory risk recolours the nodes', async () => {
     const app = await loadApp({ routes: defaultRoutes(), hash: '#/graph' });
     try {
-      const disc = () => node(app, '10.0.1.40').querySelector('.disc').getAttribute('fill');
+      const disc = () => node(app, '10.0.1.40').querySelector('.disc').getAttribute('stroke');
       const role = disc();
       app.get('S').color = 'risk';
       app.get('render()');
@@ -298,10 +300,10 @@ test('graph', async (t) => {
     try {
       app.$('#tb-info').click();
       assert.equal(app.$('#pop-info').hidden, false);
-      app.$('#tb-export').click();
+      app.$('#tree-export').click();
       assert.equal(app.$('#pop-info').hidden, true);
       assert.equal(app.$('#pop-export').hidden, false);
-      assert.equal(app.$('#tb-export').getAttribute('aria-expanded'), 'true');
+      assert.equal(app.$('#tree-export').getAttribute('aria-expanded'), 'true');
       app.document.dispatchEvent(new app.window.KeyboardEvent('keydown', { key: 'Escape' }));
       assert.equal(app.$('#pop-export').hidden, true);
     } finally { app.close(); }

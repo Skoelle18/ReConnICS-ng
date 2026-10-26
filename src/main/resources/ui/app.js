@@ -53,6 +53,7 @@ const h = (tag, props, ...kids) => build(document.createElement(tag), props, kid
 const sv = (tag, props, ...kids) => build(document.createElementNS('http://www.w3.org/2000/svg', tag), props, kids);
 const $ = (id) => document.getElementById(id);
 const store = { get(k) { try { return localStorage.getItem(k) || ''; } catch { return ''; } }, set(k, v) { try { localStorage.setItem(k, v); } catch { /* private window */ } } };
+S.floats = [];   // asset ids whose panel floats beside the node; any number, while one docks via the route
 const val = (a, k) => (a && a[k] && a[k].value != null ? a[k].value : null);
 const str = (v) => (Array.isArray(v) ? v.join(', ') : v == null ? '' : String(v));
 const fmtTime = (iso) => (iso ? String(iso).replace('T', ' ').replace(/:\d\d(\.\d+)?Z$/, 'Z') : '');
@@ -198,7 +199,7 @@ function advisoryRows() {
 function reviewGroups() {
   const all = assets();
   const conflicts = all.filter((a) => Object.values(a).some((f) => f && f.conflict));
-  const low = all.filter((a) => ['vendor', 'model', 'role'].some((k) => a[k] && a[k].confidence === 'LOW'));
+  const low = all.filter((a) => !isValidated(a) && ['vendor', 'model', 'role'].some((k) => a[k] && a[k].confidence === 'LOW'));
   return [
     { title: 'Conflicting values', color: '#F59E4B', items: conflicts.map((a) => [a, 'Values disagree across observations: ' + Object.keys(a).filter((k) => a[k] && a[k].conflict).join(', ')]) },
     { title: 'Low-confidence identity', color: '#8793A5', items: low.map((a) => [a, 'Role, vendor or model rests on weak evidence. Confirm with the plant engineer.']) },
@@ -229,7 +230,6 @@ function chrome(route) {
     n.classList.toggle('on', active);
     if (active) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current');
   });
-  const active = S.caps.filter((c) => c.state === 'queued' || c.state === 'running').length;
   $('mode-review-count').textContent = reviewCount() || '';
   $('tree-capture-count').textContent = S.caps.length || '';
   $('tree-advisory-count').textContent = advisoryRows().length || '';
@@ -244,8 +244,6 @@ function chrome(route) {
     n.classList.toggle('selected', selected);
     if (selected) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current');
   });
-  $('tb-queue').textContent = active || '';
-  $('tb-review-n').textContent = reviewCount() || '';
   $('asset-list').replaceChildren(...S.rank.map(byId).filter(Boolean).slice(0, 500).map((a) => h('option', { value: a.id }, nameOf(a))));
   filterPanel();
   legendPanel();
@@ -336,12 +334,18 @@ function resetView() {
   else { relayoutSoon(); render(); }
 }
 
+function svgIcon(d) {
+  const e = document.createElementNS('http://www.w3.org/2000/svg', 'svg'), p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  e.setAttribute('viewBox', '-11 -11 22 22'); e.setAttribute('class', 'gicon'); p.setAttribute('d', d); e.append(p);
+  return e;
+}
+
 function legendPanel() {
   const sw = (c, t) => h('span', { class: 'row legend' }, h('span', { class: 'dot', style: { background: c } }), t);
   const ix = S.index || {};
   $('pop-info').replaceChildren(
-    h('div', { class: 'strong' }, S.color === 'risk' ? 'Node colour: advisory match' : 'Node colour: role'),
-    h('div', { class: 'stack', style: { gap: '4px' } }, S.color === 'risk' ? [...LEVELS, 'UNRUN'].map((l) => sw(LEVEL_COLOR[l], l === 'UNRUN' ? 'NOT RUN' : l)) : Object.keys(ROLE_COLOR).map((g) => sw(ROLE_COLOR[g], g))),
+    h('div', { class: 'strong' }, S.color === 'risk' ? 'Node colour: advisory match' : 'Node shape: role'),
+    h('div', { class: 'stack', style: { gap: '4px' } }, S.color === 'risk' ? [...LEVELS, 'UNRUN'].map((l) => sw(LEVEL_COLOR[l], l === 'UNRUN' ? 'NOT RUN' : l)) : Object.keys(ICONS).map((g) => h('span', { class: 'row legend' }, svgIcon(ICONS[g]), g))),
     h('div', { class: 'strong' }, 'Edge colour: protocol'),
     h('div', { class: 'stack', style: { gap: '4px' } }, Object.keys(PROTO_COLOR).map((k) => sw(PROTO_COLOR[k], protoName(k) + (k === 'unknown' ? ' (carried, not decoded)' : '')))),
     h('div', { class: 'small' }, 'Dashed ring: a host only seen on the wire (low confidence). Grey broadcast node: a broadcast or multicast address, not a device.'),
@@ -467,7 +471,7 @@ function inventory() {
     h('div', { class: 'head inventory-heading' }, h('div', {}, h('h1', {}, 'Inventory'), h('div', { class: 'muted' }, rows.length + ' of ' + assets().length + ' assets · fix-first order')),
       h('label', { class: 'row inventory-group-toggle' }, h('input', { type: 'checkbox', checked: S.inventoryGroupMac, onchange: (e) => { S.inventoryGroupMac = e.target.checked; render(); } }), 'Group by MAC')),
     h('form', { class: 'card bulk-edit', onsubmit: (e) => { e.preventDefault(); applyBulkEdit(rows); } },
-      h('div', { class: 'card-h' }, 'Bulk edit', h('span', { class: 'muted small' }, selectedVisible + ' selected / ' + S.bulkSelected.size + ' total')),
+      h('div', { class: 'card-h' }, 'Bulk edit', h('span', { class: 'muted small' }, selectedVisible + ' of ' + rows.length + ' shown selected' + (S.bulkSelected.size !== selectedVisible ? ' · ' + S.bulkSelected.size + ' selected overall' : ''))),
       h('div', { class: 'bulk-edit-row' }, h('label', {}, 'Field', h('select', { value: S.bulkField, onchange: (e) => { S.bulkField = e.target.value; S.bulkValue = ''; render(); } }, BULK_FIELDS.map(([v, label]) => h('option', { value: v, selected: S.bulkField === v }, label)))),
         h('label', {}, 'Value', valueInput), h('button', { class: 'btn pri', type: 'submit', disabled: selectedVisible === 0 }, 'Apply to selected'),
         h('button', { class: 'btn', type: 'button', onclick: () => { S.bulkSelected.clear(); render(); } }, 'Clear selection')),
@@ -560,14 +564,25 @@ function toolBadge(t) {
 function engines() {
   const rows = S.engines || [];
   const done = S.caps.filter((c) => c.state === 'done').length;
-  const ran = (id) => S.caps.filter((c) => c.state === 'done' && c.summary && (c.summary.tools || []).some((t) => t.id === id && t.state === 'ran')).length;
+  const seen = (id, ok) => S.caps.filter((c) => c.state === 'done' && c.summary && (c.summary.tools || []).some((t) => t.id === id && ok(t))).length;
+  const ran = (id) => seen(id, (t) => t.state === 'ran');
+  // "named in evidence": a field's evidence text, or a conversation's alerts / classification, credits this tool.
+  const EV = { zeek: /zeek/i, icsnpp: /icsnpp/i, tshark: /tshark|wireshark/i, suricata: /suricata/i, ndpi: /ndpi/i, p0f: /p0f/i };
+  const inEvidence = (id) => S.flows.some((f) => [].concat(f.alerts || [], f.classifiedBy || []).some((x) => x.tool === id))
+    || assets().some((a) => Object.values(a).some((v) => v && typeof v.evidence === 'string' && EV[id] && EV[id].test(v.evidence)));
+  const step = (on, text) => h('span', { class: 'badge ' + (on ? 'ok' : 'lv-NONE') }, (on ? '✓ ' : '○ ') + text);
+  const steps = (r, st) => {
+    const found = st.state === 'found' || st.state === 'ran', hint = [st.via, st.detail].filter(Boolean).join(' · ');
+    const first = step(found, found ? [st.version, 'installed'].filter(Boolean).join(' · ') : (TOOL_STATE[st.state] || [, st.state])[1]);
+    const later = r.kind === 'engine' || r.kind === 'package' ? [step(ran(r.id) > 0, 'ran'), step(inEvidence(r.id), 'named in evidence')] : [];
+    return h('span', { class: 'row steps' }, first, ...later, hint ? h('span', { class: 'inf', tabindex: '0', 'aria-label': 'how it was found' }, 'i', h('span', { class: 'tip' }, hint)) : null);
+  };
   const kindTxt = { engine: 'engine', package: 'Zeek package', data: 'data file', reference: 'reference only' };
   const section = (title, note, list) => list.length ? h('div', { class: 'card' }, h('div', { class: 'card-h' }, title, h('span', { class: 'muted small' }, note)),
     h('div', { class: 'scroll' }, h('div', { class: 'trow thead g-eng' }, ['Component', 'Status here', 'Used in', 'Licence', 'What it does for ReConnICS'].map((t) => h('span', {}, t))),
       list.map((r) => { const st = r.status || {}; return h('div', { class: 'trow g-eng' },
         h('span', {}, h('a', { class: 'cell-name', href: r.url, target: '_blank', rel: 'noopener noreferrer' }, r.name), h('span', { class: 'muted small' }, (kindTxt[r.kind] || r.kind) + (r.kind === 'reference' ? '' : r.optional ? ', optional' : ', bundled in the jar'))),
-        h('span', { class: 'stack', style: { gap: '2px', alignItems: 'flex-start' } }, toolBadge({ id: '', state: st.state || 'not-installed', version: st.version, via: st.via, detail: st.detail }),
-          h('span', { class: 'small muted wrap' }, [st.via, st.detail].filter(Boolean).join(' · '))),
+        steps(r, st),
         h('span', { class: 'small' }, r.kind === 'reference' ? '-' : done ? ran(r.id) + ' of ' + done + ' captures' : 'no captures yet'),
         h('span', { class: 'small wrap' }, r.licence), h('span', { class: 'small wrap' }, r.role)); }))) : null;
   return [
@@ -614,7 +629,6 @@ function asset(id) {
   const hist = S.changes.filter((x) => x.asset === a.id);
   const convs = convsOf(a);
   return [
-    h('div', { class: 'row' }, h('a', { class: 'btn sm', href: '#/graph' }, '‹ Graph')),
     h('div', { class: 'card' },
       h('div', { class: 'card-b head', style: { alignItems: 'flex-start' } },
         h('div', { class: 'stack', style: { gap: '6px' } },
@@ -631,7 +645,6 @@ function asset(id) {
         h('div', { class: 'row', style: { gap: '20px' } },
           fact('Completeness', c.filled + ' / 14'), h('div', {}, h('div', { class: 'muted small' }, 'Match ceiling'), levelBadge(c.matchCeiling)),
           fact('Lifecycle', site.lifecycle || 'In service'))),
-      c.nextStep ? h('div', { class: 'note' }, h('strong', {}, 'Next step to raise the match: '), c.nextStep) : null,
       h('div', { class: 'tabs' }, tab('attrs', 'Attributes'), tab('advs', 'Advisories (' + advs.length + ')'), tab('conv', 'Conversations (' + convs.length + ')'), tab('hist', 'History (' + hist.length + ')'))),
     S.tab === 'attrs' ? [attrsCard(a, site, role), observedCard(a)] : S.tab === 'conv' ? convCard(convs, a.id) : S.tab === 'advs' ? h('div', { class: 'card' },
       advs.length ? advs.map((x) => h('div', { class: 'card-b stack', style: { gap: '8px', borderBottom: '1px solid var(--line2)' } },
@@ -711,7 +724,7 @@ function groupPanel(address) {
   const g = S.groups.find((x) => x.address === address);
   if (!g) return [back, h('div', { class: 'card empty' }, 'No such address in the current inventory.')];
   const fs = S.flows.filter((f) => f.server === address);
-  return [h('div', { class: 'row' }, back), h('div', { class: 'card' },
+  return [h('div', { class: 'card' },
     h('div', { class: 'card-b stack', style: { gap: '8px' } }, h('h1', {}, address), h('div', { class: 'row' }, h('span', { class: 'badge lv-NONE' }, g.kind), g.scope ? h('span', { class: 'small muted' }, g.scope) : null),
       h('div', { class: 'small muted' }, 'A group address is where frames are sent to be heard by many hosts. It is not a device: it is never an asset, never matched to an advisory and never scored.')),
     h('div', { class: 'card-b facts' }, fact('Packets', (g.packets || 0).toLocaleString()), fact('Bytes', fmtBytes(g.bytes || 0)), g.firstSeen ? fact('First seen', fmtStamp(g.firstSeen)) : fact('Time', 'unknown'),
@@ -769,7 +782,6 @@ function edgePanel(key) {
   if (!f) return [back, h('div', { class: 'card empty' }, 'No such conversation in the current inventory. It may have been re-merged, or hidden by a filter or a capture toggle; open the graph and click the edge again.')];
   const rate = flowRate(f), pk = protoKey(f.protocol);
   return [
-    h('div', { class: 'row' }, back),
     h('div', { class: 'card' },
       h('div', { class: 'card-b stack', style: { gap: '8px' } },
         h('h1', {}, endLink(f.client), ' → ', endLink(f.server)),
@@ -830,17 +842,15 @@ function attrsCard(a, site, role) {
   return h('div', { class: 'card' }, head,
     role !== 'validator' ? h('div', { class: 'small muted strip-note' }, 'Only a validator can mark an asset validated. Change your role in Settings.') : null,
     h('div', { class: 'scroll' },
-      h('div', { class: 'g-attr thead' }, ['Attribute', 'Value', 'Confidence', 'Evidence / how to fill'].map((t) => h('span', {}, t))),
-      ATTRS.concat(ATTRS_EXTRA).filter(([k]) => k !== 'alerts' || a.alerts).map(([k, label, by]) => {
+      ATTRS.concat(ATTRS_EXTRA).filter(([k]) => k !== 'alerts' || a.alerts).map(([k, label]) => {
         const f = fieldVal(k), person = f && /^entered by /.test(f.evidence || '');
-        return h('div', { class: 'g-attr' },
-          h('span', { class: 'strong' }, label, h('span', { class: 'muted small', style: { display: 'block', fontWeight: '400' } }, by === 'human' ? 'filled by people' : 'from passive capture')),
-          h('span', { class: 'wrap' + (f ? '' : ' muted') }, f ? str(f.value) : noIdentity && IDENTITY_KEYS.includes(k) ? NO_IDENTITY : 'Not filled'),
-          h('span', { class: 'stack', style: { gap: '4px', alignItems: 'flex-start' } },
-            f ? h('span', { class: 'badge c-' + (person ? 'PERSON' : f.confidence) }, person ? 'PERSON' : f.confidence) : null,
-            f && f.conflict ? h('span', { class: 'badge warn' }, 'conflict') : null, f && f.inherited ? h('span', { class: 'badge lv-NONE' }, 'inherited') : null),
-          h('span', { class: 'small' + (f ? ' mono' : ' muted') }, f ? [sourceTags(f.evidence).map((t) => h('span', { class: 'badge lv-NONE', style: { marginRight: '4px' }, title: 'open-source component named in the evidence; see Engines' }, t)), f.evidence]
-            : (missing[k] ? missing[k].hint : EXTRA_HINT[k] || '')));
+        if (!f) return h('div', { class: 'g-attr at muted', title: missing[k] ? missing[k].hint : EXTRA_HINT[k] || '' }, label + ': ' + (noIdentity && IDENTITY_KEYS.includes(k) ? NO_IDENTITY : 'Not filled'),
+          missing[k] || EXTRA_HINT[k] ? h('span', { class: 'tip' }, missing[k] ? missing[k].hint : EXTRA_HINT[k]) : null);
+        return h('div', { class: 'g-attr at' }, h('b', {}, label), h('span', { class: 'wrap val' }, str(f.value)),
+          h('span', { class: 'badge c-' + (person ? 'PERSON' : f.confidence) }, person ? 'PERSON' : f.confidence),
+          f.conflict ? h('span', { class: 'badge warn' }, 'conflict') : null, f.inherited ? h('span', { class: 'badge lv-NONE' }, 'inherited') : null,
+          sourceTags(f.evidence).map((t) => h('span', { class: 'badge lv-NONE', title: 'open-source component named in the evidence; see Engines' }, t)),
+          f.evidence ? h('span', { class: 'inf', tabindex: '0', 'aria-label': 'evidence' }, 'i', h('span', { class: 'tip mono' }, f.evidence)) : null);
       })),
     h('div', { class: 'card-h', style: { borderTop: '1px solid var(--line2)' } }, 'Site fields', h('span', { class: 'muted small' }, 'not part of the 14; for grouping and lifecycle')),
     h('div', { class: 'form' }, [['Zone', site.zone], ['Purdue level', site.purdue ? 'Level ' + site.purdue : 'Suggested: ' + (purdueOf(a) ? 'Level ' + purdueOf(a) : 'none')],
@@ -938,7 +948,7 @@ function advisories() {
     h('label', { class: 'screen-search' }, h('span', { class: 'sr' }, 'Search advisories'), h('input', { type: 'search', value: S.advisorySearch, placeholder: 'Search advisories, CVEs or affected products', oninput: (e) => { S.advisorySearch = e.target.value; render(); const input = $('main .screen-search input'); if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); } } })),
     h('div', { class: 'card' }, h('div', { class: 'scroll' },
       h('div', { class: 'trow thead g-adv' }, ['Advisory', 'Title', 'CVSS', 'KEV', 'Assets'].map((t) => h('span', {}, t))),
-      rows.length === 0 ? h('div', { class: 'empty' }, 'No advisory matches any asset in this index.') : rows.map((r) => [
+      rows.length === 0 ? h('div', { class: 'empty' }, query ? 'No advisory matches this search.' : 'No advisory matches any asset in this index.') : rows.map((r) => [
         h('button', { class: 'trow g-adv' + (S.openAdv === r.id ? ' sel' : ''), 'aria-expanded': String(S.openAdv === r.id), onclick: () => { S.openAdv = S.openAdv === r.id ? null : r.id; render(); } },
           h('span', { class: 'mono strong' }, r.id), h('span', {}, r.title), h('span', { class: 'mono' }, r.cvss.toFixed(1)),
           h('span', {}, r.kev ? h('span', { class: 'badge kev' }, 'KEV') : null), h('span', {}, r.hits.length + (r.hits.length === 1 ? ' asset' : ' assets'))),
@@ -1047,12 +1057,13 @@ function log() {
 // Plain SVG and a small force layout; no library, so nothing is fetched and the CSP stays default-src 'self'.
 const NODE_R = 18;
 const MERGE_AT = 3;   // more conversations than this from one host to another are drawn as a single edge that opens the client's asset panel
-const ICONS = {   // 24x24 line icons, drawn dark on the bright node colour
-  PLC: 'M5 6h14v12H5z M9 10h6 M9 14h6', Workstation: 'M3 5h18v11H3z M8 20h8 M12 16v4', Network: 'M12 4v16 M4 12h16 M12 4l-3 3 M12 4l3 3 M12 20l-3-3 M12 20l3-3 M4 12l3-3 M4 12l3 3 M20 12l-3-3 M20 12l-3 3',
-  Drive: 'M12 8a4 4 0 1 0 .01 0 M3 12h3 M18 12h3', 'Comms adapter': 'M4 12h16 M8 8l-4 4 4 4 M16 8l4 4-4 4',
-  Other: 'M6 6h12v12H6z', Unknown: 'M9 9a3 3 0 1 1 4.5 2.6c-1 .6-1.5 1.1-1.5 2.4 M12 17.5h.01',
+const ICONS = {   // outline glyphs centred on 0, ~±9 units, from the design reference
+  PLC: 'M-9,-7H9V7H-9Z M-9,-2H9 M-5,3H-3 M0,3H2', Workstation: 'M-9,-8H9V3H-9Z M-3,3V7 M3,3V7 M-6,7H6', Network: 'M-9,-4H9V4H-9Z M-6,0H-4 M-1,0H1 M4,0H6',
+  Drive: 'M-9,-7H9V7H-9Z M-6,0H-2L0,-3L2,3L4,0H6', 'Comms adapter': 'M-9,-5H9V5H-9Z M-5,-2H5 M-5,2H1',
+  Other: 'M-8,-9H8V-3H-8Z M-8,-3H8V3H-8Z M-8,3H8V9H-8Z M-5,-6H-3 M-5,0H-3 M-5,6H-3', External: 'M-9,-9H9V9H-9Z M-9,0H9 M0,-9V9', Unknown: 'M-8,-8H8V8H-8Z',
 };
-const GROUP_ICON = 'M4 12a8 8 0 0 1 16 0 M7.5 12a4.5 4.5 0 0 1 9 0 M12 12h.01 M12 12v7';   // radiating arcs: a broadcast
+const GROUP_ICON = 'M-9,-6H9 M-9,0H9 M-9,6H9 M-6,-9V9 M0,-9V9 M6,-9V9';   // a grid: a broadcast
+const ADV_ICON = 'M0 -21 L19 13 L-19 13 Z';
 const GR = { pos: new Map(), view: { x: 0, y: 0, k: 1 }, fitted: false, sig: '', vp: null, els: null, drag: null, moved: false };
 
 /** "ListIdentity" -> "ENIP ListIdentity"; the top message kind of a conversation, "+n" when there are more. */
@@ -1209,6 +1220,7 @@ function applyView() {
   const v = GR.view;
   if (GR.vp) GR.vp.setAttribute('transform', 'translate(' + v.x + ' ' + v.y + ') scale(' + v.k + ')');
   fitLabels();
+  placeFloats();
 }
 function fitView() {
   const P = [...GR.pos.values()], [W, H] = stageSize();
@@ -1259,12 +1271,39 @@ function findPath(from, to) {
 function nodeColor(n) {
   if (n.g) return '#5B6676';
   if (n.adv) return n.adv.kev ? LEVEL_COLOR.EXACT : LEVEL_COLOR.PROBABLE;
-  return S.color === 'risk' ? LEVEL_COLOR[levelOf(n.a)] : ROLE_COLOR[roleGroup(n.a)];
+  return S.color === 'risk' ? LEVEL_COLOR[levelOf(n.a)] : '#AEB2B9';   // role is the glyph; colour is kept for advisory risk
 }
 
 function pickNode(id) {
   if (id.startsWith('grp:')) location.hash = '#/group/' + encodeURIComponent(id.slice(4));
-  else if (id.startsWith('adv:')) { S.openAdv = id.slice(4); location.hash = '#/advisories'; } else location.hash = '#/asset/' + encodeURIComponent(id);
+  else if (id.startsWith('adv:')) { S.openAdv = id.slice(4); location.hash = '#/advisories'; } else toggleFloat(id);
+}
+function toggleFloat(id) {
+  const i = S.floats.indexOf(id);
+  if (i < 0) S.floats.push(id); else S.floats.splice(i, 1);
+  if (route().name === 'asset' && route().arg === id) location.hash = '#/graph';   // floating the docked asset takes it off the dock
+  renderFloats();
+}
+function renderFloats() {
+  const host = $('floats'), keep = new Map([...host.querySelectorAll('.float')].map((e) => [e.dataset.id, e.querySelector('.float-body').scrollTop]));
+  host.replaceChildren(...S.floats.filter((id) => byId(id)).map((id) => {
+    const body = h('div', { class: 'float-body' }, ...[].concat(asset(id)).flat(Infinity));
+    const el = h('div', { class: 'float', 'data-id': id, role: 'dialog', 'aria-label': 'Asset ' + id },
+      h('div', { class: 'float-bar' },
+        h('button', { type: 'button', class: 'float-dock', title: 'Dock beside the graph', 'aria-label': 'Dock ' + id + ' beside the graph', onclick: () => { S.floats = S.floats.filter((x) => x !== id); location.hash = '#/asset/' + encodeURIComponent(id); } }, '⇥'),
+        h('button', { type: 'button', class: 'float-close', title: 'Close', 'aria-label': 'Close ' + id, onclick: () => toggleFloat(id) }, '×')), body);
+    body.scrollTop = keep.get(id) || 0;
+    return el;
+  }));
+  placeFloats();
+}
+function placeFloats() {
+  const v = GR.view;
+  for (const el of $('floats').children) {
+    const p = GR.pos.get(el.dataset.id);
+    el.hidden = !p;
+    if (p) el.style.transform = 'translate(' + (p.x * v.k + v.x + (NODE_R + 10) * v.k) + 'px,' + (p.y * v.k + v.y - 24 * v.k) + 'px) scale(' + v.k + ')';
+  }
 }
 function clickPathNode(id) {
   if (!S.pathPick) { pickNode(id); return; }
@@ -1337,8 +1376,9 @@ function drawGraph() {
       onpointerdown: (ev) => { if (ev.button) return; GR.moved = false; GR.drag = { id: n.id, x: ev.clientX, y: ev.clientY }; ev.stopPropagation(); } },
     sv('title', {}, nodeLabel(n)),
     kev && !n.adv ? sv('circle', { class: 'ring-kev', r: NODE_R + 5 }) : null,
-    n.adv ? sv('path', { class: 'disc', d: 'M0 -21 L19 13 L-19 13 Z', fill: nodeColor(n) }) : sv('circle', { class: 'disc', r: NODE_R, fill: nodeColor(n) }),
-    sv('path', { class: 'icon', d: n.adv ? 'M0 -6v8M0 6.5h.01' : n.g ? GROUP_ICON : ICONS[roleGroup(a)], transform: n.adv ? null : 'translate(-9 -9) scale(.75)' }),
+    sv('circle', { class: 'hit', r: NODE_R }),
+    sv('path', { class: 'disc', d: n.adv ? ADV_ICON : n.g ? GROUP_ICON : ICONS[roleGroup(a)], transform: n.adv ? null : 'scale(1.35)', 'vector-effect': 'non-scaling-stroke', stroke: nodeColor(n) }),
+    n.adv ? sv('path', { class: 'icon', d: 'M0 -6v8M0 6.5h.01', stroke: nodeColor(n) }) : null,
     a && isValidated(a) ? sv('g', { class: 'badge-ok', transform: 'translate(13 -13)' }, sv('circle', { r: 7 }), sv('path', { d: 'M-3.5 0l2.5 2.5 4.5-5' })) : null,
     sv('text', { class: 'nlabel', y: NODE_R + 5, 'text-anchor': 'middle', 'paint-order': 'stroke' }, short));
     els.nodes.set(n.id, g);
@@ -1357,6 +1397,7 @@ function drawGraph() {
 function placeGraph() {
   if (!GR.els) return;
   for (const [id, g] of GR.els.nodes) { const p = GR.pos.get(id); g.setAttribute('transform', 'translate(' + p.x + ' ' + p.y + ')'); }
+  placeFloats();
   for (const { e, path, hit, label } of GR.els.edges) {
     const a = GR.pos.get(e.from), b = GR.pos.get(e.to), dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1, sgn = e.from < e.to ? 1 : -1;
     const off = (e.idx - (e.cnt - 1) / 2) * Math.min(120, 360 / Math.max(1, e.cnt - 1));   // control-point offset; the arc peaks at half of it; the whole fan stays within ±180 so a scanner's hundreds of ports are not a streak across the canvas
@@ -1424,15 +1465,6 @@ function route() {
   return { name, arg: decodeURIComponent(arg || '') };
 }
 
-async function copyCurrentLink() {
-  const link = location.href;
-  try {
-    if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('clipboard unavailable');
-    await navigator.clipboard.writeText(link);
-    toast('Link copied');
-  } catch { toast(location.hash || '#/graph'); }
-}
-
 let lastRoute = '';
 function render() {
   const r = route();
@@ -1445,9 +1477,10 @@ function render() {
   main.className = side ? 'panel' : 'sheet';
   $('stage').toggleAttribute('inert', open && !side);                         // a sheet covers the graph; the side panel does not
   main.replaceChildren(...(open ? [h('a', { class: 'close', href: '#/graph', 'aria-label': 'Close and return to the graph', title: 'Close' }, '×'),
-    side ? h('button', { class: 'copy-link', type: 'button', 'aria-label': 'Copy link to this item', title: 'Copy link', onclick: copyCurrentLink }, '#') : null,
+    r.name === 'asset' ? h('button', { class: 'dock-btn', type: 'button', 'aria-label': 'Float the panel beside its node', title: 'Float beside the node', onclick: () => toggleFloat(r.arg) }, '⇱') : null,
     ...[].concat((screens[r.name] || overview)()).flat(Infinity)] : []).filter(Boolean));
   drawGraph();
+  renderFloats();
 }
 
 // The page keeps itself current: captures queued by another process (the lab feed, curl) show up without a click.
@@ -1467,7 +1500,7 @@ async function refresh(background) {
   try {
     await loadAll();
     $('load-error').hidden = true;
-    if (['log', 'asset', 'review', 'findings'].includes(route().name)) S.changes = await api('GET', 'changes');
+    if (S.floats.length || ['log', 'asset', 'review', 'findings'].includes(route().name)) S.changes = await api('GET', 'changes');
     if (route().name === 'engines') S.engines = await api('GET', 'engines').catch(() => S.engines || []);
   } catch (e) {
     if (background) { schedulePoll(); return; }
@@ -1481,7 +1514,7 @@ async function refresh(background) {
 
 /** Search panel, toolbar and popovers: one popover open at a time, Escape closes it (or the sheet). */
 function initChrome() {
-  const pops = [['btn-filter', 'pop-filter'], ['tb-export', 'pop-export'], ['tree-export', 'pop-export'], ['tb-settings', 'pop-settings'], ['tb-info', 'pop-info']];
+  const pops = [['btn-filter', 'pop-filter'], ['tree-export', 'pop-export'], ['tb-info', 'pop-info']];
   const closeAll = (except) => {
     const closed = new Set();
     pops.forEach(([b, p]) => {
@@ -1529,7 +1562,6 @@ function initChrome() {
     e.preventDefault(); S.purdueFilter = n.dataset.level; if (location.hash !== '#/graph') location.hash = '#/graph'; else render();
   }));
   $('tb-refresh').addEventListener('click', () => refresh());
-  $('tb-import').addEventListener('click', () => $('import-pick').click());
   $('import-pick').addEventListener('change', (e) => { upload([...e.target.files]); e.target.value = ''; });
   $('tb-layout').addEventListener('click', relayout);
   $('graph-reset').addEventListener('click', resetView);
@@ -1578,12 +1610,22 @@ function initChrome() {
 }
 
 function init() {
-  const actor = $('actor'), roleSel = $('role');
-  actor.value = store.get('actor');
-  roleSel.value = store.get('role') || 'collector';
-  actor.addEventListener('change', () => store.set('actor', actor.value.trim()));
-  roleSel.addEventListener('change', () => { store.set('role', roleSel.value); render(); });
   $('q').addEventListener('input', (e) => { S.search = e.target.value; render(); });
+  // The (i) tooltips are positioned on the page, not inside the panel, so a panel's scroll box or zoom cannot clip them.
+  const tip = h('div', { id: 'tip', role: 'tooltip', hidden: true });
+  document.body.append(tip);
+  const showTip = (e) => {
+    const t = e.target.closest && e.target.closest('.inf, .at.muted'), src = t && t.querySelector('.tip');
+    tip.hidden = !src;
+    if (!src) return;
+    tip.textContent = src.textContent;
+    const r = t.getBoundingClientRect(), w = tip.offsetWidth, ht = tip.offsetHeight;
+    tip.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px';
+    tip.style.top = (r.bottom + 6 + ht > innerHeight ? Math.max(8, r.top - ht - 6) : r.bottom + 6) + 'px';
+  };
+  document.addEventListener('mouseover', showTip);
+  document.addEventListener('focusin', showTip);
+  document.addEventListener('focusout', () => { tip.hidden = true; });
   initGraph();
   initChrome();
   window.addEventListener('hashchange', () => { refresh(); if (route().name === 'graph') $('graph').focus(); else $('main').focus(); });

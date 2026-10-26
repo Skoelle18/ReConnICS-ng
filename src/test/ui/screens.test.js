@@ -78,7 +78,6 @@ test('reference console shell and navigation', async (t) => {
     try {
       app.$('#tree-export').click();
       assert.equal(app.$('#pop-export').hidden, false);
-      assert.equal(app.$('#tb-export').getAttribute('aria-expanded'), 'true');
       assert.equal(app.$('#tree-export').getAttribute('aria-expanded'), 'true');
       assert.deepEqual(app.$$('#pop-export a').map((a) => a.textContent), ['inventory.csv', 'inventory.json', 'report.html']);
     } finally { app.close(); }
@@ -181,22 +180,21 @@ test('graph controls and inspector', async (t) => {
     } finally { app.close(); }
   });
 
-  await t.test('asset details open as a docked, accessible inspector', async () => {
+  await t.test('asset details open as a docked, accessible inspector that can float', async () => {
     const app = await loadApp({ routes: defaultRoutes(), hash: '#/asset/10.0.1.40' });
     try {
       assert.equal(app.$('#main').className, 'panel');
       assert.equal(app.$('#main').parentElement.id, 'workspace');
       assert.equal(app.$('#main .close').getAttribute('aria-label'), 'Close and return to the graph');
-      const copy = app.$('#main .copy-link');
-      assert.equal(copy.getAttribute('aria-label'), 'Copy link to this item');
-      copy.click(); await settle();
-      assert.match(app.text('#toast'), /#\/asset\/10\.0\.1\.40/);
       assert.match(app.text('#main'), /CISA high-priority attributes/);
-      assert.match(app.text('#main'), /Confidence/);
+      assert.match(app.text('#main'), /HIGH/);
       assert.match(app.text('#main'), /Site fields/);
       assert.ok(app.$$('#main button.tab').some((b) => /^Conversations/.test(b.textContent)));
       const validate = app.$$('#main button').find((b) => /Mark validated/.test(b.textContent));
       assert.equal(validate.disabled, true, 'a collector cannot validate');
+      app.$('#main .dock-btn').click(); await settle();
+      assert.equal(app.window.location.hash, '#/graph');
+      assert.deepEqual(app.$$('#floats .float').map((f) => f.dataset.id), ['10.0.1.40'], 'the dock button floats it beside its node');
     } finally { app.close(); }
   });
 });
@@ -294,6 +292,24 @@ test('other screens', async (t) => {
       assert.ok(low, 'low-confidence group is shown');
       assert.match(low.textContent, /10\.0\.1\.20/);
       assert.match(low.textContent, /10\.0\.1\.50/);
+    } finally { app.close(); }
+  });
+
+  await t.test('a validated asset leaves the low-confidence review group', async () => {
+    const app = await loadApp({ routes: defaultRoutes({ site: { '10.0.1.20': { validated: 'yes' } } }), hash: '#/review' });
+    try {
+      const low = app.$$('#main .card').find((c) => /Low-confidence identity/.test(c.textContent));
+      assert.ok(low, 'the group is still shown for the other assets');
+      assert.doesNotMatch(low.textContent, /10\.0\.1\.20/);
+      assert.match(low.textContent, /10\.0\.1\.50/);
+    } finally { app.close(); }
+  });
+
+  await t.test('an advisory search with no hit says so, not that the index has no matches', async () => {
+    const app = await loadApp({ routes: defaultRoutes(), hash: '#/advisories' });
+    try {
+      const input = app.$('#main .screen-search input'); input.value = 'zzzz-no-such'; input.dispatchEvent(new app.window.Event('input', { bubbles: true }));
+      assert.match(app.text(), /No advisory matches this search/);
     } finally { app.close(); }
   });
 
