@@ -34,7 +34,8 @@ const S = { engines: null, inv: null, rank: [], site: {}, flows: [], caps: [], c
   openCap: null, openAdv: null, tab: 'attrs', editing: false, staged: null,
   color: 'role', showAdv: true, layout: 'force', path: null, pathPick: false, pathStart: null,
   hideUnknown: false, hideScans: true, hideSeenOnly: false, hideDecommissioned: true, showGroups: false, groups: [], macs: [], images: [], imageSummary: {}, protoOff: new Set(),
-  capAssets: {}, assetCaps: new Map(), capOff: new Set(), inventoryGroupMac: false, bulkSelected: new Set(), macExpanded: new Set() };
+  capAssets: {}, assetCaps: new Map(), capOff: new Set(), inventoryGroupMac: false, bulkSelected: new Set(), macExpanded: new Set(),
+  findingsTab: 'advisories', advisorySearch: '', reviewSearch: '' };
 
 // ------------------------------------------------------------------ helpers
 
@@ -221,7 +222,7 @@ async function loadAll() {
 // ------------------------------------------------------------------ chrome
 
 function chrome(route) {
-  const mode = route === 'overview' || route === 'inventory' || route === 'ethernet' ? 'inventory' : route === 'advisories' || route === 'review' ? 'findings'
+  const mode = route === 'overview' || route === 'inventory' || route === 'ethernet' ? 'inventory' : ['advisories', 'review', 'findings'].includes(route) ? 'findings'
     : ['captures', 'index', 'engines', 'log'].includes(route) ? 'data' : 'graph';
   document.querySelectorAll('#modes [data-mode]').forEach((n) => n.classList.toggle('on', n.dataset.mode === mode));
   const active = S.caps.filter((c) => c.state === 'queued' || c.state === 'running').length;
@@ -877,21 +878,51 @@ async function save(a, body) {
 }
 
 function review() {
-  const groups = reviewGroups();
+  const q = S.reviewSearch.trim().toLowerCase();
+  const groups = reviewGroups().map((g) => ({ ...g, items: g.items.filter(([a, why]) => !q || [nameOf(a), a.id, why].join(' ').toLowerCase().includes(q)) })).filter((g) => g.items.length);
+  const pending = [...new Map(reviewGroups().flatMap((g) => g.items).filter(([a]) => !isValidated(a)).map(([a]) => [a.id, a])).values()];
+  const canConfirm = store.get('role') === 'validator';
+  const cards = groups.map((g) => h('div', { class: 'card' },
+    h('div', { class: 'card-h' }, g.title, h('span', { class: 'badge lv-NONE' }, g.items.length)),
+    ...g.items.map(([a, why]) => h('a', { class: 'rv', href: '#/asset/' + encodeURIComponent(a.id) }, dot(g.color),
+      h('span', { style: { flex: '1', minWidth: '0' } }, h('span', { class: 'cell-name' }, nameOf(a), ' ', h('span', { class: 'mono small muted' }, a.id)), h('span', { class: 'small muted' }, why)),
+      h('span', { class: 'review-meta' }, h('span', { class: 'small muted' }, 'Last reviewed: ' + lastReviewed(a.id)), h('span', { class: 'btn sm' }, 'Open'))))));
   return [
     h('div', {}, h('h1', {}, 'Review queue'), h('div', { class: 'muted' }, 'Cross-check collected data before an owner validates it (CISA: assign roles for collection and validation).')),
-    groups.length === 0 ? h('div', { class: 'card empty' }, 'Nothing to review.') : groups.map((g) => h('div', { class: 'card' },
-      h('div', { class: 'card-h' }, g.title, h('span', { class: 'badge lv-NONE' }, g.items.length)),
-      g.items.map(([a, why]) => h('a', { class: 'rv', href: '#/asset/' + encodeURIComponent(a.id) }, dot(g.color),
-        h('span', { style: { flex: '1', minWidth: '0' } }, h('span', { class: 'cell-name' }, nameOf(a), ' ', h('span', { class: 'mono small muted' }, a.id)), h('span', { class: 'small muted' }, why)),
-        h('span', { class: 'btn sm' }, 'Open'))))),
+    h('div', { class: 'row findings-actions' }, h('label', { class: 'screen-search' }, h('span', { class: 'sr' }, 'Search review queue'), h('input', { type: 'search', value: S.reviewSearch, placeholder: 'Search hosts and review reasons', oninput: (e) => { S.reviewSearch = e.target.value; render(); $('main .screen-search input')?.focus(); } })),
+      h('button', { class: 'btn pri', type: 'button', disabled: !canConfirm || pending.length === 0, title: canConfirm ? '' : 'Only a Validator can confirm assets', onclick: async () => {
+        if (!canConfirm) return;
+        for (const a of pending) {
+          try { await api('PATCH', 'assets/' + encodeURIComponent(a.id), JSON.stringify({ validated: true }), 'application/json'); }
+          catch (e) { toast('Stopped at ' + a.id + ': ' + e.message); break; }
+        }
+        await refresh();
+        toast('Validation confirmations saved under ' + (store.get('actor') || 'unknown'));
+      } }, 'Confirm all ' + pending.length)),
+    groups.length === 0 ? h('div', { class: 'card empty' }, 'Nothing to review.') : cards,
   ];
 }
 
+function lastReviewed(id) {
+  const entry = [...S.changes].reverse().find((x) => x.asset === id && x.field === 'validated' && String(x.to).toLowerCase() === 'true');
+  return entry ? fmtTime(entry.at) : 'Never';
+}
+
+function findings() {
+  const tab = route().name === 'review' ? 'review' : route().name === 'advisories' ? 'advisories' : S.findingsTab;
+  S.findingsTab = tab;
+  return [h('nav', { class: 'screen-tabs', 'aria-label': 'Findings sections' },
+      h('a', { href: '#/findings', class: tab === 'advisories' ? 'selected' : '', onclick: (e) => { e.preventDefault(); S.findingsTab = 'advisories'; render(); } }, 'Advisories'),
+      h('a', { href: '#/findings', class: tab === 'review' ? 'selected' : '', onclick: (e) => { e.preventDefault(); S.findingsTab = 'review'; render(); } }, 'Review queue')),
+    ...(tab === 'review' ? review() : advisories())];
+}
+
 function advisories() {
-  const rows = advisoryRows();
+  const query = S.advisorySearch.trim().toLowerCase();
+  const rows = advisoryRows().filter((r) => !query || [r.id, r.title, ...r.cves, ...r.affected].join(' ').toLowerCase().includes(query));
   return [
-    h('div', {}, h('h1', {}, 'Matched advisories'), h('div', { class: 'muted' }, 'CISA CSAF ICS advisories that hit at least one asset. KEV-listed first, then CVSS.')),
+    h('div', {}, h('h1', {}, 'Advisories'), h('div', { class: 'muted' }, 'CISA CSAF ICS advisories that hit at least one asset. KEV-listed first, then CVSS.')),
+    h('label', { class: 'screen-search' }, h('span', { class: 'sr' }, 'Search advisories'), h('input', { type: 'search', value: S.advisorySearch, placeholder: 'Search advisories, CVEs or affected products', oninput: (e) => { S.advisorySearch = e.target.value; render(); const input = $('main .screen-search input'); if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); } } })),
     h('div', { class: 'card' }, h('div', { class: 'scroll' },
       h('div', { class: 'trow thead g-adv' }, ['Advisory', 'Title', 'CVSS', 'KEV', 'Assets'].map((t) => h('span', {}, t))),
       rows.length === 0 ? h('div', { class: 'empty' }, 'No advisory matches any asset in this index.') : rows.map((r) => [
@@ -1345,7 +1376,7 @@ function render() {
   if (!S.inv) return;
   if (r.name + r.arg !== lastRoute) { S.tab = 'attrs'; S.editing = false; lastRoute = r.name + r.arg; }
   chrome(r.name);
-  const screens = { overview, inventory, engines, captures, review, advisories, index: indexScreen, log, ethernet, asset: () => asset(r.arg), edge: () => edgePanel(r.arg), group: () => groupPanel(r.arg) };
+  const screens = { overview, inventory, engines, captures, review: findings, advisories: findings, findings, index: indexScreen, log, ethernet, asset: () => asset(r.arg), edge: () => edgePanel(r.arg), group: () => groupPanel(r.arg) };
   const main = $('main'), open = r.name !== 'graph', side = r.name === 'asset' || r.name === 'edge' || r.name === 'group';
   main.hidden = !open;
   main.className = side ? 'panel' : 'sheet';
@@ -1372,7 +1403,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) { cle
 async function refresh(background) {
   try {
     await loadAll();
-    if (route().name === 'log' || route().name === 'asset') S.changes = await api('GET', 'changes');
+    if (['log', 'asset', 'review', 'findings'].includes(route().name)) S.changes = await api('GET', 'changes');
     if (route().name === 'engines') S.engines = await api('GET', 'engines').catch(() => S.engines || []);
   } catch (e) { if (background) { schedulePoll(); return; } toast('Cannot reach the console: ' + e.message); }
   const sig = JSON.stringify([S.inv, S.rank, S.site, S.flows, S.groups, S.macs, S.images, S.imageSummary, S.caps, S.index, S.changes, S.engines]);

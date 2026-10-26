@@ -222,6 +222,36 @@ test('advisory wording never claims a device is safe', async (t) => {
       assert.ok(app.$('#main .badge.kev'));
     } finally { app.close(); }
   });
+
+  await t.test('findings tabs filter advisories and review records', async () => {
+    const app = await loadApp({ routes: defaultRoutes(), hash: '#/findings' });
+    try {
+      assert.ok(app.$('#main .screen-tabs'));
+      assert.match(app.text(), /TEST-ADVISORY-0001/);
+      const search = app.$('#main input[type="search"]');
+      search.value = 'no-such-advisory'; search.dispatchEvent(new app.window.Event('input', { bubbles: true }));
+      assert.doesNotMatch(app.text(), /TEST-ADVISORY-0001/);
+      app.$$('#main .screen-tabs a')[1].click();
+      assert.match(app.text(), /Review queue/);
+      assert.match(app.text(), /Last reviewed: Never/);
+      assert.equal(app.$$('#main button').find((b) => /Confirm all/.test(b.textContent)).disabled, true, 'Collector cannot confirm');
+    } finally { app.close(); }
+  });
+
+  await t.test('a Validator can confirm pending assets through audited asset PATCHes', async () => {
+    const base = defaultRoutes();
+    const ids = base['GET inventory'].inventory.assets.map((a) => a.id);
+    const routes = { ...base, ...Object.fromEntries(ids.map((id) => ['PATCH assets/' + id, () => ({ changes: [{ field: 'validated', to: 'true' }] })])) };
+    const app = await loadApp({ routes, hash: '#/review', storage: { actor: 'R. Analyst', role: 'validator' } });
+    try {
+      const confirm = app.$$('#main button').find((b) => /Confirm all/.test(b.textContent));
+      assert.equal(confirm.disabled, false);
+      confirm.click(); await settle();
+      const writes = app.calls.filter((c) => c.method === 'PATCH' && c.headers['X-Actor'] === 'R. Analyst' && c.headers['X-Role'] === 'validator');
+      assert.ok(writes.length > 0);
+      assert.ok(writes.every((c) => JSON.parse(c.body).validated === true));
+    } finally { app.close(); }
+  });
 });
 
 test('other screens', async (t) => {
