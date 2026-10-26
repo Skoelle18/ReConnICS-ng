@@ -419,4 +419,43 @@ class ZeekLogReaderTest {
         String name = field(o, IdentityField.Kind.HOSTNAME);
         assertTrue(name.chars().noneMatch(ch -> ch < 32 || ch == 0x202E), name);
     }
+
+    @Test
+    void otherProtocolLogsJoinTheTraceWithTheRightTransport() throws Exception {
+        Files.writeString(tmp.resolve("conn.log"),
+                "{\"ts\":1.0,\"uid\":\"C1\",\"id.orig_h\":\"10.0.0.5\",\"id.orig_p\":40000,\"id.resp_h\":\"10.0.0.9\",\"id.resp_p\":21,\"proto\":\"tcp\",\"orig_bytes\":10,\"resp_bytes\":10,\"conn_state\":\"SF\",\"orig_pkts\":2,\"resp_pkts\":2}\n"
+                        + "{\"ts\":2.0,\"uid\":\"C2\",\"id.orig_h\":\"10.0.0.5\",\"id.orig_p\":68,\"id.resp_h\":\"10.0.0.1\",\"id.resp_p\":67,\"proto\":\"udp\",\"orig_bytes\":10,\"resp_bytes\":10,\"orig_pkts\":1,\"resp_pkts\":1}\n");
+        Files.writeString(tmp.resolve("ftp.log"),
+                "{\"ts\":1.5,\"uid\":\"C1\",\"id.orig_h\":\"10.0.0.5\",\"id.orig_p\":40000,\"id.resp_h\":\"10.0.0.9\",\"id.resp_p\":21,\"user\":\"anonymous\",\"password\":\"secret\",\"command\":\"RETR\",\"arg\":\"/a.txt\",\"reply_code\":226}\n");
+        Files.writeString(tmp.resolve("dhcp.log"),
+                "{\"ts\":2.5,\"uids\":[\"C2\"],\"uid\":\"C2\",\"id.orig_h\":\"10.0.0.5\",\"id.orig_p\":68,\"id.resp_h\":\"10.0.0.1\",\"id.resp_p\":67,\"mac\":\"aa:bb:cc:dd:ee:ff\",\"assigned_addr\":\"10.0.0.5\",\"msg_types\":[\"DISCOVER\",\"ACK\"]}\n");
+        var d = new ZeekLogReader(false, false).read(tmp);
+        @SuppressWarnings("unchecked") var ftp = (List<String>) flow(d, "10.0.0.5", "10.0.0.9", "unknown").get("trace");
+        String all = String.join("\n", ftp);
+        assertTrue(all.contains("> FTP user=anonymous command=RETR arg=/a.txt") && all.contains("< FTP reply_code=226"), all);
+        assertFalse(all.contains("secret"), "a logged password never reaches the display");
+        @SuppressWarnings("unchecked") var dhcp = (List<String>) flow(d, "10.0.0.5", "10.0.0.1", "unknown").get("trace");
+        assertTrue(String.join("\n", dhcp).contains("> DHCP mac=aa:bb:cc:dd:ee:ff"), String.join("\n", dhcp));
+    }
+
+    @Test
+    void encryptedSessionGetsACurlStyleTrace() throws Exception {
+        Files.writeString(tmp.resolve("conn.log"),
+                "{\"ts\":1445515536.0,\"uid\":\"C1\",\"id.orig_h\":\"192.168.2.53\",\"id.orig_p\":50000,\"id.resp_h\":\"192.168.88.75\",\"id.resp_p\":443,\"proto\":\"tcp\",\"service\":\"ssl\","
+                        + "\"duration\":4.5,\"orig_bytes\":100,\"resp_bytes\":900,\"conn_state\":\"SF\",\"history\":\"ShADadFf\",\"orig_pkts\":5,\"resp_pkts\":6}\n");
+        Files.writeString(tmp.resolve("x509.log"),
+                "{\"ts\":1445515536.1,\"id\":\"F1\",\"certificate\":{\"subject\":\"CN=plc.local\",\"issuer\":\"CN=plc.local\",\"not_valid_before\":1400000000.0,\"not_valid_after\":1500000000.0,"
+                        + "\"key_alg\":\"rsaEncryption\",\"key_length\":2048}}\n");
+        Files.writeString(tmp.resolve("ssl.log"),
+                "{\"ts\":1445515536.05,\"uid\":\"C1\",\"id.orig_h\":\"192.168.2.53\",\"id.orig_p\":50000,\"id.resp_h\":\"192.168.88.75\",\"id.resp_p\":443,\"version\":\"TLSv12\","
+                        + "\"cipher\":\"TLS_RSA_WITH_AES_128_CBC_SHA\",\"server_name\":\"plc.local\",\"established\":true,\"cert_chain_fuids\":[\"F1\"]}\n");
+        var f = flow(new ZeekLogReader(false, false).read(tmp), "192.168.2.53", "192.168.88.75", "ssl");
+        @SuppressWarnings("unchecked") var trace = (List<String>) f.get("trace");
+        assertNotNull(trace);
+        String all = String.join("\n", trace);
+        assertTrue(all.contains("* TLS TLSv12 cipher=TLS_RSA_WITH_AES_128_CBC_SHA"), all);
+        assertTrue(all.contains("> ClientHello server_name=plc.local"), all);
+        assertTrue(all.contains("< Certificate[0] subject=CN=plc.local") && all.contains("self-signed"), all);
+        assertTrue(all.contains("* conn C1 tcp 192.168.2.53:50000 -> 192.168.88.75:443") && all.contains("state=SF"), all);
+    }
 }

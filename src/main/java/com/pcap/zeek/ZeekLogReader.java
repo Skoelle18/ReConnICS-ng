@@ -96,6 +96,9 @@ public final class ZeekLogReader {
     private final Map<String, Host> hosts = new LinkedHashMap<>();
     private final Map<String, IdentGroup> identGroups = new LinkedHashMap<>();
     private final Set<String> unmatchedSeen = new java.util.HashSet<>();
+    private final Map<String, List<TraceLine>> traces = new LinkedHashMap<>();   // "client>server>port" -> curl-style lines
+    private final Map<String, String> certs = new HashMap<>();                    // x509 fuid -> one-line certificate summary
+    private int traceLines;
 
     /** @param icsOnly   no flows for traffic that is not a decoded ICS protocol (hosts still become assets)
      *  @param keepScans give scan-only conversations a flow of their own */
@@ -110,6 +113,9 @@ public final class ZeekLogReader {
 
     private record PerFunction(String client, String server, String port, String function, String access, Long address, Long quantity,
                              Long unit, List<Object> samples) {
+    }
+
+    private record TraceLine(long ts, String text) {
     }
 
     private record FlowRef(String client, String server, String protocol, String port) {
@@ -166,6 +172,9 @@ public final class ZeekLogReader {
         hosts.clear();
         identGroups.clear();
         unmatchedSeen.clear();
+        traces.clear();
+        certs.clear();
+        traceLines = 0;
         if (dir == null || !Files.isDirectory(dir)) {
             throw new ZeekException(ZeekException.Kind.ENGINE, "the Zeek log directory does not exist: " + dir);
         }
@@ -192,7 +201,16 @@ public final class ZeekLogReader {
         each(dir, "cip.log", this::cip);
         each(dir, "cip_io.log", this::cipIo);
         emitOperations();
+        each(dir, "x509.log", this::x509);                    // before ssl.log: its rows look the certificates up by fuid
+        each(dir, "ssl.log", this::ssl);
+        each(dir, "http.log", this::http);
+        each(dir, "ssh.log", this::ssh);
+        for (Spec s : SPECS) {
+            each(dir, s.log() + ".log", n -> generic(n, s));
+        }
+        each(dir, "dns.log", this::dns);
         emitConns();
+        emitTraces();
         emitModbusIdent();
         each(dir, "cip_identity.log", this::cipIdentity);
         each(dir, "s7comm_known_devices.log", this::s7Known);
@@ -403,6 +421,9 @@ public final class ZeekLogReader {
             }
         }
         String server = r != null ? r : rs;
+        trace(o, server, port, ts, "* conn " + cap(text(n, "uid"), 24) + " " + proto + " " + o + ":" + port(n, "id.orig_p") + " -> " + server + ":" + rp
+                + opt(" service=", text(n, "service")) + opt(" state=", text(n, "conn_state")) + opt(" history=", text(n, "history"))
+                + " duration=" + dur(n) + " orig=" + ob + "B/" + num(n, "orig_pkts", 0) + "pkt resp=" + rb + "B/" + num(n, "resp_pkts", 0) + "pkt");
         // one conversation per host pair + server port + protocol: two protocols on one port (a probe and a master) stay two flows
         String key = o + '>' + server + '>' + port + '>' + svc;
         ConnAgg a = conns.get(key);
@@ -509,6 +530,242 @@ public final class ZeekLogReader {
                 f.scanAttempts(e.getValue()[0]);
             }
         }
+    }
+
+    // ------------------------------------------------------------------ curl-style trace (display text only, never a decision)
+
+    private static final int MAX_TRACE_KEYS = 50_000, MAX_TRACE_LINES = 500_000, MAX_CERTS = 50_000;
+
+    private static String opt(String label, String v) {
+        return v == null || v.isEmpty() || "-".equals(v) ? "" : label + cap(v, 120);
+    }
+
+    private static String str(JsonNode n, String k) {
+        JsonNode v = n.get(k);
+        return v == null || v.isNull() || v.isContainerNode() ? null : cap(v.asText(), 120);
+    }
+
+    private static String dur(JsonNode n) {
+        JsonNode d = n.get("duration");
+        return d != null && d.isNumber() && Double.isFinite(d.asDouble()) ? String.format(java.util.Locale.ROOT, "%.3fs", d.asDouble()) : "n/a";
+    }
+
+    /** First few text items of a JSON array, joined; Zeek vectors (SANs, MIME types, answers) can be long. */
+    private static String list(JsonNode n, String k, int max) {
+        JsonNode v = n.get(k);
+        if (v == null || !v.isArray()) {
+            return null;
+        }
+        List<String> out = new ArrayList<>();
+        for (JsonNode e : v) {
+            if (e.isTextual() && out.size() < max) {
+                out.add(cap(e.asText(), 80));
+            }
+        }
+        return out.isEmpty() ? null : String.join(",", out) + (v.size() > max ? ",+" + (v.size() - max) + " more" : "");
+    }
+
+    private void trace(String o, String r, String port, long ts, String line) {
+        if (line.isEmpty() || traceLines >= MAX_TRACE_LINES) {
+            return;
+        }
+        String key = o + '>' + r + '>' + port;
+        List<TraceLine> l = traces.get(key);
+        if (l == null) {
+            if (traces.size() >= MAX_TRACE_KEYS) {
+                return;
+            }
+            traces.put(key, l = new ArrayList<>());
+        }
+        if (l.size() < FlowTable.MAX_TRACE * 4) {             // earliest rows per conversation; the flow keeps the first MAX_TRACE after sorting
+            l.add(new TraceLine(ts, cap(line, 300)));
+            traceLines++;
+        }
+    }
+
+    /** Client, server and server port/transport of a protocol log row, or null when it is not a unicast IPv4 pair. */
+    private String[] endpoints(JsonNode n) {
+        String o = ip4(text(n, "id.orig_h")), r = ip4(text(n, "id.resp_h"));
+        int rp = port(n, "id.resp_p");
+        return o == null || r == null || rp < 0 ? null : new String[]{o, r, rp + (udpUids.contains(text(n, "uid")) ? "/udp" : "/tcp")};   // protocol logs carry no transport: conn.log's uid says
+    }
+
+    /** A protocol log reduced to curl-style lines: which fields go on the '*' (session), '>' (client) and '<' (server) line. */
+    private record Spec(String log, String label, String[] star, String[] out, String[] in) {
+    }
+
+    private static String[] f(String... k) {
+        return k;
+    }
+
+    // Field names are Zeek 8's. Passwords and other secrets Zeek logs (ftp password) are left out on purpose.
+    private static final List<Spec> SPECS = List.of(
+            new Spec("ftp", "FTP", f("data_channel.passive"), f("user", "command", "arg"), f("reply_code", "reply_msg")),
+            new Spec("smtp", "SMTP", f("helo", "tls", "path"), f("mailfrom", "rcptto", "subject", "user_agent", "x_originating_ip"), f("last_reply")),
+            new Spec("smb_mapping", "SMB tree", f("native_file_system"), f("path", "service"), f()),
+            new Spec("smb_files", "SMB file", f(), f("action", "path", "name", "size"), f()),
+            new Spec("ntlm", "NTLM", f("success"), f("username", "domainname", "hostname"), f("server_nb_computer_name", "server_dns_computer_name", "server_tree_name")),
+            new Spec("kerberos", "Kerberos", f("success", "error_msg", "cipher"), f("request_type", "client"), f("service")),
+            new Spec("dce_rpc", "DCE-RPC", f("named_pipe"), f("endpoint", "operation"), f()),
+            new Spec("rdp", "RDP", f("result", "security_protocol", "encryption_level", "cert_type", "ssl"),
+                    f("cookie", "client_name", "client_build", "client_dig_product_id", "desktop_width", "desktop_height", "keyboard_layout"), f()),
+            new Spec("dhcp", "DHCP", f("msg_types", "duration"), f("mac", "host_name", "client_fqdn", "requested_addr", "client_software"),
+                    f("assigned_addr", "lease_time", "domain", "server_software", "server_addr")),
+            new Spec("ntp", "NTP", f("version", "mode", "stratum", "poll", "precision"), f(), f("ref_id", "root_delay", "root_disp")),
+            new Spec("snmp", "SNMP", f("version", "duration"), f("community", "get_requests", "set_requests"), f("get_responses", "display_string", "up_since")),
+            new Spec("sip", "SIP", f("call_id", "trans_depth"), f("method", "uri", "request_from", "request_to", "user_agent"), f("status_code", "status_msg", "response_from")),
+            new Spec("radius", "RADIUS", f("result", "ttl"), f("username", "mac", "framed_addr", "remote_ip"), f("connect_info")),
+            new Spec("mysql", "MySQL", f("success", "rows"), f("cmd", "arg"), f("response")),
+            new Spec("ldap", "LDAP", f("message_id", "version"), f("opcode", "object", "argument"), f("result", "diagnostic_message")),
+            new Spec("mqtt_connect", "MQTT connect", f("connect_status"), f("proto_name", "proto_version", "client_id"), f()),
+            new Spec("mqtt_subscribe", "MQTT subscribe", f("ack"), f("action", "topics", "qos_levels"), f("granted_qos_level")),
+            new Spec("mqtt_publish", "MQTT publish", f("status", "qos", "retain"), f("topic", "payload_len"), f()),
+            new Spec("tunnel", "Tunnel", f("action"), f("tunnel_type"), f()),
+            new Spec("weird", "weird", f("name", "addl", "notice"), f(), f()));
+
+    private static String val(JsonNode n, String k) {
+        JsonNode v = n.get(k);
+        if (v == null || v.isNull()) {
+            return null;
+        }
+        if (v.isArray()) {
+            return list(n, k, 6);
+        }
+        return v.isContainerNode() ? null : cap(v.asText(), 120);
+    }
+
+    private static String fields(JsonNode n, String[] keys) {
+        StringBuilder b = new StringBuilder();
+        for (String k : keys) {
+            String v = val(n, k);
+            if (v != null && !v.isEmpty() && !"-".equals(v)) {
+                b.append(' ').append(k.substring(k.lastIndexOf('.') + 1)).append('=').append(v);
+            }
+        }
+        return b.toString();
+    }
+
+    private boolean generic(JsonNode n, Spec s) {
+        String[] e = endpoints(n);
+        long ts = micros(n, "ts");
+        if (e == null || ts < 0) {
+            return false;
+        }
+        String star = fields(n, s.star()), out = fields(n, s.out()), in = fields(n, s.in());
+        trace(e[0], e[1], e[2], ts, star.isEmpty() ? "" : "* " + s.label() + star);
+        trace(e[0], e[1], e[2], ts, out.isEmpty() ? "" : "> " + s.label() + out);
+        trace(e[0], e[1], e[2], ts, in.isEmpty() ? "" : "< " + s.label() + in);
+        if (star.isEmpty() && out.isEmpty() && in.isEmpty()) {
+            trace(e[0], e[1], e[2], ts, "* " + s.label());
+        }
+        return true;
+    }
+
+    private static String day(JsonNode c, String k) {
+        long m = micros(c, k);
+        return m < 0 ? "?" : java.time.Instant.ofEpochSecond(m / 1_000_000L).toString().substring(0, 10);
+    }
+
+    private boolean x509(JsonNode n) {
+        String id = text(n, "id");
+        if (id == null) {
+            return false;
+        }
+        if (certs.size() < MAX_CERTS) {
+            JsonNode c = n.path("certificate");
+            String subject = text(c, "subject"), issuer = text(c, "issuer");
+            certs.put(id, "subject=" + subject + opt(" issuer=", issuer) + " valid=" + day(c, "not_valid_before") + ".." + day(c, "not_valid_after")
+                    + opt(" key=", text(c, "key_alg")) + (num(c, "key_length", 0) > 0 ? "/" + num(c, "key_length", 0) : "") + opt(" sig=", text(c, "sig_alg"))
+                    + opt(" san=", list(n.path("san"), "dns", 6)) + (n.path("basic_constraints").path("ca").asBoolean(false) ? " CA" : "")
+                    + (subject != null && subject.equals(issuer) ? " self-signed" : ""));
+        }
+        return true;
+    }
+
+    private boolean ssl(JsonNode n) {
+        String[] e = endpoints(n);
+        long ts = micros(n, "ts");
+        if (e == null || ts < 0) {
+            return false;
+        }
+        trace(e[0], e[1], e[2], ts, "* TLS " + opt("", text(n, "version")) + opt(" cipher=", text(n, "cipher")) + opt(" curve=", text(n, "curve"))
+                + opt(" alpn=", text(n, "next_protocol")) + opt(" resumed=", str(n, "resumed")) + opt(" established=", str(n, "established"))
+                + opt(" history=", text(n, "ssl_history")));
+        trace(e[0], e[1], e[2], ts, "> ClientHello" + opt(" server_name=", text(n, "server_name")) + opt(" ja3=", text(n, "ja3")) + opt(" ja4=", text(n, "ja4")));
+        trace(e[0], e[1], e[2], ts, "< ServerHello" + opt(" ja3s=", text(n, "ja3s")) + opt(" ja4s=", text(n, "ja4s")));
+        JsonNode chain = n.get("cert_chain_fuids");
+        int i = 0;
+        if (chain != null && chain.isArray()) {
+            for (JsonNode f : chain) {
+                if (f.isTextual() && i < 6) {
+                    String c = certs.get(f.asText());
+                    trace(e[0], e[1], e[2], ts, "< Certificate[" + i++ + "] " + (c != null ? c : "fuid=" + cap(f.asText(), 24)));
+                }
+            }
+        }
+        if (i == 0 && text(n, "subject") != null) {
+            trace(e[0], e[1], e[2], ts, "< Certificate subject=" + text(n, "subject") + opt(" issuer=", text(n, "issuer")));
+        }
+        trace(e[0], e[1], e[2], ts, opt("* validation_status=", text(n, "validation_status")));
+        return true;
+    }
+
+    private boolean http(JsonNode n) {
+        String[] e = endpoints(n);
+        long ts = micros(n, "ts");
+        if (e == null || ts < 0) {
+            return false;
+        }
+        String uri = text(n, "uri"), version = text(n, "version");
+        trace(e[0], e[1], e[2], ts, "> " + opt("", text(n, "method")) + " " + (uri == null ? "/" : uri) + " HTTP/" + (version == null ? "?" : version));
+        trace(e[0], e[1], e[2], ts, opt("> Host: ", text(n, "host")));
+        trace(e[0], e[1], e[2], ts, opt("> User-Agent: ", text(n, "user_agent")));
+        trace(e[0], e[1], e[2], ts, opt("> Referer: ", text(n, "referrer")));
+        trace(e[0], e[1], e[2], ts, opt("> Authorization: user=", text(n, "username")));
+        trace(e[0], e[1], e[2], ts, num(n, "request_body_len", 0) > 0 ? "> (" + num(n, "request_body_len", 0) + " byte body)" + opt(" ", list(n, "orig_mime_types", 3)) : "");
+        trace(e[0], e[1], e[2], ts, "< HTTP " + (str(n, "status_code") == null ? "?" : str(n, "status_code")) + opt(" ", text(n, "status_msg")));
+        trace(e[0], e[1], e[2], ts, num(n, "response_body_len", 0) > 0 ? "< (" + num(n, "response_body_len", 0) + " byte body)" + opt(" ", list(n, "resp_mime_types", 3)) : "");
+        trace(e[0], e[1], e[2], ts, opt("* tags=", list(n, "tags", 4)));
+        return true;
+    }
+
+    private boolean ssh(JsonNode n) {
+        String[] e = endpoints(n);
+        long ts = micros(n, "ts");
+        if (e == null || ts < 0) {
+            return false;
+        }
+        trace(e[0], e[1], e[2], ts, "* SSH version=" + (str(n, "version") == null ? "?" : str(n, "version")) + opt(" auth_success=", str(n, "auth_success"))
+                + opt(" auth_attempts=", str(n, "auth_attempts")) + opt(" direction=", text(n, "direction")));
+        trace(e[0], e[1], e[2], ts, opt("> ", text(n, "client")));
+        trace(e[0], e[1], e[2], ts, opt("< ", text(n, "server")));
+        trace(e[0], e[1], e[2], ts, "* " + opt("kex=", text(n, "kex_alg")) + opt(" hostkey=", text(n, "host_key_alg")) + opt(" cipher=", text(n, "cipher_alg"))
+                + opt(" mac=", text(n, "mac_alg")) + opt(" hostkey_fp=", text(n, "host_key")));
+        return true;
+    }
+
+    private boolean dns(JsonNode n) {
+        String[] e = endpoints(n);
+        long ts = micros(n, "ts");
+        if (e == null || ts < 0) {
+            return false;
+        }
+        trace(e[0], e[1], e[2], ts, "> DNS" + opt(" ", text(n, "qtype_name")) + opt(" ", text(n, "query")));
+        trace(e[0], e[1], e[2], ts, "< " + opt("", text(n, "rcode_name")) + opt(" ", list(n, "answers", 6)));
+        return true;
+    }
+
+    /** Hands each conversation's lines, oldest first, to its flow; a conversation with no flow (ICS-only mode, over the cap) drops them. */
+    private void emitTraces() {
+        for (Map.Entry<String, List<TraceLine>> e : traces.entrySet()) {
+            String[] k = e.getKey().split(">", 3);
+            FlowTable.Flow f = flows.match(k[0], k[1], k[2]);
+            if (f != null) {
+                e.getValue().stream().sorted(java.util.Comparator.comparingLong(TraceLine::ts)).forEach(t -> f.trace(java.time.Instant.ofEpochSecond(t.ts() / 1_000_000L).toString().substring(11, 19) + " " + t.text()));
+            }
+        }
+        traces.clear();
+        certs.clear();
     }
 
     // ------------------------------------------------------------------ modbus

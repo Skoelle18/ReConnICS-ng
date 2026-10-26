@@ -17,7 +17,7 @@ test('reference console shell and navigation', async (t) => {
       assert.ok(app.$('#stage'), 'graph stage');
       assert.ok(app.$('#modes [data-mode="inventory"]'), 'inventory mode is available');
       assert.ok(app.$('#modes [data-mode="findings"]'), 'findings mode is available');
-      assert.ok(app.$('#modes [data-mode="data"]'), 'data mode is available');
+      assert.equal(app.$('#modes [data-mode="data"]'), null, 'the Data mode is gone: its screens are in the sidebar');
       assert.equal(app.$('#modes [data-mode="graph"]').classList.contains('on'), true);
       assert.equal(app.$$('#graph .node').filter((n) => !n.classList.contains('adv')).length, 10, 'every asset is a node');
       assert.ok(app.$('#top-search input#q'));
@@ -73,13 +73,11 @@ test('reference console shell and navigation', async (t) => {
     } finally { app.close(); }
   });
 
-  await t.test('the tree Export row opens the same multi-format export popover', async () => {
-    const app = await loadApp({ routes: defaultRoutes() });
+  await t.test('the tree Export row opens the Export screen', async () => {
+    const app = await loadApp({ routes: defaultRoutes(), hash: '#/export' });
     try {
-      app.$('#tree-export').click();
-      assert.equal(app.$('#pop-export').hidden, false);
-      assert.equal(app.$('#tree-export').getAttribute('aria-expanded'), 'true');
-      assert.deepEqual(app.$$('#pop-export a').map((a) => a.textContent), ['inventory.csv', 'inventory.json', 'report.html']);
+      assert.equal(app.$('#tree a[href="#/export"]').getAttribute('aria-current'), 'page');
+      assert.deepEqual(app.$$('#main .export-list .btn').map((a) => a.textContent), ['inventory.csv', 'inventory.json', 'report.html', 'report.pdf']);
     } finally { app.close(); }
   });
 
@@ -189,7 +187,7 @@ test('graph controls and inspector', async (t) => {
       assert.match(app.text('#main'), /CISA high-priority attributes/);
       assert.match(app.text('#main'), /HIGH/);
       assert.match(app.text('#main'), /Site fields/);
-      assert.ok(app.$$('#main button.tab').some((b) => /^Conversations/.test(b.textContent)));
+      assert.ok(app.$$('#main button.tab').some((b) => /^Talks to/.test(b.textContent)));
       const validate = app.$$('#main button').find((b) => /Mark validated/.test(b.textContent));
       assert.equal(validate.disabled, true, 'a collector cannot validate');
       app.$('#main .dock-btn').click(); await settle();
@@ -239,15 +237,15 @@ test('advisory wording never claims a device is safe', async (t) => {
     } finally { app.close(); }
   });
 
-  await t.test('findings tabs filter advisories and review records', async () => {
+  await t.test('advisories and the review queue are separate sidebar screens', async () => {
     const app = await loadApp({ routes: defaultRoutes(), hash: '#/findings' });
     try {
-      assert.ok(app.$('#main .screen-tabs'));
+      assert.equal(app.$('#main .screen-tabs'), null, 'the sidebar is the only navigation');
       assert.match(app.text(), /TEST-ADVISORY-0001/);
       const search = app.$('#main input[type="search"]');
       search.value = 'no-such-advisory'; search.dispatchEvent(new app.window.Event('input', { bubbles: true }));
       assert.doesNotMatch(app.text(), /TEST-ADVISORY-0001/);
-      app.$$('#main .screen-tabs a')[1].click();
+      app.$('#tree a[href="#/review"]').click(); await app.go('#/review');
       assert.match(app.text(), /Review queue/);
       assert.match(app.text(), /Last reviewed: Never/);
       assert.equal(app.$$('#main button').find((b) => /Confirm all/.test(b.textContent)).disabled, true, 'Collector cannot confirm');
@@ -433,22 +431,21 @@ test('asset history', async (t) => {
   });
 });
 
-test('Data mode groups the live data screens and filters the audit log', async () => {
+test('the data screens open from the sidebar and the audit log filters', async () => {
   const changes = [
     { at: '2026-10-19T10:00:00Z', actor: 'R. Analyst', asset: '10.0.1.40', field: 'firmware', from: '20.011', to: '24.011', source: 'capture c0002' },
     { at: '2026-10-19T09:00:00Z', actor: 'S. Owner', asset: '10.0.1.10', field: 'criticality', from: '', to: 'high', source: 'human' }];
   const app = await loadApp({ routes: defaultRoutes({ changes }), hash: '#/data' });
   try {
-    assert.equal(app.$('#modes [data-mode="data"]').classList.contains('on'), true);
-    assert.ok(app.$('#main .screen-tabs[aria-label="Data sections"]'));
+    assert.equal(app.$('#main .screen-tabs'), null);
     assert.match(app.text(), /Capture queue/);
-    app.$('#main .screen-tabs a[href="#/log"]').click(); await app.go('#/log');
+    app.$('#tree a[href="#/log"]').click(); await app.go('#/log');
     assert.match(app.text(), /capture c0002/);
     assert.match(app.text(), /Source capture/);
     const input = app.$('#main .screen-search input'); input.value = 'S. Owner'; input.dispatchEvent(new app.window.Event('input', { bubbles: true }));
     assert.match(app.text(), /S. Owner/);
     assert.doesNotMatch(app.text(), /R. Analyst/);
-    app.$('#main .screen-tabs a[href="#/export"]').click(); await app.go('#/export');
+    app.$('#tree a[href="#/export"]').click(); await app.go('#/export');
     assert.equal(app.$$('#main a[download]').length, 3, 'only export endpoints documented by the server are offered');
   } finally { app.close(); }
 });
@@ -468,7 +465,6 @@ test('index staleness threshold is a local display preference', async () => {
 test('Settings updates the actor and role used by later API writes', async () => {
   const app = await loadApp({ routes: defaultRoutes(), hash: '#/settings', storage: { actor: 'Old name', role: 'collector' } });
   try {
-    assert.equal(app.$('#modes [data-mode="data"]').classList.contains('on'), true);
     app.$('#setting-actor').value = 'New Validator';
     app.$('#setting-role').value = 'validator';
     app.$('#setting-stale-days').value = '45';

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ReConICS site console</title>
+<title>ReConnICS-ng console</title>
 <link rel="stylesheet" href="app.css">
 <script src="app.js" defer></script>
 </head>
@@ -15,7 +15,6 @@
     <a href="#/graph" data-mode="graph">Graph</a>
     <a href="#/inventory" data-mode="inventory">Inventory</a>
     <a href="#/findings" data-mode="findings">Findings <b id="mode-review-count"></b></a>
-    <a href="#/data" data-mode="data">Data</a>
   </nav>
   <div id="top-search" role="search">
     <label class="sr" for="q">Search hosts and conversations</label>
@@ -34,7 +33,6 @@
 
 <div id="workspace">
 <aside id="tree" aria-label="Site navigation">
-  <a class="tree-row selected" href="#/overview"><span class="tree-icon">⌂</span><span>Site</span></a>
   <div class="tree-heading">CAPTURES</div>
   <a class="tree-row" href="#/captures"><span class="tree-icon">▤</span><span>Captures</span><span class="tree-count" id="tree-capture-count"></span></a>
   <div class="tree-heading">ASSETS</div>
@@ -50,7 +48,7 @@
   <a class="tree-row" href="#/index"><span class="tree-icon">◫</span><span>Advisory index</span></a>
   <a class="tree-row" href="#/engines"><span class="tree-icon">▦</span><span>Engines</span></a>
   <a class="tree-row" href="#/log"><span class="tree-icon">◷</span><span>Change log</span></a>
-  <button class="tree-row tree-button" id="tree-export" type="button" aria-expanded="false" aria-controls="pop-export"><span class="tree-icon">⇩</span><span>Export</span></button>
+  <a class="tree-row" href="#/export"><span class="tree-icon">⇩</span><span>Export</span></a>
   <a class="tree-row" href="#/settings"><span class="tree-icon">⚙</span><span>Settings</span></a>
 </aside>
 <div id="stage">
@@ -87,14 +85,10 @@
 <div id="load-error" role="alert" aria-live="assertive" hidden><div class="strong">Console data could not be loaded</div><div id="load-error-text"></div><button class="btn pri" id="retry-load" type="button">Retry</button></div>
 
 <input type="file" id="import-pick" class="sr" multiple accept=".pcap,.pcapng,.cap" tabindex="-1" aria-hidden="true">
-<div id="pop-export" class="pop side-pop" hidden>
-  <a class="btn sm" href="/api/v1/export/inventory.csv" download="inventory.csv">inventory.csv</a>
-  <a class="btn sm" href="/api/v1/export/inventory.json" download="inventory.json">inventory.json</a>
-  <a class="btn sm" href="/api/v1/export/report.html" download="report.html">report.html</a>
-</div>
 <div id="pop-info" class="pop side-pop" hidden></div>
 
 
+<div id="split" role="separator" aria-orientation="vertical" aria-label="Resize the side panel (arrow keys or drag)" tabindex="0" hidden></div>
 <main id="main" class="sheet" tabindex="-1" hidden></main>
 <div id="toast" role="status" aria-live="polite"></div>
 </div>

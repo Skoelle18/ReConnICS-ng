@@ -558,6 +558,14 @@ final class Site {
                 if (cs.size() < MAX_FLOW_CAPTURES && !cs.contains(captureId)) cs.add(captureId);
             }
             mergeOperations(m, f.get("operations"));
+            if (f.get("trace") instanceof List<?> tl) {          // curl-style display lines from the posted flow: cleaned, deduplicated, capped
+                @SuppressWarnings("unchecked")
+                List<Object> mine = (List<Object>) m.computeIfAbsent("trace", k -> new ArrayList<Object>());
+                for (Object tv : tl) {
+                    if (mine.size() >= 200) break;
+                    if (tv instanceof String line) { String tc = Inventory.clean(line, 300); if (!tc.isEmpty() && !mine.contains(tc)) mine.add(tc); }
+                }
+            }
         }
     }
 

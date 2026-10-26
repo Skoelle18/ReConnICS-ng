@@ -53,6 +53,14 @@ const h = (tag, props, ...kids) => build(document.createElement(tag), props, kid
 const sv = (tag, props, ...kids) => build(document.createElementNS('http://www.w3.org/2000/svg', tag), props, kids);
 const $ = (id) => document.getElementById(id);
 const store = { get(k) { try { return localStorage.getItem(k) || ''; } catch { return ''; } }, set(k, v) { try { localStorage.setItem(k, v); } catch { /* private window */ } } };
+// Which captures and host classes the graph shows survives a reload; the inventory uses the same view.
+const VIEW_KEYS = ['hideUnknown', 'hideScans', 'hideSeenOnly', 'hideDecommissioned', 'showGroups'];
+try {
+  const v = JSON.parse(store.get('view') || '{}');
+  VIEW_KEYS.forEach((k) => { if (typeof v[k] === 'boolean') S[k] = v[k]; });
+  if (Array.isArray(v.capOff)) S.capOff = new Set(v.capOff.filter((x) => typeof x === 'string'));
+} catch { /* no saved view */ }
+const saveView = () => store.set('view', JSON.stringify({ ...Object.fromEntries(VIEW_KEYS.map((k) => [k, S[k]])), capOff: [...S.capOff] }));
 S.floats = [];   // asset ids whose panel floats beside the node; any number, while one docks via the route
 const val = (a, k) => (a && a[k] && a[k].value != null ? a[k].value : null);
 const str = (v) => (Array.isArray(v) ? v.join(', ') : v == null ? '' : String(v));
@@ -95,6 +103,8 @@ const capFileName = (id) => { const c = S.caps.find((x) => x.id === id); return 
 const capAllHidden = (ids) => !!(ids && ids.length) && ids.every((id) => S.capOff.has(id));
 /** A capture hidden from the graph removes only the nodes it exclusively contributed; a shared node stays. */
 const assetVisible = (a) => { const ids = capturesOf(a); return !ids.length || ids.some((id) => !S.capOff.has(id)); };
+/** What the graph draws, and so what the inventory lists: the selected captures and the hidden-by-default classes. */
+const inView = (a) => assetVisible(a) && !(S.hideSeenOnly && isSeenOnly(a)) && !(S.hideDecommissioned && isDecommissioned(a));
 
 function roleGroup(a) {
   const r = (str(val(a, 'role')) + ' ' + str(val(a, 'deviceType'))).toLowerCase();
@@ -296,8 +306,7 @@ function filterPanel() {
     group('Layout', on('Force', S.layout === 'force', () => { S.layout = 'force'; relayoutSoon(); }), on('Purdue levels', S.layout === 'purdue', () => { S.layout = 'purdue'; relayoutSoon(); })),
     doneCaps().length ? group('Captures on the graph', doneCaps().map((c) => on(c.file, !S.capOff.has(c.id), () => toggleCapture(c.id))))
       : group('Captures on the graph', h('span', { class: 'muted small' }, 'No merged captures yet')),
-    h('div', { class: 'row' }, h('button', { class: 'btn sm', onclick: resetView }, 'Reset view')),
-    h('div', { class: 'muted small' }, 'Filters dim the non-matching assets and conversations on the graph. Capture buttons hide or show everything that capture contributed.'));
+    h('div', { class: 'row' }, h('button', { class: 'btn sm', onclick: resetView }, 'Reset view'), info('Filters dim the non-matching assets and conversations on the graph. Capture buttons hide or show everything that capture contributed.')));
   if (had >= 0) p.querySelectorAll('button')[had].focus();
 }
 /** Compact always-visible graph chips from the console reference; detailed facets stay in the filter popover. */
@@ -357,6 +366,14 @@ function legendPanel() {
 
 // ------------------------------------------------------------------ screens
 
+/** The (i) marker: the explanation lives in a tooltip (read by #tip) instead of a paragraph on the page. */
+const info = (text) => h('span', { class: 'inf', tabindex: '0', 'aria-label': 'What is this' }, 'i', h('span', { class: 'tip' }, text));
+
+/** Overview, the asset table and Ethernet are one Inventory section; the top bar's Inventory tab opens it. */
+const inventoryTabs = (current) => h('nav', { class: 'screen-tabs', 'aria-label': 'Inventory sections' },
+  [['overview', 'Overview'], ['inventory', 'Assets'], ['ethernet', 'Ethernet']].map(([key, label]) =>
+    h('a', { href: '#/' + key, class: current === key ? 'selected' : '', 'aria-current': current === key ? 'page' : null }, label)));
+
 function overview() {
   const all = assets(), sum = S.inv.summary || {}, n = all.length || 1;
   const kev = all.filter((a) => a.match && a.match.kevAtModel).length;
@@ -366,6 +383,7 @@ function overview() {
   const groups = Object.keys(ROLE_COLOR).map((g) => ({ g, n: all.filter((a) => roleGroup(a) === g).length })).filter((x) => x.n);
   const ranked = S.rank.map(byId).filter(Boolean);
   return [
+    inventoryTabs('overview'),
     h('div', { class: 'head' },
       h('div', {}, h('h1', {}, 'Site overview'), h('div', { class: 'muted' }, done.length + ' captures merged' + (last ? ' · last ' + fmtTime(last.at) : ''))),
       h('div', { class: 'row' }, h('a', { class: 'btn', href: '/api/v1/export/report.html', download: 'report.html' }, 'Export report'), h('a', { class: 'btn pri', href: '#/captures' }, 'Queue PCAPs'))),
@@ -435,7 +453,7 @@ function inventoryAssetRow(a, grouped) {
 }
 
 function inventory() {
-  const rows = S.rank.map(byId).filter((a) => a && matches(a));
+  const rows = S.rank.map(byId).filter((a) => a && inView(a) && matches(a));
   const selectedVisible = rows.filter((a) => S.bulkSelected.has(a.id)).length;
   const checkAll = h('input', { type: 'checkbox', checked: rows.length > 0 && selectedVisible === rows.length, 'aria-label': 'Select all filtered assets',
     onchange: (e) => { rows.forEach((a) => e.target.checked ? S.bulkSelected.add(a.id) : S.bulkSelected.delete(a.id)); render(); } });
@@ -468,14 +486,15 @@ function inventory() {
     });
   }
   return [
-    h('div', { class: 'head inventory-heading' }, h('div', {}, h('h1', {}, 'Inventory'), h('div', { class: 'muted' }, rows.length + ' of ' + assets().length + ' assets · fix-first order')),
+    inventoryTabs('inventory'),
+    h('div', { class: 'head inventory-heading' }, h('div', {}, h('h1', {}, 'Inventory'), h('div', { class: 'muted' }, rows.length + ' of ' + assets().length + ' assets · fix-first order' + (assets().filter((a) => !inView(a)).length ? ' · the rest are hidden in the graph view (Filter, or Hide/Show on Captures)' : ''))),
       h('label', { class: 'row inventory-group-toggle' }, h('input', { type: 'checkbox', checked: S.inventoryGroupMac, onchange: (e) => { S.inventoryGroupMac = e.target.checked; render(); } }), 'Group by MAC')),
     h('form', { class: 'card bulk-edit', onsubmit: (e) => { e.preventDefault(); applyBulkEdit(rows); } },
-      h('div', { class: 'card-h' }, 'Bulk edit', h('span', { class: 'muted small' }, selectedVisible + ' of ' + rows.length + ' shown selected' + (S.bulkSelected.size !== selectedVisible ? ' · ' + S.bulkSelected.size + ' selected overall' : ''))),
+      h('div', { class: 'card-h' }, h('span', {}, 'Bulk edit ', info('Each selected asset is saved through the existing asset endpoint and logged under your session name. Validation is not part of bulk edit.')), h('span', { class: 'muted small' }, selectedVisible + ' of ' + rows.length + ' shown selected' + (S.bulkSelected.size !== selectedVisible ? ' · ' + S.bulkSelected.size + ' selected overall' : ''))),
       h('div', { class: 'bulk-edit-row' }, h('label', {}, 'Field', h('select', { value: S.bulkField, onchange: (e) => { S.bulkField = e.target.value; S.bulkValue = ''; render(); } }, BULK_FIELDS.map(([v, label]) => h('option', { value: v, selected: S.bulkField === v }, label)))),
         h('label', {}, 'Value', valueInput), h('button', { class: 'btn pri', type: 'submit', disabled: selectedVisible === 0 }, 'Apply to selected'),
         h('button', { class: 'btn', type: 'button', onclick: () => { S.bulkSelected.clear(); render(); } }, 'Clear selection')),
-      h('div', { class: 'card-b muted small' }, 'Each selected asset is saved through the existing asset endpoint and logged under your session name. Validation is not part of bulk edit.')),
+      null),
     h('div', { class: 'card inventory-table-wrap' },
       rows.length ? h('table', { class: 'inventory-table' },
         h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, checkAll), ...['Asset', 'MAC', 'Vendor', 'Role', 'Purdue', 'Match', 'Completeness', 'Seen in'].map((label) => h('th', { scope: 'col' }, label)))),
@@ -505,12 +524,12 @@ function captures() {
   const drop = h('div', { class: 'drop', ondragover: (e) => { e.preventDefault(); drop.classList.add('over'); }, ondragleave: () => drop.classList.remove('over'),
     ondrop: (e) => { e.preventDefault(); drop.classList.remove('over'); upload([...e.dataTransfer.files]); } },
     h('div', {}, h('div', { class: 'strong' }, 'Drop capture files here'),
-      h('div', { class: 'muted small' }, 'Classic PCAP or pcapng. Each file is hashed while it streams to disk; the same file twice is refused.')),
+      h('div', { class: 'muted small' }, 'Classic PCAP or pcapng ', info('Each file is hashed while it streams to disk; the same file twice is refused.'))),
     pick, h('label', { for: 'pick', class: 'btn pri', tabindex: '0' }, 'Add PCAPs'));
   const c = S.caps.find((x) => x.id === S.openCap);
   const stateTxt = { done: 'Merged', running: 'Analyzing', queued: 'Queued', failed: 'Failed' };
   return [
-    h('div', {}, h('h1', {}, 'Capture queue'), h('div', { class: 'muted' }, 'Captures run one at a time, in order, and merge into the site inventory. Nothing is sent to the plant.')),
+    h('div', {}, h('h1', {}, 'Capture queue', info('Captures run one at a time, in order, and merge into the site inventory. Nothing is sent to the plant.'))),
     drop,
     h('div', { class: 'card' }, h('div', { class: 'scroll' },
       h('div', { class: 'trow thead g-cap' }, h('span', {}, 'File'), h('span', {}, 'Status'), h('span', {}, 'Queued by'), h('span', {}, 'Result'), h('span', {}, 'SHA-256'), h('span', {})),
@@ -586,12 +605,12 @@ function engines() {
         h('span', { class: 'small' }, r.kind === 'reference' ? '-' : done ? ran(r.id) + ' of ' + done + ' captures' : 'no captures yet'),
         h('span', { class: 'small wrap' }, r.licence), h('span', { class: 'small wrap' }, r.role)); }))) : null;
   return [
-    h('div', {}, h('h1', {}, 'Engines'), h('div', { class: 'muted' }, 'ReConnICS-ng wraps existing open-source tools instead of rewriting them. Zeek with the ICSNPP packages is the primary engine; every other tool is optional and used only when it is installed (on PATH, or in the reconics-tools Docker image). Everything is passive: capture files are only read.')),
+    h('div', {}, h('h1', {}, 'Engines', info('ReConnICS-ng wraps existing open-source tools instead of rewriting them. Zeek with the ICSNPP packages is the primary engine; every other tool is optional and used only when it is installed (on PATH, or in the reconics-tools Docker image). Everything is passive: capture files are only read.'))),
     S.engines === null ? h('div', { class: 'card empty' }, 'Looking for installed tools…') : null,
     section('Engines and Zeek packages', 'status of this machine', rows.filter((r) => r.kind === 'engine' || r.kind === 'package')),
     section('Data files', 'read-only reference tables', rows.filter((r) => r.kind === 'data')),
     section('Lineage and credits', 'not run, not bundled', rows.filter((r) => r.kind === 'reference')),
-    h('div', { class: 'small muted' }, 'Suricata, nDPI and p0f results are shown as evidence with the tool named and a confidence. They never count as a decoded protocol. Details and what was not adopted: docs/foss-components.md.'),
+    h('div', { class: 'small muted' }, 'Suricata, nDPI and p0f are evidence, never a decode ', info('Their results are shown with the tool named and a confidence. They never count as a decoded protocol. Details and what was not adopted: docs/foss-components.md.')),
   ].filter(Boolean);
 }
 
@@ -645,7 +664,7 @@ function asset(id) {
         h('div', { class: 'row', style: { gap: '20px' } },
           fact('Completeness', c.filled + ' / 14'), h('div', {}, h('div', { class: 'muted small' }, 'Match ceiling'), levelBadge(c.matchCeiling)),
           fact('Lifecycle', site.lifecycle || 'In service'))),
-      h('div', { class: 'tabs' }, tab('attrs', 'Attributes'), tab('advs', 'Advisories (' + advs.length + ')'), tab('conv', 'Conversations (' + convs.length + ')'), tab('hist', 'History (' + hist.length + ')'))),
+      h('div', { class: 'tabs' }, tab('attrs', 'Attributes'), tab('advs', 'Advisories (' + advs.length + ')'), tab('conv', 'Talks to (' + peersOf(convs, a.id) + ')'), tab('hist', 'History (' + hist.length + ')'))),
     S.tab === 'attrs' ? [attrsCard(a, site, role), observedCard(a)] : S.tab === 'conv' ? convCard(convs, a.id) : S.tab === 'advs' ? h('div', { class: 'card' },
       advs.length ? advs.map((x) => h('div', { class: 'card-b stack', style: { gap: '8px', borderBottom: '1px solid var(--line2)' } },
         h('div', { class: 'row' }, h('span', { class: 'mono strong' }, x.advisory), levelBadge(x.level), (x.kev || []).length ? h('span', { class: 'badge kev' }, 'KEV') : null,
@@ -674,7 +693,7 @@ function observedCard(a) {
   const imgs = S.images.filter((i) => i.host === ip), notImages = ((S.imageSummary.nonImageByHost || {})[ip]) || 0;
   if (!tags.length && !d && !w && !groups.length && !(a.behaviour || []).length && !imgs.length && !notImages) return null;
   const line = (label, text) => h('div', {}, h('span', { class: 'muted small' }, label + ' '), h('span', { class: 'wrap' }, text));
-  return h('div', { class: 'card', id: 'observed' }, h('div', { class: 'card-h' }, 'Observed on the wire', h('span', { class: 'muted small' }, 'evidence, not a decode')),
+  return h('div', { class: 'card', id: 'observed' }, h('div', { class: 'card-h' }, 'Observed on the wire', info('Traffic seen on the wire that is not a decoded industrial message: ARP, ICMP, DHCP, scan attempts and conversations the decoders could not read. It is evidence of what the host did, not proof of what it is.')),
     h('div', { class: 'card-b stack', style: { gap: '6px' } },
       (a.behaviour || []).map((b) => line(b + ':', BEHAVIOUR_TEXT[b] || b)),
       tags.length ? h('div', { class: 'small row' }, tags.map(([k, n]) => h('span', { class: 'badge lv-NONE' }, (OBSERVED_TEXT[k] || k.replace(/^icmp:/, 'ICMP ')) + ' ×' + n))) : null,
@@ -704,9 +723,10 @@ function imageStrip(imgs, notImages) {
 }
 
 /** Observed conversations of one asset (the graph's edges touching it), with the message kinds as evidence. */
+const peersOf = (convs, id) => new Set(convs.map((e) => (e.from === id ? e.to : e.from))).size;
 const convsOf = (a) => graphModel().edges.filter((e) => e.kind === 'flow' && (e.from === a.id || e.to === a.id));
 function convCard(convs, id) {
-  return h('div', { class: 'card' }, convs.length ? convs.map((e) => {
+  return h('div', { class: 'card' }, convs.length ? h('div', { class: 'small muted strip-note' }, 'One row per device this one talks to. Several ports between the same two devices are one row; open it to see each thread (one protocol on one port).') : null, convs.length ? convs.map((e) => {
     const out = e.from === id, peerId = out ? e.to : e.from, grp = peerId.startsWith('grp:'), peer = grp ? { id: peerId.slice(4) } : byId(peerId);
     return h('div', { class: 'card-b stack', style: { gap: '6px', borderBottom: '1px solid var(--line2)' } },
       h('div', { class: 'row' }, h('span', { class: 'badge lv-NONE' }, out ? 'to' : 'from'), h('a', { class: 'strong', href: (grp ? '#/group/' : '#/asset/') + encodeURIComponent(peer.id) }, grp ? peer.id : nameOf(peer)),
@@ -726,7 +746,7 @@ function groupPanel(address) {
   const fs = S.flows.filter((f) => f.server === address);
   return [h('div', { class: 'card' },
     h('div', { class: 'card-b stack', style: { gap: '8px' } }, h('h1', {}, address), h('div', { class: 'row' }, h('span', { class: 'badge lv-NONE' }, g.kind), g.scope ? h('span', { class: 'small muted' }, g.scope) : null),
-      h('div', { class: 'small muted' }, 'A group address is where frames are sent to be heard by many hosts. It is not a device: it is never an asset, never matched to an advisory and never scored.')),
+      h('div', { class: 'small muted' }, 'A group address, not a device ', info('A group address is where frames are sent to be heard by many hosts. It is never an asset, never matched to an advisory and never scored.'))),
     h('div', { class: 'card-b facts' }, fact('Packets', (g.packets || 0).toLocaleString()), fact('Bytes', fmtBytes(g.bytes || 0)), g.firstSeen ? fact('First seen', fmtStamp(g.firstSeen)) : fact('Time', 'unknown'),
       g.lastSeen ? fact('Last seen', fmtStamp(g.lastSeen)) : null, (g.ports || []).length ? fact('Ports', g.ports.join(', '), true) : null, (g.protocols || []).length ? fact('Protocols', g.protocols.join(', ')) : null)),
   h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Senders (' + (g.senders || []).length + ')'),
@@ -737,7 +757,7 @@ function groupPanel(address) {
 function ethernet() {
   const rows = S.macs;
   const notes = rows.filter((m) => (m.notes || []).length);
-  return [h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Ethernet', h('span', { class: 'muted small' }, rows.length + ' MAC addresses')),
+  return [inventoryTabs('ethernet'), h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Ethernet', h('span', { class: 'muted small' }, rows.length + ' MAC addresses')),
     h('div', { class: 'card-b small muted' }, 'Per source MAC address: who made the network card, how many frames it sent and received, and which IP addresses were seen behind it. A MAC that carries several IPs is often a router, firewall or NAT interface; every such note below is inferred from addresses, not observed.')),
   notes.length ? h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Inferred topology notes'),
     h('div', { class: 'card-b stack', style: { gap: '6px' } }, notes.slice(0, 40).map((m) => h('div', { class: 'small' }, h('span', { class: 'mono strong' }, m.mac), m.vendor ? ' (' + m.vendor + ')' : '', ' ', h('span', { class: 'badge warn' }, m.kind), ' ', m.notes.join('; '))))) : null,
@@ -781,7 +801,13 @@ function edgePanel(key) {
   const f = pair ? pair.f : S.flows.find((x) => flowKey(x) === key);
   if (!f) return [back, h('div', { class: 'card empty' }, 'No such conversation in the current inventory. It may have been re-merged, or hidden by a filter or a capture toggle; open the graph and click the edge again.')];
   const rate = flowRate(f), pk = protoKey(f.protocol);
+  const parent = pair ? null : graphModel().edges.find((e) => e.members && e.members.includes(f));       // the merged pair this thread was opened from, if any
+  const crumbs = h('nav', { class: 'crumbs small', 'aria-label': 'Where you are' }, h('a', { href: '#/graph' }, 'Graph'), ' › ',
+    parent ? h('a', { href: '#/edge/' + encodeURIComponent(parent.key) }, f.client + ' → ' + f.server + ' (' + parent.members.length + ' threads)') : h('span', {}, f.client + ' → ' + f.server),
+    pair ? null : [' › ', h('span', { class: 'strong' }, protoName(f.protocol) + ' ' + (f.port || ''))]);
   return [
+    crumbs,
+    pair ? null : h('div', { class: 'small muted' }, 'One thread: ' + protoName(f.protocol) + ' on port ' + (f.port || '?') + ' between these two devices. Messages are the protocol messages inside it.'),
     h('div', { class: 'card' },
       h('div', { class: 'card-b stack', style: { gap: '8px' } },
         h('h1', {}, endLink(f.client), ' → ', endLink(f.server)),
@@ -790,7 +816,8 @@ function edgePanel(key) {
           pair ? null : h('span', { class: 'mono small' }, f.port || ''), f.transport && !String(f.port || '').includes('/') ? h('span', { class: 'mono small' }, f.transport) : null,
           f.source ? h('span', { class: 'badge lv-NONE', title: 'which engine produced this conversation' }, f.source) : null,
           isScan(f) ? h('span', { class: 'badge warn' }, 'scan attempts only') : null),
-        pair ? h('div', { class: 'small muted' }, 'A busy host pair drawn as one edge: the counters and kinds below add up its ' + pair.members.length + ' conversations, which are listed under them.')
+        pair ? h('div', { class: 'small muted' }, 'A busy host pair drawn as one edge: the counters and kinds below add up its ' + pair.members.length + ' threads, which are listed under them as threads.')
+          : (f.trace || []).some((l) => l.startsWith('* TLS')) ? h('div', { class: 'small muted' }, 'Encrypted (TLS): the payload cannot be read by anyone without the keys. Messages count data packets; everything the handshake and the connection record reveal is in the session trace below.')
           : pk === 'unknown' ? h('div', { class: 'small muted' }, 'Carried but not decoded: the host pair and port are known, the protocol is not. Messages count data packets.',
             f.portHint ? [' ', h('span', { class: 'badge warn' }, 'port-inferred: ' + protoName(f.portHint) + '?'),
               ' Port ' + f.port + ' is usually ' + protoName(f.portHint) + ' (a hint from the port number only, not decoded'
@@ -803,14 +830,42 @@ function edgePanel(key) {
         f.firstSeen ? fact('First seen', fmtStamp(f.firstSeen)) : null, f.lastSeen ? fact('Last seen', fmtStamp(f.lastSeen)) : null,
         !pair && !f.firstSeen && !f.lastSeen ? fact('Time', 'unknown (the capture has no usable timestamps)') : null,
         fmtSpan(f) ? fact('Span', fmtSpan(f)) : null, f.scanAttempts ? fact('Scan attempts', f.scanAttempts.toLocaleString()) : null)),
+    traceCard(f),
     ...kindsAndOps(f),
     ...toolEvidence(f),
-    pair ? h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Conversations (' + pair.members.length + ')'),
+    pair ? h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Threads (' + pair.members.length + ')', h('span', { class: 'muted small' }, 'one protocol on one port each')),
       pair.members.slice().sort((a, b) => (b.messages || 0) - (a.messages || 0)).map((m) => h('div', { class: 'card-b stack', style: { gap: '4px', borderBottom: '1px solid var(--line2)' } },
         h('div', { class: 'row' }, h('span', { class: 'badge c-LOW', style: { borderLeft: '4px solid ' + protoColor(m.protocol) } }, m.protocol + ' ' + m.port),
           h('span', { class: 'small muted' }, (m.messages || 0) + ' messages · ' + fmtRate(flowRate(m))), h('a', { class: 'btn sm', href: '#/edge/' + encodeURIComponent(flowKey(m)) }, 'Details')),
         h('div', { class: 'small' }, Object.entries(m.labels || {}).map(([k, n]) => k + ' ×' + n).join(' · ') || 'no message kinds recorded')))) : null,
   ].filter(Boolean);
+}
+
+/** One trace line as a bubble row: a bold head, then its key=value pairs as small labelled values. */
+function bubbleRow(text) {
+  const parts = text.split(/ (?=[a-z_][a-z0-9_.]*=)/), head = /^[a-z_][a-z0-9_.]*=/.test(parts[0]) ? null : parts.shift();
+  return h('div', { class: 'bl' }, head ? h('span', { class: 'bh' }, head) : null,
+    parts.map((p) => { const i = p.indexOf('='); return h('span', { class: 'kv' }, h('span', { class: 'k' }, p.slice(0, i)), h('span', { class: 'v' }, p.slice(i + 1))); }));
+}
+
+/** What the Zeek logs recorded about one conversation, as a chat: client on the right, server on the left, session facts in the middle. */
+function traceCard(f) {
+  const msgs = [];
+  for (const l of f.trace || []) {
+    const m = /^(\d\d:\d\d:\d\d) ([*<>]) (.*)$/.exec(l);
+    if (!m) continue;
+    const side = { '>': 'out', '<': 'in', '*': 'sys' }[m[2]], last = msgs[msgs.length - 1];
+    if (last && last.side === side && side !== 'sys') last.rows.push(m[3]); else msgs.push({ side, time: m[1], rows: [m[3]] });
+  }
+  if (!msgs.length) return null;
+  let prev = '';
+  return h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Conversation', h('span', { class: 'muted small' }, (f.trace || []).length + ' events from the Zeek logs, UTC')),
+    h('div', { class: 'chat' }, msgs.map((m) => {
+      const who = m.side === 'out' ? 'Client ' + f.client : m.side === 'in' ? 'Server ' + f.server : null, showWho = who && prev !== m.side;
+      prev = m.side;
+      return h('div', { class: 'msg ' + m.side }, showWho ? h('div', { class: 'who' }, who) : null,
+        m.rows.map(bubbleRow), h('div', { class: 'time' }, m.time));
+    })));
 }
 
 /** What optional open-source tools said about a conversation: nDPI/tshark labels (not decodes), Suricata alerts, Community IDs. */
@@ -911,7 +966,7 @@ function review() {
       h('span', { style: { flex: '1', minWidth: '0' } }, h('span', { class: 'cell-name' }, nameOf(a), ' ', h('span', { class: 'mono small muted' }, a.id)), h('span', { class: 'small muted' }, why)),
       h('span', { class: 'review-meta' }, h('span', { class: 'small muted' }, 'Last reviewed: ' + lastReviewed(a.id)), h('span', { class: 'btn sm' }, 'Open'))))));
   return [
-    h('div', {}, h('h1', {}, 'Review queue'), h('div', { class: 'muted' }, 'Cross-check collected data before an owner validates it (CISA: assign roles for collection and validation).')),
+    h('div', {}, h('h1', {}, 'Review queue', info('Cross-check collected data before an owner validates it (CISA: assign roles for collection and validation).'))),
     h('div', { class: 'row findings-actions' }, h('label', { class: 'screen-search' }, h('span', { class: 'sr' }, 'Search review queue'), h('input', { type: 'search', value: S.reviewSearch, placeholder: 'Search hosts and review reasons', oninput: (e) => { S.reviewSearch = e.target.value; render(); $('main .screen-search input')?.focus(); } })),
       h('button', { class: 'btn pri', type: 'button', disabled: !canConfirm || pending.length === 0, title: canConfirm ? '' : 'Only a Validator can confirm assets', onclick: async () => {
         if (!canConfirm) return;
@@ -934,17 +989,14 @@ function lastReviewed(id) {
 function findings() {
   const tab = route().name === 'review' ? 'review' : route().name === 'advisories' ? 'advisories' : S.findingsTab;
   S.findingsTab = tab;
-  return [h('nav', { class: 'screen-tabs', 'aria-label': 'Findings sections' },
-      h('a', { href: '#/findings', class: tab === 'advisories' ? 'selected' : '', 'aria-current': tab === 'advisories' ? 'page' : null, onclick: (e) => { e.preventDefault(); S.findingsTab = 'advisories'; render(); } }, 'Advisories'),
-      h('a', { href: '#/findings', class: tab === 'review' ? 'selected' : '', 'aria-current': tab === 'review' ? 'page' : null, onclick: (e) => { e.preventDefault(); S.findingsTab = 'review'; render(); } }, 'Review queue')),
-    ...(tab === 'review' ? review() : advisories())];
+  return tab === 'review' ? review() : advisories();
 }
 
 function advisories() {
   const query = S.advisorySearch.trim().toLowerCase();
   const rows = advisoryRows().filter((r) => !query || [r.id, r.title, ...r.cves, ...r.affected].join(' ').toLowerCase().includes(query));
   return [
-    h('div', {}, h('h1', {}, 'Advisories'), h('div', { class: 'muted' }, 'CISA CSAF ICS advisories that hit at least one asset. KEV-listed first, then CVSS.')),
+    h('div', {}, h('h1', {}, 'Advisories', info('CISA CSAF ICS advisories that hit at least one asset. KEV-listed first, then CVSS.'))),
     h('label', { class: 'screen-search' }, h('span', { class: 'sr' }, 'Search advisories'), h('input', { type: 'search', value: S.advisorySearch, placeholder: 'Search advisories, CVEs or affected products', oninput: (e) => { S.advisorySearch = e.target.value; render(); const input = $('main .screen-search input'); if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); } } })),
     h('div', { class: 'card' }, h('div', { class: 'scroll' },
       h('div', { class: 'trow thead g-adv' }, ['Advisory', 'Title', 'CVSS', 'KEV', 'Assets'].map((t) => h('span', {}, t))),
@@ -976,7 +1028,7 @@ function indexScreen() {
   };
   const st = S.staged;
   return [
-    h('div', {}, h('h1', {}, 'Advisory index'), h('div', { class: 'muted' }, 'Built on the online side from CISA CSAF OT + KEV, signed, and carried across the air gap.')),
+    h('div', {}, h('h1', {}, 'Advisory index', info('Built on the online side from CISA CSAF OT + KEV, signed, and carried across the air gap.'))),
     h('div', { class: 'facts' },
       h('div', { class: 'card card-b' }, fact('Generated', fmtTime(ix.generated)), isStale ? h('span', { class: 'badge warn' }, 'stale') : h('span', { class: 'badge ok' }, 'current')),
       h('div', { class: 'card card-b' }, fact('KEV catalog', ix.kevCatalogVersion || '?')),
@@ -1002,11 +1054,12 @@ function indexScreen() {
 }
 
 function exportScreen() {
-  return [h('div', {}, h('h1', {}, 'Export'), h('div', { class: 'muted' }, 'Download the current site inventory and report.')),
+  return [h('div', {}, h('h1', {}, 'Export', info('Download the current site inventory and report.'))),
     h('div', { class: 'card export-list' },
       h('a', { class: 'btn', href: '/api/v1/export/inventory.csv', download: 'inventory.csv' }, 'inventory.csv'),
       h('a', { class: 'btn', href: '/api/v1/export/inventory.json', download: 'inventory.json' }, 'inventory.json'),
-      h('a', { class: 'btn', href: '/api/v1/export/report.html', download: 'report.html' }, 'report.html'))];
+      h('a', { class: 'btn', href: '/api/v1/export/report.html', download: 'report.html' }, 'report.html'),
+      h('button', { class: 'btn', type: 'button', onclick: () => toast('PDF export is not available yet. Use report.html.') }, 'report.pdf'))];
 }
 
 function settingsScreen() {
@@ -1015,7 +1068,7 @@ function settingsScreen() {
     h('option', { value: 'collector' }, 'Collector'), h('option', { value: 'validator' }, 'Validator'));
   role.value = store.get('role') || 'collector';
   const stale = h('input', { id: 'setting-stale-days', name: 'stale-days', type: 'number', min: '1', max: '3650', value: Math.max(1, Number(store.get('index-stale-days')) || 30) });
-  return [h('div', {}, h('h1', {}, 'Settings'), h('div', { class: 'muted' }, 'Choose the name recorded on future changes and the local console role.')),
+  return [h('div', {}, h('h1', {}, 'Settings', info('Choose the name recorded on future changes and the local console role.'))),
     h('form', { class: 'card settings-form', onsubmit: (e) => {
       e.preventDefault();
       store.set('actor', actor.value.trim()); store.set('role', role.value);
@@ -1024,23 +1077,22 @@ function settingsScreen() {
     } },
       h('div', { class: 'form' }, h('label', { for: 'setting-actor' }, 'Your name', actor), h('label', { for: 'setting-role' }, 'Role', role),
         h('label', { for: 'setting-stale-days' }, 'Mark index stale after days', stale)),
-      h('div', { class: 'card-b stack' }, h('div', { class: 'muted small' }, 'Changes are sent with your session name and appear in the append-only change log. Only a Validator can validate assets or confirm review items. The role is enforced by the server; the console listens on 127.0.0.1.'),
-        h('button', { class: 'btn pri', type: 'submit' }, 'Save settings')) )];
+      h('div', { class: 'card-b row' }, h('button', { class: 'btn pri', type: 'submit' }, 'Save settings'),
+        info('Changes are sent with your session name and appear in the append-only change log. Only a Validator can validate assets or confirm review items. The role is enforced by the server; the console listens on 127.0.0.1.')) )];
 }
 
 function dataScreen() {
   const selected = ({ captures: 'captures', index: 'index', engines: 'engines', log: 'log', export: 'export' })[route().name] || S.dataTab;
   S.dataTab = selected;
-  const sections = [['captures', 'Captures'], ['index', 'Advisory index'], ['engines', 'Engines'], ['log', 'Change log'], ['export', 'Export']];
   const screen = { captures, index: indexScreen, engines, log, export: exportScreen }[selected] || captures;
-  return [h('nav', { class: 'screen-tabs', 'aria-label': 'Data sections' }, ...sections.map(([key, label]) => h('a', { href: '#/' + key, class: selected === key ? 'selected' : '', 'aria-current': selected === key ? 'page' : null }, label))), ...screen()];
+  return screen();
 }
 
 function log() {
   const q = S.logSearch.trim().toLowerCase();
   const rows = S.changes.filter((x) => [x.at, x.actor, x.asset, x.field, x.from, x.to, x.source].join(' ').toLowerCase().includes(q));
   return [
-    h('div', {}, h('h1', {}, 'Change log'), h('div', { class: 'muted' }, 'Append-only. Every capture merge, human edit and index swap, newest first.')),
+    h('div', {}, h('h1', {}, 'Change log', info('Append-only. Every capture merge, human edit and index swap, newest first.'))),
     h('label', { class: 'screen-search' }, h('span', { class: 'sr' }, 'Filter change log'), h('input', { type: 'search', value: S.logSearch, placeholder: 'Filter by asset, actor, field or source capture', oninput: (e) => { S.logSearch = e.target.value; render(); $('main .screen-search input')?.focus(); } })),
     h('div', { class: 'card' }, h('div', { class: 'scroll' },
       h('div', { class: 'trow thead g-log' }, ['When', 'Actor', 'Asset', 'Field', 'Change', 'Source capture'].map((t) => h('span', {}, t))),
@@ -1078,7 +1130,7 @@ function flowLabel(f) {
 }
 
 function graphModel() {
-  const all = assets().filter((a) => assetVisible(a) && !(S.hideSeenOnly && isSeenOnly(a)) && !(S.hideDecommissioned && isDecommissioned(a))), nodes = all.map((a) => ({ id: a.id, a })), edges = [];
+  const all = assets().filter(inView), nodes = all.map((a) => ({ id: a.id, a })), edges = [];
   const groupAt = new Map(S.groups.map((g) => [g.address, g]));       // broadcast / multicast destinations: drawn as grey nodes only when asked for
   const ipOf = (a) => str(val(a, 'ip')) || a.id.split('/')[0];
   const owner = new Map();                                              // IP -> the asset that owns it (a unit/slot only when nothing else does)
@@ -1101,7 +1153,7 @@ function graphModel() {
     const top = Object.keys(byProto).sort((a, b) => byProto[b] - byProto[a])[0], n = fs.reduce((a, f) => a + (f.messages || 0), 0), scans = fs.reduce((a, f) => a + (f.scanAttempts || 0), 0);
     const sum = (k) => fs.reduce((a, x) => a + (x[k] || 0), 0);
     const f = { client: fs[0].client, server: fs[0].server, protocol: top, port: fs.length + ' ports', labels, messages: n, scanAttempts: scans, bytes: sum('bytes') || undefined, bytesToServer: sum('bytesToServer') || undefined, bytesToClient: sum('bytesToClient') || undefined, operations: fs.flatMap((x) => x.operations || []) };   // synthetic: what the drawing and the cards read
-    edges.push({ id: 'm' + g[0].i, key: pairKey(g[0].from, g[0].to), kind: 'flow', from: g[0].from, to: g[0].to, f, n, members: fs, label: fs.length + ' conversations' });
+    edges.push({ id: 'm' + g[0].i, key: pairKey(g[0].from, g[0].to), kind: 'flow', from: g[0].from, to: g[0].to, f, n, members: fs, label: fs.length + ' threads' });
   }
   if (S.showAdv) {
     for (const r of advisoryRows()) {
@@ -1310,7 +1362,7 @@ function clickPathNode(id) {
   if (id.startsWith('grp:') || id.startsWith('adv:')) { toast('Choose two asset nodes for a path'); return; }
   if (!S.pathStart) {
     S.pathStart = id; $('start').value = id; $('target').value = '';
-    toast('Start selected: ' + id + '. Choose a target asset.'); return;
+    toast('Start pinned: ' + id + '. Click a target asset.'); render(); return;
   }
   const start = S.pathStart; S.pathStart = null; S.pathPick = false;
   $('btn-route').setAttribute('aria-pressed', 'false');
@@ -1319,6 +1371,14 @@ function clickPathNode(id) {
   if (!S.path) toast('No observed conversation path from ' + start + ' to ' + id);
   else toast('Path of ' + S.path.edges.length + (S.path.edges.length === 1 ? ' hop' : ' hops') + ' highlighted');
   if (location.hash !== '#/graph') location.hash = '#/graph'; else render();
+}
+
+/** A map-style pin above a node: lettered when it marks the path's start (A) or target (B), a ghost under the cursor while picking. */
+function pin(letter, ghost) {
+  if (ghost ? !!letter : !letter) return null;
+  return sv('g', { class: 'pin' + (ghost ? ' ghost' : letter === 'A' ? ' a' : ' b'), transform: 'translate(0 ' + (-NODE_R - 4) + ')', 'pointer-events': 'none' },
+    sv('path', { d: 'M0 0C-4 -6 -10 -11 -10 -18a10 10 0 0 1 20 0C10 -11 4 -6 0 0z' }), sv('circle', { cx: 0, cy: -18, r: 4 }),
+    ghost ? null : sv('text', { y: -14.5, 'text-anchor': 'middle' }, letter));
 }
 
 function drawGraph() {
@@ -1352,7 +1412,7 @@ function drawGraph() {
 
   const marker = (id, color) => sv('marker', { id, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 10, markerHeight: 10, markerUnits: 'userSpaceOnUse', orient: 'auto' }, sv('path', { d: 'M0 0L10 5L0 10z', fill: color }));
   const els = { nodes: new Map(), edges: [] };
-  const edgeEls = edges.map((e) => {
+  const edgeEls = edges.filter((e) => !pathE || pathE.has(e.id)).map((e) => {   // a path hides everything off it; Back / Clear brings it back
     const flow = e.kind === 'flow', pk = flow ? protoKey(e.f.protocol) : '';
     const chosen = !!e.key && selEdge === e.key, hot = chosen || (pathE && pathE.has(e.id));
     const dim = !(on.has(e.from) && on.has(e.to)) || (pathE && !hot) || (sel && !(e.from === sel || e.to === sel)) || (selEdge && !chosen) || (flow && !(e.members || [e.f]).some(flowMatchesQuery));
@@ -1367,7 +1427,8 @@ function drawGraph() {
       onclick: flow ? open : null, onkeydown: flow ? (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); } } : null },
       sv('title', {}, edgeLabel(e, byNode)), hit, path, label);
   });
-  const nodeEls = nodes.map((n) => {
+  const pinA = S.path ? S.path.nodes[0] : S.pathStart, pinB = S.path ? S.path.nodes[S.path.nodes.length - 1] : null;
+  const nodeEls = nodes.filter((n) => !pathN || pathN.has(n.id)).map((n) => {
     const a = n.a, dim = !on.has(n.id), kev = a ? !!(a.match && a.match.kevAtModel) : !!(n.adv && n.adv.kev);
     const name = n.adv ? n.adv.id : n.g ? n.g.address : nameOf(a), short = name.length > 22 ? name.slice(0, 21) + '…' : name;
     const g = sv('g', { class: 'node' + (dim ? ' dim' : '') + (n.id === sel ? ' sel' : '') + (n.adv ? ' adv' : '') + (n.g ? ' grp' : '') + (a && isSeenOnly(a) ? ' seen' : ''), tabindex: '0', role: 'button', 'data-id': n.id, 'aria-label': nodeLabel(n),
@@ -1375,6 +1436,8 @@ function drawGraph() {
       onkeydown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); clickPathNode(n.id); } },
       onpointerdown: (ev) => { if (ev.button) return; GR.moved = false; GR.drag = { id: n.id, x: ev.clientX, y: ev.clientY }; ev.stopPropagation(); } },
     sv('title', {}, nodeLabel(n)),
+    pin(n.id === pinA ? 'A' : n.id === pinB ? 'B' : null),
+    pin('', true),
     kev && !n.adv ? sv('circle', { class: 'ring-kev', r: NODE_R + 5 }) : null,
     sv('circle', { class: 'hit', r: NODE_R }),
     sv('path', { class: 'disc', d: n.adv ? ADV_ICON : n.g ? GROUP_ICON : ICONS[roleGroup(a)], transform: n.adv ? null : 'scale(1.35)', 'vector-effect': 'non-scaling-stroke', stroke: nodeColor(n) }),
@@ -1465,16 +1528,37 @@ function route() {
   return { name, arg: decodeURIComponent(arg || '') };
 }
 
+// The side panel's width, draggable like a split screen; remembered per browser.
+(function splitter() {
+  const root = document.documentElement, KEY = 'reconics.panelWidth';
+  const set = (w) => { w = Math.max(280, Math.min(w, Math.round(innerWidth * 0.75))); root.style.setProperty('--panel-w', w + 'px'); return w; };
+  const save = (w) => { try { localStorage.setItem(KEY, String(w)); } catch (e) { /* not remembered */ } };
+  try { const w = parseInt(localStorage.getItem(KEY), 10); if (w) set(w); } catch (e) { /* storage blocked: the default width applies */ }
+  let raf = 0, drag = null;
+  const redraw = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => drawGraph()); };
+  // delegated on the document: the handle lives in index.html, which may not be parsed yet when this runs
+  document.addEventListener('pointerdown', (ev) => { if (ev.target.id === 'split') { drag = ev.target; drag.setPointerCapture(ev.pointerId); } });
+  document.addEventListener('pointermove', (ev) => { if (drag) { set(innerWidth - ev.clientX); redraw(); } });
+  document.addEventListener('pointerup', () => { if (drag) { drag = null; save(parseInt(root.style.getPropertyValue('--panel-w'), 10) || 360); } });
+  document.addEventListener('keydown', (e) => {
+    if (e.target.id !== 'split' || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+    const w = set($('main').getBoundingClientRect().width + (e.key === 'ArrowLeft' ? 40 : -40));
+    save(w); redraw(); e.preventDefault();
+  });
+})();
+
 let lastRoute = '';
 function render() {
   const r = route();
   if (!S.inv) return;
   if (r.name + r.arg !== lastRoute) { S.tab = 'attrs'; S.editing = false; lastRoute = r.name + r.arg; }
   chrome(r.name);
+  saveView();
   const screens = { overview, inventory, data: dataScreen, export: dataScreen, engines: dataScreen, captures: dataScreen, index: dataScreen, log: dataScreen, settings: settingsScreen, review: findings, advisories: findings, findings, ethernet, asset: () => asset(r.arg), edge: () => edgePanel(r.arg), group: () => groupPanel(r.arg) };
   const main = $('main'), open = r.name !== 'graph', side = r.name === 'asset' || r.name === 'edge' || r.name === 'group';
   main.hidden = !open;
   main.className = side ? 'panel' : 'sheet';
+  $('split').hidden = !side;
   $('stage').toggleAttribute('inert', open && !side);                         // a sheet covers the graph; the side panel does not
   main.replaceChildren(...(open ? [h('a', { class: 'close', href: '#/graph', 'aria-label': 'Close and return to the graph', title: 'Close' }, '×'),
     r.name === 'asset' ? h('button', { class: 'dock-btn', type: 'button', 'aria-label': 'Float the panel beside its node', title: 'Float beside the node', onclick: () => toggleFloat(r.arg) }, '⇱') : null,
@@ -1514,7 +1598,7 @@ async function refresh(background) {
 
 /** Search panel, toolbar and popovers: one popover open at a time, Escape closes it (or the sheet). */
 function initChrome() {
-  const pops = [['btn-filter', 'pop-filter'], ['tree-export', 'pop-export'], ['tb-info', 'pop-info']];
+  const pops = [['btn-filter', 'pop-filter'], ['tb-info', 'pop-info']];
   const closeAll = (except) => {
     const closed = new Set();
     pops.forEach(([b, p]) => {
