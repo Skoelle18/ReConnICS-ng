@@ -127,8 +127,8 @@ A small curated ODVA vendor-ID table is included for common IDs (checked against
   mask-write, read-write and device-identification logs, dnp3, dnp3_objects, dnp3_control, enip, cip, cip_io, cip_identity,
   s7comm, s7comm_read_szl, s7comm_upload_download, s7comm_known_devices, s7comm_plus and cotp. The real runs corrected three
   columns (`s7comm_plus.log` has `opcode_name`, `s7comm_upload_download.log` has `function_name`, `cip.log` ids are hex strings). A
-  field the reader does not find still just leaves that detail out. Only the ICSNPP packages in the image (modbus, dnp3, enip, s7comm)
-  were run; the opt-in `ICSNPP_EXTRA` analyzers were not. Reply-to-request pairing for S7 (pdu_reference), CIP (sequence count) and ENIP (sender
+  field the reader does not find still just leaves that detail out. The ICSNPP packages in the image (modbus, dnp3, enip, s7comm, and the extended tier bacnet, opcua-binary, profinet-io-cm, run on their
+  own sample captures only) were run; the opt-in `ICSNPP_EXTRA` analyzers were not. OPC UA writes about 20 sub-logs, only the ones in `IcsnppPackages` are read; the rest are listed in `source.zeek.packages`. The inventory is IPv4, so IPv6 OPC UA rows are skipped and counted. Reply-to-request pairing for S7 (pdu_reference), CIP (sequence count) and ENIP (sender
   context) is a heuristic: unconnected CIP messages share sequence 0, so there a status can land on a neighbouring request.
 - **DNP3 `iin` byte order is confirmed.** The reader takes Zeek's `iin` as IIN1 in the high byte and IIN2 in the low byte. For all
   53 replies of `dnp3_test_data_part1.pcap` Zeek's number equals Wireshark's `dnp3.al.iin` (tshark 4.4.19; 0x1000 is "need time",

@@ -165,7 +165,7 @@ test('graph controls and inspector', async (t) => {
     const id = inv.assets[0].id;
     const app = await loadApp({ routes: defaultRoutes({ inventory: inv, site: { [id]: { lifecycle: 'Decommissioned' } } }) });
     try {
-      assert.deepEqual(app.$$('#graph-chips button').map((b) => b.textContent), ['Modbus', 'DNP3', 'ENIP', 'S7', 'SNMP', 'ICMP', 'Unknown']);
+      assert.deepEqual(app.$$('#graph-chips button').map((b) => b.textContent), ['Modbus', 'DNP3', 'ENIP', 'S7', 'SNMP', 'BACnet', 'OPC UA', 'PROFINET', 'ICMP', 'Unknown']);
       assert.deepEqual(app.$$('#graph-layout button').map((b) => b.textContent), ['KEV only', 'Force', 'Purdue']);
       app.$('#btn-filter').click();
       await settle();

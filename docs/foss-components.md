@@ -66,12 +66,16 @@ the console's capture queue uses the automatic mode. Environment: `RECONICS_SURI
   in Zeek 8; verified in the Zeek 8.0.0 script reference). `conn.log` then carries `community_id`, which `ZeekLogReader` keeps (at
   most 3 per conversation) as `communityIds` on the flow. Suricata writes the same ID, which is how a Suricata alert is matched to a
   Zeek conversation.
-- Other ICSNPP analyzers: the Zeek image has a build argument `ICSNPP_EXTRA`
-  (`--build-arg ICSNPP_EXTRA="icsnpp-bacnet icsnpp-opcua-binary icsnpp-ge-srtp"`). The names on the zkg index (cisagov/zkg.index)
+- Extended tier, built into the image at pinned versions and read by `ZeekLogReader`: icsnpp-bacnet, icsnpp-opcua-binary (v2.0.0),
+  icsnpp-profinet-io-cm (pins: the `ICSNPP_*` ARGs in `docker/zeek/Dockerfile`). `source.zeek.packages` reports per package whether
+  it gave rows and which of its logs were written but not read. `opcua_binary_activate_session*.log` (user names, passwords,
+  certificates) and the BACnet `password` column are never read.
+- Other ICSNPP analyzers (opt-in): the Zeek image has a build argument `ICSNPP_EXTRA`
+  (`--build-arg ICSNPP_EXTRA="icsnpp-ge-srtp icsnpp-bsap"`). The names on the zkg index (cisagov/zkg.index)
   and their BSD-3-Clause licence were checked: icsnpp-bacnet, icsnpp-bsap, icsnpp-genisys, icsnpp-ge-srtp, icsnpp-omron-fins,
   icsnpp-opcua-binary, icsnpp-profinet-io-cm, icsnpp-synchrophasor (icsnpp-hart-ip is listed with an unasserted licence and is
-  not suggested). They are off by default and have not been built or run here; `ZeekLogReader` has no reader for their logs yet,
-  so enabling one today only makes Zeek write the extra logs.
+  not suggested). They are off by default and have not been built or run here; `ZeekLogReader` has no reader for their logs,
+  so enabling one only makes Zeek write the extra logs (listed under `source.zeek.packages` only for the tiers above).
 
 ### Wireshark: tshark, capinfos (optional)
 

@@ -20,9 +20,9 @@ ARG ICSNPP_BACNET=a04c08110328a57514383c626e5d4ad53aad57b1
 ARG ICSNPP_OPCUA=v2.0.0
 ARG ICSNPP_PROFINET=4fa4d446efff2f01d8921c7455fb6e1298856041
 
-# Further CISA ICSNPP analyzers that are on the zkg index (zeek/packages, cisagov/zkg.index) are not built by default: each adds build time and
+# BACnet, OPC UA Binary and PROFINET IO CM are built above (pinned). Further CISA ICSNPP analyzers on the zkg index (zeek/packages, cisagov/zkg.index) are not built by default: each adds build time and
 # a failure of one would break the primary image. Opt in with a space separated list, for example
-#   docker build -t reconics-zeek --build-arg ICSNPP_EXTRA="icsnpp-bacnet icsnpp-opcua-binary icsnpp-ge-srtp" docker/zeek
+#   docker build -t reconics-zeek --build-arg ICSNPP_EXTRA="icsnpp-ge-srtp icsnpp-bsap" docker/zeek
 # On the index and BSD-3-Clause licensed on 25 Oct 2026: icsnpp-bacnet, icsnpp-opcua-binary (tag v2.0.0), icsnpp-ge-srtp, icsnpp-bsap,
 # icsnpp-genisys, icsnpp-omron-fins, icsnpp-profinet-io-cm, icsnpp-synchrophasor. Not tested in this project's image: see docs/foss-components.md.
 ARG ICSNPP_EXTRA=""

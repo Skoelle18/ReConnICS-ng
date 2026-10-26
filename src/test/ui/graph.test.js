@@ -503,7 +503,7 @@ test('edges', async (t) => {
       await settle();
       assert.equal(edgeOf(app, 'modbus'), undefined);
       assert.ok(edgeOf(app, 'dnp3'));
-      assert.deepEqual(app.$$('#pop-filter input[type=checkbox]').map((c) => /DNP3|Modbus|ENIP|S7|SNMP|ICMP/.exec(c.getAttribute('aria-label'))[0]), ['Modbus', 'DNP3', 'ENIP', 'S7', 'SNMP', 'ICMP']);
+      assert.deepEqual(app.$$('#pop-filter input[type=checkbox]').map((c) => /DNP3|Modbus|ENIP|S7|SNMP|BACnet|OPC UA|PROFINET|ICMP/.exec(c.getAttribute('aria-label'))[0]), ['Modbus', 'DNP3', 'ENIP', 'S7', 'SNMP', 'BACnet', 'OPC UA', 'PROFINET', 'ICMP']);
     } finally { app.close(); }
   });
 

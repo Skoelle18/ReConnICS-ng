@@ -22,6 +22,14 @@ output is kept here, not the captures.
 | `zeek/s7plus` | `S7-1511-opc-request-all-types.pcap` | whole logs: s7comm_plus, cotp, conn |
 | `zeek/enip` | `icsnpp_enip_cip_example.pcap` (CISA icsnpp-enip test trace, BSD-3-Clause) | enip.log first 60 lines, cip.log first 90, cip_io.log first 6; cip_identity and conn whole |
 
+Extended tier (same Zeek 8.0.9 image; each package's own sample capture from its cisagov repo, BSD-3-Clause; pcaps not kept):
+
+| Folder | Package | Trim |
+|---|---|---|
+| `zeek/bacnet`, `zeek/bacnet_control`, `zeek/bacnet_error` | icsnpp-bacnet (a04c081) | first lines of bacnet, bacnet_discovery, bacnet_property, bacnet_device_control, conn |
+| `zeek/opcua`, `zeek/opcua_ipv6` | icsnpp-opcua-binary v2.0.0 (open62541 client/server traces; `opcua` is the IPv4 one) | first lines of opcua_binary and its sub-logs, conn. `opcua_binary_activate_session.log` is kept only to prove it is never read |
+| `zeek/profinet`, `zeek/profinet_connect` | icsnpp-profinet-io-cm (4fa4d44) | whole profinet_io_cm, conn |
+
 What the real logs showed that the hand-made ones did not (each is now covered by `ZeekRealLogsTest` / `RealToolOutputTest`):
 
 - `s7comm_plus.log` has `opcode` / `opcode_name`, not `function_name`.

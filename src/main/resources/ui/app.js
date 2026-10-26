@@ -124,9 +124,9 @@ function purdueOf(a) {
 
 // ------------------------------------------------------------------ flows (edges)
 
-const PROTO_NAME = { modbus: 'Modbus', dnp3: 'DNP3', s7comm: 'S7', 'ethernet-ip': 'ENIP', snmp: 'SNMP', icmp: 'ICMP', unknown: 'Unknown' };
+const PROTO_NAME = { modbus: 'Modbus', dnp3: 'DNP3', s7comm: 'S7', 'ethernet-ip': 'ENIP', snmp: 'SNMP', bacnet: 'BACnet', 'opc-ua': 'OPC UA', profinet: 'PROFINET', icmp: 'ICMP', unknown: 'Unknown' };
 // One colour per protocol on the graph; anything unnamed (including a service name Zeek made up) is grey like unknown.
-const PROTO_COLOR = { modbus: '#38BDF8', dnp3: '#F472B6', 'ethernet-ip': '#A3E635', s7comm: '#FB923C', snmp: '#C084FC', icmp: '#FACC15', unknown: '#7B8696' };
+const PROTO_COLOR = { modbus: '#38BDF8', dnp3: '#F472B6', 'ethernet-ip': '#A3E635', s7comm: '#FB923C', snmp: '#C084FC', bacnet: '#2DD4BF', 'opc-ua': '#818CF8', profinet: '#F87171', icmp: '#FACC15', unknown: '#7B8696' };
 const protoKey = (p) => (PROTO_COLOR[p] ? p : 'unknown');
 const protoColor = (p) => PROTO_COLOR[protoKey(p)];
 const protoName = (p) => PROTO_NAME[p] || p;
