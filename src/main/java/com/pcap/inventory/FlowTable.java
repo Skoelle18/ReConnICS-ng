@@ -81,6 +81,8 @@ public final class FlowTable {
         long toServer, toClient;
         long firstMicros = Long.MAX_VALUE, lastMicros = Long.MIN_VALUE;
         String source, portHint, note;
+        /** ICMP round-trip times, unmatched echoes and error outcomes ({@link NetworkObserver}); null on other flows. */
+        Map<String, Object> icmp;
         /** Names other FOSS tools gave this conversation ({@code tool, version?, protocol, confidence, basis}); never a decoded protocol. */
         final List<Map<String, Object>> classifiedBy = new ArrayList<>();
         /** Suricata alerts and anomalies on this conversation ({@code tool, version?, kind, sid?, signature, category?, severity, count}). */
@@ -153,6 +155,11 @@ public final class FlowTable {
 
         public Flow scanAttempts(long n) {
             scanAttempts += Math.max(0, n);
+            return this;
+        }
+
+        public Flow icmp(Map<String, Object> m) {
+            icmp = m == null || m.isEmpty() ? null : m;
             return this;
         }
 
@@ -290,6 +297,9 @@ public final class FlowTable {
             if (portHint == null) {
                 portHint = z.portHint;
             }
+            if (icmp == null) {
+                icmp = z.icmp;
+            }
             z.communityIds.forEach(this::communityId);
             scanAttempts = into ? Math.max(scanAttempts, z.scanAttempts) : scanAttempts + z.scanAttempts;
             z.trace.forEach(this::trace);
@@ -384,6 +394,9 @@ public final class FlowTable {
             }
             if (scanAttempts > 0) {
                 m.put("scanAttempts", scanAttempts);
+            }
+            if (icmp != null) {
+                m.put("icmp", icmp);
             }
             if (!trace.isEmpty()) {
                 m.put("trace", trace);

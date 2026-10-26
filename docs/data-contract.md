@@ -130,6 +130,7 @@ written before a key existed stay valid and old consumers ignore the keys they d
   (frame bytes). Absent for a conversation only tshark saw. They are payload bytes, not wire bytes, except on ICMP and group flows.
 - ICMP is a flow too: `protocol` `icmp`, `port` `icmp`, one label per message kind (`ICMP echo request`, `ICMP destination
   unreachable (port)`). Other IP protocols without ports use `port` `ip/<protocol number>`.
+- An ICMP flow may carry an optional `icmp` object: `rtt` `{matched, minMs, avgMs, maxMs}` from echo requests paired with their replies (same hosts, id and sequence; timestamps must be usable), `unmatchedRequests` / `unmatchedReplies` (echoes with no partner in the capture, kept as counts), and `errors` `[{kind, about?, count}]` (at most 16) for destination-unreachable and time-exceeded messages, where `about` is the destination (`ip` or `ip:port/tcp|udp`) of the packet the error quotes. A reply with no request is not an RTT of zero; it is `unmatchedReplies`.
 - **Time.** `firstSeen`/`lastSeen` are present only when the capture clock is usable (between 1990 and 2100). A capture whose
   timestamps are all epoch 0 has flows with no dates; `source.retention.clock.usable` says so. Consumers show "time unknown", never
   a date near 1970.

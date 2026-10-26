@@ -74,9 +74,33 @@ public final class PacketParser {
         }
         if (ip.protocol() == 1 && ip.payloadLength() >= 2) {
             // ICMP: type and code are the first two bytes; the observer turns them into a flow (docs/retention-audit.md)
-            b.icmp(record.data()[ip.payloadOffset()] & 0xFF, record.data()[ip.payloadOffset() + 1] & 0xFF);
+            byte[] dt = record.data();
+            int po = ip.payloadOffset(), type = dt[po] & 0xFF;
+            b.icmp(type, dt[po + 1] & 0xFF);
+            if ((type == 0 || type == 8) && ip.payloadLength() >= 8) {
+                b.icmpEcho(((dt[po + 4] & 0xFF) << 8) | (dt[po + 5] & 0xFF), ((dt[po + 6] & 0xFF) << 8) | (dt[po + 7] & 0xFF));
+            } else if ((type == 3 || type == 11) && ip.payloadLength() >= 8 + 20) {
+                b.icmpAbout(quoted(dt, po + 8, po + ip.payloadLength()));
+            }
         }
         return b.status(ParseStatus.SKIPPED, "non-TCP/UDP ipProtocol=" + ip.protocol()).build();
+    }
+
+    /** The destination of the IPv4 packet quoted in an ICMP error: {@code ip}, plus {@code :port/tcp|udp} when the quote reaches the ports; null when it is not IPv4. */
+    private static String quoted(byte[] d, int off, int end) {
+        if ((d[off] & 0xF0) != 0x40) {
+            return null;
+        }
+        int ihl = (d[off] & 0x0F) * 4;
+        if (ihl < 20 || off + 20 > end) {
+            return null;
+        }
+        String ip = (d[off + 16] & 0xFF) + "." + (d[off + 17] & 0xFF) + "." + (d[off + 18] & 0xFF) + "." + (d[off + 19] & 0xFF);
+        int proto = d[off + 9] & 0xFF;
+        if ((proto == 6 || proto == 17) && off + ihl + 4 <= end) {
+            return ip + ":" + (((d[off + ihl + 2] & 0xFF) << 8) | (d[off + ihl + 3] & 0xFF)) + (proto == 6 ? "/tcp" : "/udp");
+        }
+        return ip;
     }
 
     /**

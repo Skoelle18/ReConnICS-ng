@@ -26,7 +26,8 @@ public final class ParsedPacket {
     private final long tcpSeq;
     private final int tcpFlags;
     private final boolean arp;
-    private final int arpOp, icmpType, icmpCode, wireLength;
+    private final int arpOp, icmpType, icmpCode, icmpId, icmpSeq, wireLength;
+    private final String icmpAbout;
 
     private ParsedPacket(Builder b) {
         this.frameNumber = b.frameNumber;
@@ -52,6 +53,9 @@ public final class ParsedPacket {
         this.arpOp = b.arpOp;
         this.icmpType = b.icmpType;
         this.icmpCode = b.icmpCode;
+        this.icmpId = b.icmpId;
+        this.icmpSeq = b.icmpSeq;
+        this.icmpAbout = b.icmpAbout;
         this.wireLength = b.wireLength;
     }
 
@@ -72,6 +76,20 @@ public final class ParsedPacket {
 
     public int icmpCode() {
         return icmpCode;
+    }
+
+    /** Identifier and sequence number of an echo request/reply, or -1. */
+    public int icmpId() {
+        return icmpId;
+    }
+
+    public int icmpSeq() {
+        return icmpSeq;
+    }
+
+    /** Destination ({@code ip}, or {@code ip:port/tcp|udp}) of the packet an ICMP error quotes, or null. */
+    public String icmpAbout() {
+        return icmpAbout;
     }
 
     /** Bytes of the frame as captured. */
@@ -114,6 +132,9 @@ public final class ParsedPacket {
         b.arpOp = arpOp;
         b.icmpType = icmpType;
         b.icmpCode = icmpCode;
+        b.icmpId = icmpId;
+        b.icmpSeq = icmpSeq;
+        b.icmpAbout = icmpAbout;
         b.wireLength = wireLength;
         return b.payload(data, offset, length).status(status, detail).build();
     }
@@ -224,7 +245,8 @@ public final class ParsedPacket {
         private long tcpSeq = -1;
         private int tcpFlags;
         private boolean arp;
-        private int arpOp = -1, icmpType = -1, icmpCode = -1, wireLength;
+        private int arpOp = -1, icmpType = -1, icmpCode = -1, icmpId = -1, icmpSeq = -1, wireLength;
+        private String icmpAbout;
 
         private Builder(long frameNumber, long timestampMicros) {
             this.frameNumber = frameNumber;
@@ -294,6 +316,17 @@ public final class ParsedPacket {
         public Builder icmp(int type, int code) {
             icmpType = type;
             icmpCode = code;
+            return this;
+        }
+
+        public Builder icmpEcho(int id, int seq) {
+            icmpId = id;
+            icmpSeq = seq;
+            return this;
+        }
+
+        public Builder icmpAbout(String v) {
+            icmpAbout = v;
             return this;
         }
 

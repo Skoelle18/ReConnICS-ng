@@ -32,7 +32,7 @@ import java.util.TreeSet;
  * All tables are capped; an overflow is counted and reported in {@code source.retention}.
  */
 public final class NetworkObserver {
-    public static final int MAX_HOSTS = 65_536, MAX_MACS = 20_000, MAX_GROUPS = 2_048, MAX_ICMP_FLOWS = 20_000, MAX_REASONS = 32;
+    public static final int MAX_HOSTS = 65_536, MAX_MACS = 20_000, MAX_GROUPS = 2_048, MAX_ICMP_FLOWS = 20_000, MAX_REASONS = 32, MAX_PENDING_ECHOES = 20_000, MAX_ICMP_ERRORS = 16;
     static final int MAX_TAGS = 24, MAX_MAC_IPS = 1_024, MAX_SENDERS = 64, MAX_GROUP_PORTS = 8, MAX_LISTED = 16;
 
     /** Hosts whose only evidence is one of these bases and who carry no identity are "seen only". */
@@ -84,7 +84,45 @@ public final class NetworkObserver {
     private static final class Icmp {
         long packets, bytes, toTarget, fromTarget, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
         final Map<String, Long> labels = new LinkedHashMap<>();
+        long rttCount, rttSum, rttMin = Long.MAX_VALUE, rttMax, unmatchedRequests, unmatchedReplies;
+        final Map<String, Long> errors = new LinkedHashMap<>();     // "label\nabout" -> count
+
+        Map<String, Object> toMap() {
+            Map<String, Object> m = new LinkedHashMap<>();
+            if (rttCount > 0) {
+                Map<String, Object> rtt = new LinkedHashMap<>();
+                rtt.put("matched", rttCount);
+                rtt.put("minMs", rttMin / 1000.0);
+                rtt.put("avgMs", Math.round(rttSum / (double) rttCount) / 1000.0);
+                rtt.put("maxMs", rttMax / 1000.0);
+                m.put("rtt", rtt);
+            }
+            if (unmatchedRequests > 0) {
+                m.put("unmatchedRequests", unmatchedRequests);
+            }
+            if (unmatchedReplies > 0) {
+                m.put("unmatchedReplies", unmatchedReplies);
+            }
+            if (!errors.isEmpty()) {
+                List<Map<String, Object>> list = new ArrayList<>();
+                errors.forEach((k, n) -> {
+                    int nl = k.indexOf('\n');
+                    Map<String, Object> e = new LinkedHashMap<>();
+                    e.put("kind", k.substring(0, nl));
+                    if (nl < k.length() - 1) {
+                        e.put("about", k.substring(nl + 1));
+                    }
+                    e.put("count", n);
+                    list.add(e);
+                });
+                m.put("errors", list);
+            }
+            return m;
+        }
     }
+
+    /** Echo requests waiting for their reply: "src>dst|id|seq" to {send time, the flow that counted it}. */
+    private final Map<String, Object[]> pendingEchoes = new LinkedHashMap<>();
 
     private final Map<String, Host> hosts = new LinkedHashMap<>();
     private final Map<String, Mac> macs = new LinkedHashMap<>();
@@ -332,11 +370,50 @@ public final class NetworkObserver {
                     f.toTarget += Math.max(0, p.wireLength());
                 }
                 f.labels.merge(IcmpNames.label(p.icmpType(), p.icmpCode()), 1L, Long::sum);
+                echo(p, f, s.value(), d.value(), reply);
+                if (p.icmpAbout() != null) {
+                    String k = IcmpNames.label(p.icmpType(), p.icmpCode()) + '\n' + p.icmpAbout();
+                    if (f.errors.size() < MAX_ICMP_ERRORS || f.errors.containsKey(k)) {
+                        f.errors.merge(k, 1L, Long::sum);
+                    }
+                }
                 if (Timestamps.usable(p.timestampMicros())) {
                     f.first = Math.min(f.first, p.timestampMicros());
                     f.last = Math.max(f.last, p.timestampMicros());
                 }
             }
+        }
+    }
+
+    /** Matches an echo reply to the request it answers (same hosts, id and sequence) for the round-trip time; what has no partner stays counted. */
+    private void echo(ParsedPacket p, Icmp f, String src, String dst, boolean reply) {
+        if (p.icmpId() < 0 || (p.icmpType() != 0 && p.icmpType() != 8)) {
+            return;
+        }
+        String key = (reply ? dst + '>' + src : src + '>' + dst) + '|' + p.icmpId() + '|' + p.icmpSeq();
+        if (!reply) {
+            if (pendingEchoes.put(key, new Object[]{p.timestampMicros(), f}) == null) {
+                f.unmatchedRequests++;
+            }
+            if (pendingEchoes.size() > MAX_PENDING_ECHOES) {
+                var it = pendingEchoes.values().iterator();     // the oldest is dropped; its request stays counted as unmatched
+                it.next();
+                it.remove();
+            }
+            return;
+        }
+        Object[] req = pendingEchoes.remove(key);
+        if (req == null) {
+            f.unmatchedReplies++;
+            return;
+        }
+        ((Icmp) req[1]).unmatchedRequests--;
+        long t0 = (Long) req[0], rtt = p.timestampMicros() - t0;
+        if (Timestamps.usable(t0) && Timestamps.usable(p.timestampMicros()) && rtt >= 0) {
+            f.rttCount++;
+            f.rttSum += rtt;
+            f.rttMin = Math.min(f.rttMin, rtt);
+            f.rttMax = Math.max(f.rttMax, rtt);
         }
     }
 
@@ -403,6 +480,7 @@ public final class NetworkObserver {
             f.messages(i.packets).traffic(i.packets, i.bytes).directed(i.toTarget, i.fromTarget).source("native");
             i.labels.forEach(f::labelCount);
             f.seen(i.first).seen(i.last);
+            f.icmp(i.toMap());
         }
         for (Map.Entry<String, Group> e : groups.entrySet()) {
             for (Map.Entry<String, Map<String, long[]>> s : e.getValue().senders.entrySet()) {
