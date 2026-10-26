@@ -917,7 +917,7 @@ function review() {
 }
 
 function lastReviewed(id) {
-  const entry = [...S.changes].reverse().find((x) => x.asset === id && x.field === 'validated' && String(x.to).toLowerCase() === 'true');
+  const entry = S.changes.find((x) => x.asset === id && x.field === 'validated');
   return entry ? fmtTime(entry.at) : 'Never';
 }
 

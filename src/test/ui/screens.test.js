@@ -256,6 +256,13 @@ test('advisory wording never claims a device is safe', async (t) => {
     } finally { app.close(); }
   });
 
+  await t.test('review dates come from the newest logged validation change', async () => {
+    const changes = [{ at: '2026-10-24T12:00:00Z', actor: 'R. Analyst', asset: '10.0.1.40', field: 'validated', from: '', to: 'yes', source: 'human' }];
+    const app = await loadApp({ routes: defaultRoutes({ changes }), hash: '#/review' });
+    try { assert.match(app.text(), /Last reviewed: 2026-10-24 12:00Z/); }
+    finally { app.close(); }
+  });
+
   await t.test('a Validator can confirm pending assets through audited asset PATCHes', async () => {
     const base = defaultRoutes();
     const ids = base['GET inventory'].inventory.assets.map((a) => a.id);
