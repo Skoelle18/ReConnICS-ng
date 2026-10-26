@@ -413,8 +413,9 @@ test('edges', async (t) => {
       assert.match(rows[0].textContent, /FC3 read holding registers.*read.*40001.*10.*1100.*12, 0, 7/, 'busiest first');
       assert.match(rows[1].textContent, /FC16 write multiple registers.*write.*40100.*2.*100.*1, 2/);
       assert.ok(edgeOf(app, 'modbus').classList.contains('hot'), 'the open edge is highlighted');
-      assert.ok(edgeOf(app, 'dnp3').classList.contains('dim'), 'the others dim');
-      assert.equal(app.$$('#graph .node').filter((n) => n.classList.contains('dim')).length > 0, true);
+      assert.equal(edgeOf(app, 'dnp3'), undefined, 'the other conversations disappear instead of dimming');
+      assert.equal(app.$$('#graph .edge').length, 1);
+      assert.equal(app.$$('#graph .node').length, 2, 'only the two ends stay');
     } finally { app.close(); }
   });
 

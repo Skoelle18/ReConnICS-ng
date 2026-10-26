@@ -1412,7 +1412,7 @@ function drawGraph() {
 
   const marker = (id, color) => sv('marker', { id, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 10, markerHeight: 10, markerUnits: 'userSpaceOnUse', orient: 'auto' }, sv('path', { d: 'M0 0L10 5L0 10z', fill: color }));
   const els = { nodes: new Map(), edges: [] };
-  const edgeEls = edges.filter((e) => !pathE || pathE.has(e.id)).map((e) => {   // a path hides everything off it; Back / Clear brings it back
+  const edgeEls = edges.filter((e) => pathE ? pathE.has(e.id) : selEdge ? e.key === selEdge : sel ? e.from === sel || e.to === sel : true).map((e) => {   // a path, an open edge or an open node hides everything else; Back / Clear brings it back
     const flow = e.kind === 'flow', pk = flow ? protoKey(e.f.protocol) : '';
     const chosen = !!e.key && selEdge === e.key, hot = chosen || (pathE && pathE.has(e.id));
     const dim = !(on.has(e.from) && on.has(e.to)) || (pathE && !hot) || (sel && !(e.from === sel || e.to === sel)) || (selEdge && !chosen) || (flow && !(e.members || [e.f]).some(flowMatchesQuery));
@@ -1428,7 +1428,7 @@ function drawGraph() {
       sv('title', {}, edgeLabel(e, byNode)), hit, path, label);
   });
   const pinA = S.path ? S.path.nodes[0] : S.pathStart, pinB = S.path ? S.path.nodes[S.path.nodes.length - 1] : null;
-  const nodeEls = nodes.filter((n) => !pathN || pathN.has(n.id)).map((n) => {
+  const nodeEls = nodes.filter((n) => pathN ? pathN.has(n.id) : sel || selEdge ? near.has(n.id) : true).map((n) => {
     const a = n.a, dim = !on.has(n.id), kev = a ? !!(a.match && a.match.kevAtModel) : !!(n.adv && n.adv.kev);
     const name = n.adv ? n.adv.id : n.g ? n.g.address : nameOf(a), short = name.length > 22 ? name.slice(0, 21) + '…' : name;
     const g = sv('g', { class: 'node' + (dim ? ' dim' : '') + (n.id === sel ? ' sel' : '') + (n.adv ? ' adv' : '') + (n.g ? ' grp' : '') + (a && isSeenOnly(a) ? ' seen' : ''), tabindex: '0', role: 'button', 'data-id': n.id, 'aria-label': nodeLabel(n),
