@@ -1,6 +1,7 @@
 package com.pcap.inventory;
 
 import com.pcap.capture.ParsedPacket;
+import com.pcap.service.AnalysisOptions;
 import com.pcap.util.IpAddress;
 
 import java.util.ArrayList;
@@ -63,6 +64,19 @@ public final class ConversationTracker {
     private final Map<String, long[]> scans = new LinkedHashMap<>();
     private long scanAttempts, scanAttemptsUncounted;
     private NetworkObserver observer;
+    private AnalysisOptions.ScanRule rule = AnalysisOptions.ScanRule.DEFAULT;
+    /** Outcomes per "client>server>port": completed, unanswered, refused, incomplete. */
+    private final Map<String, long[]> outcomes = new LinkedHashMap<>();
+    /** Failed attempts per source, for the scan windows: {time, target index, port}. Bounded; what does not fit is counted. */
+    private final Map<String, List<long[]>> attempts = new LinkedHashMap<>();
+    private final Map<String, Integer> targetIds = new LinkedHashMap<>();
+    private long attemptsUntimed, attemptsDropped;
+    static final int MAX_SOURCES = 10_000, MAX_ATTEMPTS_PER_SOURCE = 20_000;
+
+    public ConversationTracker scanRule(AnalysisOptions.ScanRule r) {
+        this.rule = r;
+        return this;
+    }
 
     /** Where the connections that did not go anywhere (unanswered SYN, handshake without a final ACK, UDP nobody answered) are reported as facts about their hosts. */
     public ConversationTracker observer(NetworkObserver o) {
@@ -202,6 +216,109 @@ public final class ConversationTracker {
                 observer.tag(client, "handshake-incomplete:" + port, 1);
             }
         }
+        if (!c.udp && c.synFrom != 0 && c.dataPackets == 0) {
+            int o = !c.synAck ? (serverRst ? 2 : 1) : clientAck ? 0 : 3;
+            long[] n = outcomes.get(client + '>' + server + '>' + port);
+            if (n == null && outcomes.size() < MAX_SCAN_KEYS) {
+                outcomes.put(client + '>' + server + '>' + port, n = new long[4]);
+            }
+            if (n != null) {
+                n[o]++;
+            }
+            if (o != 0) {
+                attempt(c, client, server, serverPort(c, aIsClient));
+            }
+        }
+    }
+
+    private static int serverPort(Conn c, boolean aIsClient) {
+        return aIsClient ? c.portB : c.portA;
+    }
+
+    /** A failed attempt (not answered, refused, or never finished) by {@code client}: kept, with its time, for the scan windows. */
+    private void attempt(Conn c, String client, String server, int port) {
+        if (c.first == Long.MAX_VALUE) {
+            attemptsUntimed++;                           // no usable clock: nothing to window
+            return;
+        }
+        List<long[]> list = attempts.get(client);
+        if (list == null) {
+            if (attempts.size() >= MAX_SOURCES) {
+                attemptsDropped++;
+                return;
+            }
+            attempts.put(client, list = new ArrayList<>());
+        }
+        if (list.size() >= MAX_ATTEMPTS_PER_SOURCE) {
+            attemptsDropped++;
+            return;
+        }
+        int target = targetIds.computeIfAbsent(server, k -> targetIds.size());
+        list.add(new long[]{c.first, target, port});
+    }
+
+    /** Failed attempts that had no usable timestamp, and those that did not fit the bounded tables (neither is windowed). */
+    public long attemptsUntimed() {
+        return attemptsUntimed;
+    }
+
+    public long attemptsDropped() {
+        return attemptsDropped;
+    }
+
+    /**
+     * Per source, the busiest window of failed attempts: the most distinct ports on one host, and the most distinct hosts on one port,
+     * inside {@code rule.windowSeconds()}. Reported to the observer as {@code probes} when either reaches its threshold.
+     */
+    private void windows() {
+        long span = rule.windowSeconds() * 1_000_000L;
+        String[] names = targetIds.keySet().toArray(new String[0]);
+        for (Map.Entry<String, List<long[]>> e : attempts.entrySet()) {
+            List<long[]> ev = e.getValue();
+            ev.sort((x, y) -> Long.compare(x[0], y[0]));
+            long[] ports = busiest(ev, 1, 2, span), hosts = busiest(ev, 2, 1, span);   // {distinct, key, window start, window end}
+            boolean portScan = ports[0] >= rule.ports(), sweep = hosts[0] >= rule.hosts();
+            if (!portScan && !sweep) {
+                continue;
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("failedAttempts", (long) ev.size());
+            m.put("windowSeconds", rule.windowSeconds());
+            if (portScan) {
+                m.put("manyPorts", Map.of("target", names[(int) ports[1]], "ports", ports[0], "firstSeen", FlowTable.iso(ports[2]), "lastSeen", FlowTable.iso(ports[3])));
+            }
+            if (sweep) {
+                m.put("manyHosts", Map.of("port", hosts[1], "hosts", hosts[0], "firstSeen", FlowTable.iso(hosts[2]), "lastSeen", FlowTable.iso(hosts[3])));
+            }
+            observer.probes(e.getKey(), m);
+        }
+    }
+
+    /** Over events sorted by time: for each value of column {@code by}, the window with the most distinct values of column {@code distinct}. */
+    static long[] busiest(List<long[]> ev, int by, int distinct, long span) {
+        Map<Long, List<long[]>> groups = new LinkedHashMap<>();
+        for (long[] x : ev) {
+            groups.computeIfAbsent(x[by], k -> new ArrayList<>()).add(x);
+        }
+        long[] best = {0, 0, 0, 0};
+        for (Map.Entry<Long, List<long[]>> g : groups.entrySet()) {
+            List<long[]> l = g.getValue();
+            Map<Long, Integer> in = new java.util.HashMap<>();
+            int lo = 0;
+            for (int hi = 0; hi < l.size(); hi++) {
+                in.merge(l.get(hi)[distinct], 1, Integer::sum);
+                while (l.get(hi)[0] - l.get(lo)[0] > span) {
+                    long v = l.get(lo++)[distinct];
+                    if (in.merge(v, -1, Integer::sum) == 0) {
+                        in.remove(v);
+                    }
+                }
+                if (in.size() > best[0]) {
+                    best = new long[]{in.size(), g.getKey(), l.get(lo)[0], l.get(hi)[0]};
+                }
+            }
+        }
+        return best;
     }
 
     /**
@@ -244,6 +361,19 @@ public final class ConversationTracker {
                 f.scanAttempts(e.getValue()[0]);
             }
         }
+        for (Map.Entry<String, long[]> e : outcomes.entrySet()) {
+            String[] k = e.getKey().split(">", 3);
+            FlowTable.Flow f = table.match(k[0], k[1], k[2]);
+            if (f != null) {
+                long[] o = e.getValue();
+                f.connections(o[0], o[1], o[2], o[3]);
+            }
+        }
+        if (observer != null) {
+            windows();
+        }
+        outcomes.clear();
+        attempts.clear();
         scans.clear();
         done.clear();
     }

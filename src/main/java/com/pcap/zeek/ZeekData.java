@@ -19,6 +19,9 @@ public record ZeekData(FlowTable flows, List<DeviceObservation> observations, St
         /** Rows kept as something other than a TCP/UDP host pair: IPv6 (the inventory is IPv4), group-address destinations, 0.0.0.0 sources, unnamed IP protocols. */
         long ipv6Connections, groupConnections, connectionsNotUnicast, otherTransportConnections;
 
+        /** Set at the end of the read: per ICSNPP package, what its logs gave (see {@link IcsnppPackages}). */
+        Map<String, Object> packages = Map.of();
+
         void used(String log) {
             logs.computeIfAbsent(log, k -> new long[2])[0]++;
         }
@@ -29,6 +32,10 @@ public record ZeekData(FlowTable flows, List<DeviceObservation> observations, St
 
         void present(String log) {
             logs.computeIfAbsent(log, k -> new long[2]);
+        }
+
+        void packages(java.nio.file.Path dir) {
+            packages = IcsnppPackages.status(logs, IcsnppPackages.unread(dir));
         }
 
         public long scanAttempts() {
@@ -58,6 +65,7 @@ public record ZeekData(FlowTable flows, List<DeviceObservation> observations, St
             Map<String, Object> l = new LinkedHashMap<>();
             logs.forEach((k, c) -> l.put(k, Map.of("rows", c[0], "skipped", c[1])));
             m.put("logs", l);
+            m.put("packages", packages);
             m.put("connections", connections);
             m.put("scanAttempts", scanAttempts);
             m.put("hosts", hosts);

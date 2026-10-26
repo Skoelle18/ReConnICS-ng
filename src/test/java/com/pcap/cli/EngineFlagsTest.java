@@ -90,6 +90,18 @@ class EngineFlagsTest {
     }
 
     @Test
+    void scanThresholdFlagsAreChecked() throws Exception {
+        String p = pcap().toString();
+        for (String f : new String[]{"--scan-ports", "--scan-hosts", "--scan-window"}) {
+            assertEquals(2, run("analyze", p, f).code(), f);
+            assertEquals(2, run("analyze", p, f, "many").code(), f);
+            assertEquals(2, run("analyze", p, f, "0").code(), f);
+        }
+        assertEquals(0, run("analyze", p, "--scan-ports", "5", "--scan-hosts", "5", "--scan-window", "30").code());
+        assertTrue(run("--help").out().contains("--scan-window <s>"));
+    }
+
+    @Test
     void toolsFlagAndEnginesCommand() throws Exception {
         String p = pcap().toString();
         assertEquals(2, run("analyze", p, "--tools").code());

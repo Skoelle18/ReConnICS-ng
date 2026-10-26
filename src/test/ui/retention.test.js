@@ -35,7 +35,8 @@ test('retained observations', async (t) => {
     const a = await open();
     try {
       assert.equal(groupNode(a), null);
-      assert.match(facet(a, 'Broadcast').textContent, /Broadcast \/ multicast addresses: 1.*hidden, kept in the inventory/);
+      assert.match(facet(a, 'Broadcast').textContent, /Broadcast \/ multicast addresses: 1/);
+      assert.equal(facet(a, 'Broadcast').querySelector('button').getAttribute('aria-pressed'), 'false', 'hidden');
       facet(a, 'Broadcast').querySelector('button').click();
       await settle();
       const g = groupNode(a);
@@ -59,7 +60,7 @@ test('retained observations', async (t) => {
       const obs = a.text('#observed');
       assert.match(obs, /probe-like/);
       assert.match(obs, /was pinged ×2/);
-      assert.match(facet(a, 'Seen-only').textContent, /Seen-only hosts \(low confidence\): 1.*shown/);
+      assert.match(facet(a, 'Seen-only').textContent, /Seen-only hosts \(low confidence\): 1/);
       facet(a, 'Seen-only').querySelector('button').click();
       await settle();
       assert.equal(a.$('#graph .node[data-id="10.0.1.60"]'), null, 'the toggle hides it from the graph, not from the inventory');

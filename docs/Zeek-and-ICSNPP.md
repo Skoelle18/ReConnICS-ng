@@ -15,6 +15,7 @@ parsers read the same capture. The native decoders always run too, and the two r
 | `--zeek-timeout SECONDS` | Stop a Zeek run after this long (default 1800). |
 | `--ics-only` | No edges for traffic that is not a decoded ICS protocol. |
 | `--images-dir DIR` | Keep the images web servers sent (PNG, GIF, JPEG, WebP, ICO by magic bytes; never SVG) in `DIR` as `<sha256>.<ext>`, at most 24 per capture and 2 MiB each; needs tshark or the tools image and tools enabled. The console does this by default (`-Dreconics.images=off` turns it off) and shows thumbnails on the web server's asset page; the files are deleted with the capture. |
+| `--scan-ports N`, `--scan-hosts N`, `--scan-window S` | When failed connection attempts from one source are called scan-like: N distinct ports on one host, or N distinct hosts on one port, within S seconds (defaults 20, 20, 60). The source gets the behaviour `scan-like` and `attributes.probes`; nothing is dropped. |
 | `--drop-scans` | Leave out flows that only ever saw scan attempts (default: kept, with `scanAttempts`; the console hides them behind a toggle). `--keep-scans` is accepted and is the default. |
 
 Zeek is run from an argument list (never a shell) in a fresh empty directory, reads the capture and nothing else, and its output

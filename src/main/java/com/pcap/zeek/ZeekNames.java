@@ -238,10 +238,10 @@ final class ZeekNames {
             Map.entry("modbus", "modbus"), Map.entry("dnp3", "dnp3"), Map.entry("dnp3_tcp", "dnp3"), Map.entry("dnp3_udp", "dnp3"),
             Map.entry("enip", "ethernet-ip"), Map.entry("cip", "ethernet-ip"), Map.entry("s7comm", "s7comm"),
             Map.entry("s7comm_plus", "s7comm"), Map.entry("s7comm-plus", "s7comm"), Map.entry("cotp", "s7comm"),
-            Map.entry("snmp", "snmp"));
+            Map.entry("snmp", "snmp"), Map.entry("bacnet", "bacnet"), Map.entry("opcua-binary", "opc-ua"), Map.entry("spicy_profinet_io_cm", "profinet"));
 
     /** The ICS wire names; a flow of one of these counts as an ICS edge in the benchmark, anything else is "unknown". */
-    static final List<String> ICS = List.of("modbus", "dnp3", "ethernet-ip", "s7comm", "snmp");
+    static final List<String> ICS = List.of("modbus", "dnp3", "ethernet-ip", "s7comm", "snmp", "bacnet", "opc-ua", "profinet");
 
     static boolean isIcs(String protocol) {
         return ICS.contains(protocol);

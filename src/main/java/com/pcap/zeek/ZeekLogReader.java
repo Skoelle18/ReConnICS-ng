@@ -16,6 +16,7 @@ import com.pcap.inventory.PortHints;
 import com.pcap.protocol.ProtocolType;
 import com.pcap.protocol.dnp3.Dnp3Parser;
 import com.pcap.protocol.enip.EnipIdentityParser;
+import com.pcap.util.ByteReader;
 import com.pcap.util.IpAddress;
 
 import java.io.IOException;
@@ -174,6 +175,10 @@ public final class ZeekLogReader {
         unmatchedSeen.clear();
         traces.clear();
         certs.clear();
+        bacnetIdentSeen.clear();
+        opcIdentSeen.clear();
+        opcStatuses.clear();
+        profinetPort.clear();
         traceLines = 0;
         if (dir == null || !Files.isDirectory(dir)) {
             throw new ZeekException(ZeekException.Kind.ENGINE, "the Zeek log directory does not exist: " + dir);
@@ -200,6 +205,18 @@ public final class ZeekLogReader {
         each(dir, "enip.log", this::enip);
         each(dir, "cip.log", this::cip);
         each(dir, "cip_io.log", this::cipIo);
+        // ICSNPP extended tier. The detail logs go before the header log so an error row finds the request it answers
+        each(dir, "bacnet_property.log", this::bacnetProperty);
+        each(dir, "bacnet_device_control.log", this::bacnetControl);
+        each(dir, "bacnet.log", this::bacnet);
+        each(dir, "bacnet_discovery.log", this::bacnetDiscovery);
+        each(dir, "opcua_binary_status_code_detail.log", this::opcStatus);
+        each(dir, "opcua_binary_read_nodes_to_read.log", this::opcRead);
+        each(dir, "opcua_binary_write.log", this::opcWrite);
+        each(dir, "opcua_binary.log", this::opcua);
+        each(dir, "opcua_binary_create_session_endpoints.log", this::opcEndpoint);
+        each(dir, "opcua_binary_get_endpoints_description.log", this::opcEndpoint);
+        each(dir, "profinet_io_cm.log", this::profinet);
         emitOperations();
         each(dir, "x509.log", this::x509);                    // before ssl.log: its rows look the certificates up by fuid
         each(dir, "ssl.log", this::ssl);
@@ -217,6 +234,7 @@ public final class ZeekLogReader {
         each(dir, "software.log", this::software);
         each(dir, "known_services.log", this::knownServices);
         emitHosts();
+        stats.packages(dir);
         ZeekData out = new ZeekData(flows, obs, stats);
         conns.clear();
         scans.clear();
@@ -1421,6 +1439,345 @@ public final class ZeekLogReader {
                 f.operation(a.function, a.access, a.object, a.address, a.quantity, a.unit, a.count, a.samples, a.statuses);
             }
         }
+    }
+
+    // ------------------------------------------------------------------ ICSNPP extended tier: BACnet, OPC UA Binary, PROFINET IO CM
+    // Fields and values below are from real logs (Zeek 8.0.9, the packages' own sample captures; src/test/resources/real/PROVENANCE.md).
+    // Secrets are never read: bacnet_device_control.log "password" and opcua_binary_activate_session*.log (user name, password, certificates).
+
+    /** Free text from a log (an object name, a property value): control characters and escapes out, length capped. */
+    private static String safe(String s, int max) {
+        return s == null ? null : cap(ByteReader.sanitize(s), max);
+    }
+
+    /**
+     * A row whose source is a unicast host and whose destination is a group address: a BACnet Who-Is to 255.255.255.255, or to the subnet
+     * broadcast (a directed broadcast reads as a unicast host without the destination MAC, so "ends in .255" is the rule here, as in
+     * NetworkObserver). Such a row is not an edge; the group is in conn.log and the I-Am identity in bacnet_discovery.log.
+     */
+    private static boolean toGroup(JsonNode n) {
+        String d = text(n, "destination_h");
+        return ip4(text(n, "source_h")) != null && d != null && IPV4.matcher(d).matches() && (ip4(d) == null || d.endsWith(".255"));
+    }
+
+    private static String bacnetName(String s) {
+        return s == null ? null : safe(s.replace('_', '-'), 48);
+    }
+
+    private static String bacnetAccess(String service) {
+        return switch (service) {
+            case "read-property", "read-property-multiple", "read-range", "atomic-read-file", "read-property-conditional" -> "read";
+            case "write-property", "write-property-multiple", "atomic-write-file" -> "write";
+            case "reinitialize-device", "device-communication-control" -> "control";
+            default -> "other";
+        };
+    }
+
+    private static String stripDirection(String service) {
+        return service.endsWith("-request") ? service.substring(0, service.length() - 8) : service.endsWith("-ack") ? service.substring(0, service.length() - 4) : service;
+    }
+
+    /**
+     * bacnet.log: every BACnet/IP header. One message per APDU row; a confirmed service nothing richer describes (the property and device
+     * control logs do) becomes an operation, and an error, reject or abort row puts its code on the request it answers.
+     */
+    private boolean bacnet(JsonNode n) {
+        String type = text(n, "pdu_type"), svc = bacnetName(text(n, "pdu_service"));
+        if (type == null || svc == null) {
+            return false;
+        }
+        Sides sd = toGroup(n) ? null : sides(n, 47808);
+        if (sd == null) {
+            return toGroup(n);
+        }
+        String uid = text(n, "uid");
+        FlowTable.Flow f = flowOf(sd, "bacnet", uid, "udp");
+        if (f == null) {
+            return true;
+        }
+        boolean fault = type.equals("ERROR_PDU") || type.equals("REJECT_PDU") || type.equals("ABORT_PDU");
+        f.source("zeek").seen(micros(n, "ts")).message("BACnet " + (type.equals("NPDU") ? "NPDU " : "") + svc + (fault ? " " + type.substring(0, type.indexOf('_')).toLowerCase(java.util.Locale.ROOT) : ""));
+        String invoke = idText(n, "invoke_id"), key = "b|" + uid + '|' + invoke;
+        if (type.equals("CONFIRMED_REQUEST") && sd.fromClient() && !DETAILED_BACNET.contains(svc)) {
+            OpAgg a = stage(sd.client(), sd.server(), "bacnet", portOf(sd, uid, "udp"), svc, bacnetAccess(svc), null, null, null, null, List.of(), 1);
+            if (a != null && invoke != null && pending.size() < MAX_PENDING) {
+                pending.put(key, a);
+            }
+        } else if (fault && invoke != null && pending.get(key) != null) {
+            String why = safe(text(n, "result_code"), 40);
+            pending.get(key).status("status: " + (why == null ? type.substring(0, type.indexOf('_')).toLowerCase(java.util.Locale.ROOT) : why.replace('_', ' ')));
+        }
+        return true;
+    }
+
+    private static final Set<String> DETAILED_BACNET = Set.of("read-property", "write-property", "reinitialize-device", "device-communication-control");
+
+    /** bacnet_property.log: Read/Write-Property with the object, its instance, the property and, for a reply or a write, its value. */
+    private boolean bacnetProperty(JsonNode n) {
+        Sides sd = sides(n, 47808);
+        String svc = bacnetName(text(n, "pdu_service"));
+        if (sd == null || svc == null) {
+            return sd == null && svc != null && toGroup(n);
+        }
+        String uid = text(n, "uid"), invoke = idText(n, "invoke_id"), key = "b|" + uid + '|' + invoke;
+        String fn = stripDirection(svc), property = safe(text(n, "property"), 32), obj = safe(text(n, "object_type"), 32);
+        String value = safe(text(n, "value"), 40);
+        boolean request = svc.endsWith("-request");
+        if (request) {
+            OpAgg a = stage(sd.client(), sd.server(), "bacnet", portOf(sd, uid, "udp"), fn, bacnetAccess(fn),
+                    obj == null ? null : obj + (property == null ? "" : " " + property), numOrNull(n, "instance_number"), null, null,
+                    value == null ? List.of() : List.of(value), 1);
+            if (a != null && invoke != null && pending.size() < MAX_PENDING) {
+                pending.put(key, a);
+            }
+        } else if (pending.get(key) != null && value != null && pending.get(key).samples.size() < FlowTable.MAX_SAMPLES) {
+            OpAgg a = pending.get(key);
+            if (!a.samples.contains(value)) {
+                a.samples.add(value);
+            }
+        }
+        return true;
+    }
+
+    /** bacnet_device_control.log: Reinitialize-Device and Device-Communication-Control. The {@code password} column is never read. */
+    private boolean bacnetControl(JsonNode n) {
+        Sides sd = sides(n, 47808);
+        String svc = bacnetName(text(n, "pdu_service"));
+        if (sd == null || svc == null) {
+            return sd == null && svc != null && toGroup(n);
+        }
+        String uid = text(n, "uid"), invoke = idText(n, "invoke_id"), key = "b|" + uid + '|' + invoke;
+        if (sd.fromClient()) {
+            String state = safe(text(n, "device_state"), 32);
+            OpAgg a = stage(sd.client(), sd.server(), "bacnet", portOf(sd, uid, "udp"), svc, "control", state, null, null, null, List.of(), 1);
+            if (a != null && invoke != null && pending.size() < MAX_PENDING) {
+                pending.put(key, a);
+            }
+        } else if (pending.get(key) != null) {
+            String result = text(n, "result"), code = safe(text(n, "result_code"), 40);
+            if (result != null && !result.equalsIgnoreCase("SUCCESS")) {
+                pending.get(key).status("status: " + (code == null ? result.toLowerCase(java.util.Locale.ROOT) : code.replace('_', ' ')));
+            }
+        }
+        return true;
+    }
+
+    private static String uid(JsonNode n) {
+        return text(n, "uid");
+    }
+
+    private final Set<String> bacnetIdentSeen = new java.util.HashSet<>();
+
+    /**
+     * bacnet_discovery.log: Who-Is, I-Am, Who-Has, I-Have. An I-Am is the device announcing itself: its vendor and device instance are
+     * identity (the announcement is unauthenticated, so MEDIUM). Most are broadcasts: the identity stands without an edge.
+     */
+    private boolean bacnetDiscovery(JsonNode n) {
+        String svc = bacnetName(text(n, "pdu_service"));
+        if (svc == null) {
+            return false;
+        }
+        String src = ip4(text(n, "source_h"));
+        if (svc.equals("i-am") && src != null) {
+            String vendor = safe(text(n, "vendor"), 64), uid = text(n, "uid");
+            Long instance = numOrNull(n, "instance_number");
+            if (bacnetIdentSeen.size() < MAX_IDENT_GROUPS && bacnetIdentSeen.add(src + '|' + vendor + '|' + instance)) {
+                List<IdentityField> f = new ArrayList<>();
+                if (vendor != null && !vendor.isBlank()) {
+                    f.add(new IdentityField(IdentityField.Kind.VENDOR, vendor, ProtocolType.UNKNOWN,
+                            ev(ProtocolType.UNKNOWN, "BACnet I-Am", "vendor", uid, "zeek bacnet_discovery.log", DetectionBasis.ZEEK_ICSNPP), Confidence.MEDIUM));
+                }
+                if (instance != null) {
+                    f.add(new IdentityField(IdentityField.Kind.OTHER, "BACnet device instance " + instance, ProtocolType.UNKNOWN,
+                            ev(ProtocolType.UNKNOWN, "BACnet I-Am", "deviceInstance", uid, "zeek bacnet_discovery.log", DetectionBasis.ZEEK_ICSNPP), Confidence.MEDIUM));
+                }
+                if (!f.isEmpty()) {
+                    addObs(new DeviceObservation(0, IpAddress.parse(src), null, ProtocolType.UNKNOWN, DetectionBasis.ZEEK_ICSNPP, "server", f,
+                            "BACnet I-Am (Zeek)").withProtocolName("bacnet").withService("47808/udp"));
+                }
+            }
+        }
+        Sides sd = toGroup(n) ? null : sides(n, 47808);
+        if (sd == null) {
+            return src != null;                                  // a broadcast: the identity above is what it adds
+        }
+        stage(sd.client(), sd.server(), "bacnet", portOf(sd, uid(n), "udp"), svc, "other", null, null, null, null, List.of(), 1);
+        return true;
+    }
+
+    // ---- OPC UA Binary
+
+    private static String opcService(String id) {
+        if (id == null) {
+            return null;
+        }
+        String s = safe(id, 64);
+        return s.endsWith("Request") ? s.substring(0, s.length() - 7) : s.endsWith("Response") ? s.substring(0, s.length() - 8) : s;
+    }
+
+    private static String opcAccess(String service) {
+        return switch (service) {
+            case "Read", "HistoryRead", "Browse", "BrowseNext", "QueryFirst", "QueryNext", "TranslateBrowsePathsToNodeIds", "GetEndpoints", "FindServers" -> "read";
+            case "Write", "HistoryUpdate", "AddNodes", "DeleteNodes", "AddReferences", "DeleteReferences" -> "write";
+            case "Call" -> "control";
+            default -> "other";
+        };
+    }
+
+    private final Map<String, String> opcStatuses = new HashMap<>();
+
+    /** opcua_binary_status_code_detail.log: a Bad or Uncertain status by its link id, to put on the message that carried it. Read before the primary log. */
+    private boolean opcStatus(JsonNode n) {
+        String link = text(n, "status_code_link_id"), sev = text(n, "severity_str");
+        if (link == null || sev == null) {
+            return false;
+        }
+        if (!sev.equals("Severity_Good") && opcStatuses.size() < MAX_PENDING) {
+            String sub = safe(text(n, "sub_code_str"), 40);
+            opcStatuses.put(link, "status: " + (sub == null ? sev.replace("Severity_", "").toLowerCase(java.util.Locale.ROOT) : sub.replaceAll("([a-z])([A-Z])", "$1 $2").toLowerCase(java.util.Locale.ROOT)));
+        }
+        return true;
+    }
+
+    /**
+     * opcua_binary.log: one row per message with its request and response service. Read and Write are described per node by their own
+     * logs; every other service is an operation here. The secure-channel policy (None, Basic256Sha256) is a message kind.
+     */
+    private boolean opcua(JsonNode n) {
+        String type = text(n, "msg_type");
+        Sides sd = sides(n, 4840, 4843);
+        if (type == null || sd == null) {
+            return false;
+        }
+        String service = opcService(text(n, "req_identifier_str") != null ? text(n, "req_identifier_str") : text(n, "res_identifier_str"));
+        String uid = text(n, "uid");
+        FlowTable.Flow f = flowOf(sd, "opc-ua", uid, "tcp");
+        if (f == null) {
+            return true;
+        }
+        String policy = safe(text(n, "sec_policy_uri"), 120);
+        if (policy != null && policy.contains("#")) {
+            policy = policy.substring(policy.lastIndexOf('#') + 1);
+        }
+        f.source("zeek").seen(micros(n, "ts")).message("OPC UA " + (service == null ? safe(type, 8) : service) + (policy != null && "OPN".equals(type) ? " (" + safe(policy, 32) + ")" : ""));
+        if (service != null && !"Read".equals(service) && !"Write".equals(service) && !"OpenSecureChannel".equals(service) && !"CloseSecureChannel".equals(service)) {
+            OpAgg a = stage(sd.client(), sd.server(), "opc-ua", portOf(sd, uid, "tcp"), service, opcAccess(service), null, null, null, null, List.of(), 1);
+            String st = opcStatuses.get(text(n, "status_code_link_id"));
+            if (a != null && st != null) {
+                a.status(st);
+            }
+        }
+        return true;
+    }
+
+    /** opcua_binary_read_nodes_to_read.log / opcua_binary_write.log: the node and attribute each Read or Write names. */
+    private boolean opcNode(JsonNode n, String service, String access) {
+        Sides sd = sides(n, 4840, 4843);
+        if (sd == null) {
+            return false;
+        }
+        String attr = safe(text(n, "attribute_id_str"), 24), node = safe(text(n, "node_id_string"), 40);
+        if (node == null && n.get("node_id_numeric") != null && n.get("node_id_numeric").isIntegralNumber()) {
+            node = "i=" + n.get("node_id_numeric").asText();
+        }
+        if (node == null) {
+            node = safe(text(n, "node_id_guid"), 40);
+        }
+        if (node == null && attr == null) {
+            return true;                                         // the reply to a write: results only, no node
+        }
+        Long ns = numOrNull(n, "node_id_namespace_idx");
+        String object = safe((attr == null ? "node" : attr) + " of " + (ns == null ? "" : "ns" + ns + ";") + (node == null ? "?" : node), 64);
+        String uid = text(n, "uid");
+        FlowTable.Flow f = flowOf(sd, "opc-ua", uid, "tcp");
+        if (f == null) {
+            return true;
+        }
+        stage(sd.client(), sd.server(), "opc-ua", portOf(sd, uid, "tcp"), service, access, object, null, null, null, List.of(), 1);
+        return true;
+    }
+
+    private boolean opcRead(JsonNode n) {
+        return opcNode(n, "Read", "read");
+    }
+
+    private boolean opcWrite(JsonNode n) {
+        return opcNode(n, "Write", "write");
+    }
+
+    private final Set<String> opcIdentSeen = new java.util.HashSet<>();
+    /** PROFINET: the server port of the latest request per "client>server", where that pair's replies are counted. */
+    private final Map<String, Integer> profinetPort = new HashMap<>();
+
+    /**
+     * opcua_binary_create_session_endpoints.log / opcua_binary_get_endpoints_description.log: the server describes itself (application
+     * name, application URI, product URI). Self-declared text: MEDIUM, never a model or a firmware.
+     */
+    private boolean opcEndpoint(JsonNode n) {
+        Sides sd = sides(n, 4840, 4843);
+        if (sd == null) {
+            return false;
+        }
+        String name = safe(text(n, "text"), 80), appUri = safe(text(n, "application_uri"), 120), productUri = safe(text(n, "product_uri"), 120), uid = text(n, "uid");
+        if (opcIdentSeen.size() < MAX_IDENT_GROUPS && opcIdentSeen.add(sd.server() + '|' + name + '|' + appUri)) {
+            List<IdentityField> f = new ArrayList<>();
+            if (name != null && !name.isBlank()) {
+                f.add(new IdentityField(IdentityField.Kind.PRODUCT_NAME, name, ProtocolType.UNKNOWN,
+                        ev(ProtocolType.UNKNOWN, "OPC UA endpoint", "applicationName", uid, "zeek opcua_binary endpoint description", DetectionBasis.ZEEK_ICSNPP), Confidence.MEDIUM));
+            }
+            if (appUri != null && !appUri.isBlank()) {
+                f.add(new IdentityField(IdentityField.Kind.OTHER, "OPC UA application " + appUri, ProtocolType.UNKNOWN,
+                        ev(ProtocolType.UNKNOWN, "OPC UA endpoint", "applicationUri", uid, "zeek opcua_binary endpoint description", DetectionBasis.ZEEK_ICSNPP), Confidence.MEDIUM));
+            }
+            if (productUri != null && !productUri.isBlank()) {
+                f.add(new IdentityField(IdentityField.Kind.OTHER, "OPC UA product " + productUri, ProtocolType.UNKNOWN,
+                        ev(ProtocolType.UNKNOWN, "OPC UA endpoint", "productUri", uid, "zeek opcua_binary endpoint description", DetectionBasis.ZEEK_ICSNPP), Confidence.MEDIUM));
+            }
+            if (!f.isEmpty()) {
+                addObs(new DeviceObservation(0, IpAddress.parse(sd.server()), null, ProtocolType.UNKNOWN, DetectionBasis.ZEEK_ICSNPP, "server", f,
+                        "OPC UA endpoint description (Zeek)").withProtocolName("opc-ua").withService(sd.serverPort() + "/tcp"));
+            }
+        }
+        return true;
+    }
+
+    // ---- PROFINET IO CM
+
+    /**
+     * profinet_io_cm.log: DCE/RPC calls of the IO connection manager. The client is whoever sent the Request; a device answers on the
+     * endpoint mapper port (34964) or on a port of its own, so one pair can have several flows. Connect, Control and Release set up or
+     * end the IO relation (control); Read and Write move records.
+     */
+    private boolean profinet(JsonNode n) {
+        String src = ip4(text(n, "source_h")), dst = ip4(text(n, "destination_h")), type = text(n, "packet_type"), op = safe(text(n, "operation_num"), 32);
+        int sp = port(n, "source_p"), dp = port(n, "destination_p");
+        if (src == null || dst == null || sp < 0 || dp < 0 || type == null || op == null) {
+            return false;
+        }
+        boolean request = type.equals("Request");
+        if (request && profinetPort.size() < MAX_PENDING) {
+            profinetPort.put(src + '>' + dst, dp);
+        }
+        Integer asked = request ? null : profinetPort.get(dst + '>' + src);
+        Sides sd = request ? new Sides(src, dst, dp, true) : new Sides(dst, src, asked != null ? asked : sp, false);
+        String uid = text(n, "uid"), transport = "tcp".equals(text(n, "proto")) ? "tcp" : "udp";
+        FlowTable.Flow f = flowOf(sd, "profinet", uid, transport);
+        if (f == null) {
+            return true;
+        }
+        f.source("zeek").seen(micros(n, "ts")).message("PROFINET IO-CM " + op + (request ? "" : " " + safe(type.toLowerCase(java.util.Locale.ROOT), 16)));
+        // the activity UUID is byte-swapped between a request and its response (the two sides' integer encodings differ), so the call is keyed by the pair
+        String key = "n|" + sd.client() + '>' + sd.server() + '|' + op + '|' + idText(n, "sequence_num");
+        if (request) {
+            String access = op.startsWith("Read") ? "read" : op.startsWith("Write") ? "write" : op.equals("Connect") || op.equals("Control") || op.equals("Release") ? "control" : "other";
+            OpAgg a = stage(sd.client(), sd.server(), "profinet", portOf(sd, uid, transport), op, access, null, null, null, null, List.of(), 1);
+            if (a != null && pending.size() < MAX_PENDING) {
+                pending.put(key, a);
+            }
+        } else if (!type.equals("Response") && pending.get(key) != null) {
+            pending.get(key).status("status: " + safe(type.toLowerCase(java.util.Locale.ROOT), 24));
+        }
+        return true;
     }
 
     // ------------------------------------------------------------------ identity

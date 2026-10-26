@@ -156,6 +156,18 @@ class ToolPipelineTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void aTsharkLabelWhoseDissectorThrewIsLowConfidence() {
+        var t = new FlowTable();
+        Findings f = Findings.empty();
+        f.conversations().add(new Findings.Conversation("10.0.0.5", "10.0.0.20", "4840/tcp", 10, 900, 1_000_000, 2_000_000, "opc-ua", true, 3));
+        f.conversations().add(new Findings.Conversation("10.0.0.5", "10.0.0.21", "4840/tcp", 10, 900, 1_000_000, 2_000_000, "opc-ua", true, 0));
+        ToolPipeline.mergeFlows(t, List.of(ran("tshark", "4.4.19", f)), false);
+        assertEquals("LOW", ((List<Map<String, Object>>) m(t, "10.0.0.5", "10.0.0.20", "4840/tcp").get("classifiedBy")).get(0).get("confidence"));
+        assertEquals("MEDIUM", ((List<Map<String, Object>>) m(t, "10.0.0.5", "10.0.0.21", "4840/tcp").get("classifiedBy")).get(0).get("confidence"));
+    }
+
+    @Test
     void icsOnlyKeepsTsharkFromAddingConversations() {
         var t = new FlowTable();
         Findings f = Findings.empty();
@@ -304,5 +316,29 @@ class ToolPipelineTest {
         ToolPipeline.skipped("--tools off").forEach(o -> l.add(o.status().toMap()));
         assertEquals("skipped", l.get(0).get("state"));
         assertNotNull(l.get(0).get("name"));
+    }
+
+    /** The counts are what tshark 4.4.19 decoded on automayt/ICS-pcap iec104.pcap (second pass: type id | cause | common address). */
+    @Test
+    @SuppressWarnings("unchecked")
+    void iec104AsdusBecomeOperationsWithTheCauseAsStatusAndNeverOnAMalformedConversation() {
+        Findings f = Findings.empty();
+        var ok = new Findings.Conversation("10.20.102.1", "10.20.100.108", "2404/tcp", 40, 3000, 1_000_000, 2_000_000, "iec-104", true, 0,
+                new java.util.LinkedHashMap<>(Map.of("100|6|10", 2L, "100|7|10", 2L, "9|20|10", 2L, "9|3|10", 1L, "70|4|10", 1L)));
+        var bad = new Findings.Conversation("10.20.102.1", "10.20.100.109", "2404/tcp", 40, 3000, 1_000_000, 2_000_000, "iec-104", true, 2,
+                new java.util.LinkedHashMap<>(Map.of("100|6|10", 2L)));
+        f.conversations().add(ok);
+        f.conversations().add(bad);
+        FlowTable flows = new FlowTable();
+        ToolPipeline.mergeFlows(flows, List.of(ran("tshark", "4.4.19", f)), false);
+        var out = flows.toList(true);
+        var good = out.stream().filter(x -> "10.20.100.108".equals(x.get("server"))).findFirst().orElseThrow();
+        var ops = (List<Map<String, Object>>) good.get("operations");
+        var interro = ops.stream().filter(o -> "C_IC_NA_1 (type 100)".equals(o.get("function"))).findFirst().orElseThrow();
+        assertEquals("control", interro.get("access"));
+        assertEquals(4L, interro.get("count"));
+        assertEquals(Map.of("cause: activation", 2L, "cause: activation confirmed", 2L), interro.get("statuses"));
+        assertEquals("read", ops.stream().filter(o -> "M_ME_NA_1 (type 9)".equals(o.get("function"))).findFirst().orElseThrow().get("access"));
+        assertNull(out.stream().filter(x -> "10.20.100.109".equals(x.get("server"))).findFirst().orElseThrow().get("operations"), "a dissector that threw proves nothing");
     }
 }

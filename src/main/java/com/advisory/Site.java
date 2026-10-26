@@ -500,12 +500,30 @@ final class Site {
     }
 
     /**
+     * The site keeps {@link #MAX_FLOWS} conversations over all merged captures. When it is full, a decoded or classified conversation
+     * replaces the quietest undecoded one (protocol unknown, fewest messages) instead of being refused: a capture merged after a big
+     * one must not lose its few real flows to the first capture's scans. A full table of decoded flows still refuses new ones.
+     */
+    private static boolean evictUndecoded(Map<String, Map<String, Object>> into) {
+        String victim = null;
+        double least = Double.MAX_VALUE;
+        for (var e : into.entrySet()) {
+            if (!"unknown".equals(e.getValue().get("protocol"))) continue;
+            double n = (double) e.getValue().get("messages");
+            if (n < least) { least = n; victim = e.getKey(); }
+        }
+        if (victim == null) return false;
+        into.remove(victim);
+        return true;
+    }
+
+    /**
      * Sums the analyzer's {@code flows} per directed (client, server, protocol, port): messages, packets, bytes and scan
      * attempts add up, first/last seen widen, operations merge by (function, object, address, quantity), and the optional
      * fields stay absent when no capture reported them. The input is untrusted (a POSTed payload can carry anything):
      * strings are cleaned, counts clamped, sizes capped.
      */
-    private static void addFlows(Map<String, Map<String, Object>> into, Object list, String captureId) {
+    static void addFlows(Map<String, Map<String, Object>> into, Object list, String captureId) {
         for (Object o : Json.arr(list)) {
             var f = Json.obj(o);
             if (!(f.get("client") instanceof String c) || !(f.get("server") instanceof String s) || !(f.get("protocol") instanceof String pr)) continue;
@@ -515,7 +533,7 @@ final class Site {
             String key = c + '>' + s + '>' + pr + '>' + port;
             var m = into.get(key);
             if (m == null) {
-                if (into.size() >= MAX_FLOWS) continue;
+                if (into.size() >= MAX_FLOWS && (pr.equals("unknown") || !evictUndecoded(into))) continue;
                 m = new LinkedHashMap<>();
                 m.put("client", c); m.put("server", s); m.put("protocol", pr);
                 m.put("port", port);

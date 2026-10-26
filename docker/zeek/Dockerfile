@@ -14,10 +14,15 @@ ARG ICSNPP_MODBUS=v2.0.0
 ARG ICSNPP_DNP3=b31dbadeceb1cbcda16aef89c650559cd177dd7e
 ARG ICSNPP_ENIP=3fbd32e3d2838d5e2bcd6c9ed79f036d23a0642e
 ARG ICSNPP_S7COMM=5cf1e1ee397bef97ba1e1daa917703d447f6519f
+# Extended tier (docs/foss-components.md, docs/plans/2026-10-26-icsnpp-tshark-arp-icmp-syn.md): BACnet, OPC UA Binary, PROFINET IO CM.
+# bacnet and profinet-io-cm publish no release tags, so they are pinned by commit (HEAD of cisagov on 26 Oct 2026).
+ARG ICSNPP_BACNET=a04c08110328a57514383c626e5d4ad53aad57b1
+ARG ICSNPP_OPCUA=v2.0.0
+ARG ICSNPP_PROFINET=4fa4d446efff2f01d8921c7455fb6e1298856041
 
-# Further CISA ICSNPP analyzers that are on the zkg index (zeek/packages, cisagov/zkg.index) are not built by default: each adds build time and
+# BACnet, OPC UA Binary and PROFINET IO CM are built above (pinned). Further CISA ICSNPP analyzers on the zkg index (zeek/packages, cisagov/zkg.index) are not built by default: each adds build time and
 # a failure of one would break the primary image. Opt in with a space separated list, for example
-#   docker build -t reconics-zeek --build-arg ICSNPP_EXTRA="icsnpp-bacnet icsnpp-opcua-binary icsnpp-ge-srtp" docker/zeek
+#   docker build -t reconics-zeek --build-arg ICSNPP_EXTRA="icsnpp-ge-srtp icsnpp-bsap" docker/zeek
 # On the index and BSD-3-Clause licensed on 25 Oct 2026: icsnpp-bacnet, icsnpp-opcua-binary (tag v2.0.0), icsnpp-ge-srtp, icsnpp-bsap,
 # icsnpp-genisys, icsnpp-omron-fins, icsnpp-profinet-io-cm, icsnpp-synchrophasor. Not tested in this project's image: see docs/foss-components.md.
 ARG ICSNPP_EXTRA=""
@@ -32,6 +37,9 @@ RUN zkg autoconfig --force \
  && zkg install --force --skiptests --version "${ICSNPP_DNP3}" icsnpp-dnp3 \
  && zkg install --force --skiptests --version "${ICSNPP_ENIP}" icsnpp-enip \
  && zkg install --force --skiptests --version "${ICSNPP_S7COMM}" icsnpp-s7comm \
+ && zkg install --force --skiptests --version "${ICSNPP_BACNET}" icsnpp-bacnet \
+ && zkg install --force --skiptests --version "${ICSNPP_OPCUA}" icsnpp-opcua-binary \
+ && zkg install --force --skiptests --version "${ICSNPP_PROFINET}" icsnpp-profinet-io-cm \
  && for pkg in ${ICSNPP_EXTRA}; do zkg install --force --skiptests "${pkg}" || exit 1; done
 
 # The toolchain is only needed to build the packages.

@@ -18,9 +18,18 @@ public record Findings(List<Conversation> conversations, List<Classification> cl
     }
 
     /** {@code port} is the server port with transport ({@code 502/tcp}); {@code label} the tool's protocol name or null;
+     * {@code malformed}: packets Wireshark's dissector gave up on (the label is then a guess at best);
+     * {@code iec}: IEC 104 ASDUs of the conversation as {@code typeid|cause|common address} to count (second tshark pass, empty otherwise);
      * {@code answered}: packets went both ways and, for TCP, the handshake completed or enough data followed (not a scan attempt). */
     public record Conversation(String client, String server, String port, long packets, long bytes, long firstMicros, long lastMicros, String label,
-                               boolean answered) {
+                               boolean answered, long malformed, Map<String, Long> iec) {
+        public Conversation(String client, String server, String port, long packets, long bytes, long firstMicros, long lastMicros, String label, boolean answered, long malformed) {
+            this(client, server, port, packets, bytes, firstMicros, lastMicros, label, answered, malformed, new LinkedHashMap<>());
+        }
+
+        public Conversation(String client, String server, String port, long packets, long bytes, long firstMicros, long lastMicros, String label, boolean answered) {
+            this(client, server, port, packets, bytes, firstMicros, lastMicros, label, answered, 0);
+        }
     }
 
     /** A label for the conversation between two endpoints; the direction is the tool's, so the matcher tries both ports. */

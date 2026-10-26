@@ -91,7 +91,7 @@ class IngestSchemaValidatorTest {
         var t = new com.pcap.inventory.FlowTable();
         java.util.Set<String> written2 = new java.util.TreeSet<>();
         t.flow("10.0.0.1", "10.0.0.2", "modbus", "502/tcp").message("Modbus FC=0x3").traffic(2, 20).directed(12, 8).seen(1_445_504_401_000_000L)
-                .scanAttempts(1).source("zeek").trace("* conn C1").portHint("modbus").operation("FC3", "read", "g1v1", 1L, 2L, 7L, 1, List.of(1), java.util.Map.of("ok", 1L));
+                .scanAttempts(1).icmp(java.util.Map.of("unmatchedReplies", 1L)).connections(1, 0, 0, 0).source("zeek").trace("* conn C1").portHint("modbus").operation("FC3", "read", "g1v1", 1L, 2L, 7L, 1, List.of(1), java.util.Map.of("ok", 1L));
         t.flow("10.0.0.1", "10.0.0.2", "unknown", "502/tcp").portHint("modbus")      // the hint is written only on an undecoded flow
                 .classifiedBy("ndpi", "4.2", "TLS", "MEDIUM", "dpi").alert("suricata", "7.0", "alert", 2000001L, "TEST", "cat", 2, 1).communityId("1:x=");
         var maps = t.toList(true);

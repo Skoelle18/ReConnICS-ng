@@ -127,7 +127,7 @@ public final class AnalysisService {
                                        CompletableFuture<List<com.pcap.tools.ToolPipeline.Outcome>> toolsRun)
             throws IOException, PcapException {
         NetworkObserver observer = new NetworkObserver();
-        ConversationTracker conversations = new ConversationTracker().observer(observer);
+        ConversationTracker conversations = new ConversationTracker().observer(observer).scanRule(options.scan());
         DeviceAggregator aggregator = new DeviceAggregator();
         TcpReassembler reassembler = new TcpReassembler();
         Map<String, Long> candidates = new HashMap<>();
@@ -424,15 +424,15 @@ public final class AnalysisService {
         produced.put("connections", zeek.stats().connections());
         out.add(new com.pcap.tools.ToolStatus("zeek", "ran", via, version, how, produced));
         Map<String, Object> rows = new java.util.LinkedHashMap<>();
-        for (String log : List.of("modbus.log", "modbus_detailed.log", "dnp3.log", "dnp3_control.log", "enip.log", "cip.log", "cip_identity.log", "s7comm.log", "s7comm_plus.log")) {
+        for (String log : com.pcap.zeek.IcsnppPackages.readLogs()) {
             long n = zeek.stats().rowsUsed(log);
             if (n > 0) {
                 rows.put(log, n);
             }
         }
         out.add(new com.pcap.tools.ToolStatus("icsnpp", "ran", via, "", rows.isEmpty()
-                ? "no ICSNPP log rows: the capture has no Modbus/DNP3/ENIP/S7 traffic, or this Zeek has no ICSNPP packages"
-                : "ICSNPP logs read: " + String.join(", ", rows.keySet()), rows));
+                ? "no ICSNPP log rows: the capture has no Modbus/DNP3/ENIP/S7/BACnet/OPC UA/PROFINET traffic, or this Zeek has no ICSNPP packages"
+                : "ICSNPP logs read: " + String.join(", ", rows.keySet()) + " (per package: source.zeek.packages)", rows));
         return out;
     }
 

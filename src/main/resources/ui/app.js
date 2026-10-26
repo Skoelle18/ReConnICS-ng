@@ -30,9 +30,9 @@ const LIFECYCLE = ['Acquisition', 'Deployment', 'Commissioning', 'In service', '
 // or saving an untouched form would log a change nobody made.
 const SITE_DEFAULTS = { lifecycle: 'In service' };
 
-const S = { engines: null, inv: null, rank: [], site: {}, flows: [], caps: [], changes: [], index: null, search: '', level: 'ALL', purdueFilter: null, kevOnly: false, unvalOnly: false,
+const S = { engines: null, inv: null, rank: [], site: {}, flows: [], caps: [], changes: [], index: null, search: '', levels: new Set(), purdueFilter: null, kevOnly: false, unvalOnly: false,
   openCap: null, openAdv: null, tab: 'attrs', editing: false, staged: null,
-  color: 'role', showAdv: true, layout: 'force', path: null, pathPick: false, pathStart: null,
+  color: 'role', layout: 'force', path: null, pathPick: false, pathStart: null,
   hideUnknown: false, hideScans: true, hideSeenOnly: false, hideDecommissioned: true, showGroups: false, groups: [], macs: [], images: [], imageSummary: {}, protoOff: new Set(),
   capAssets: {}, assetCaps: new Map(), capOff: new Set(), inventoryGroupMac: false, bulkSelected: new Set(), macExpanded: new Set(),
   findingsTab: 'advisories', advisorySearch: '', reviewSearch: '', logSearch: '', dataTab: 'captures' };
@@ -124,9 +124,9 @@ function purdueOf(a) {
 
 // ------------------------------------------------------------------ flows (edges)
 
-const PROTO_NAME = { modbus: 'Modbus', dnp3: 'DNP3', s7comm: 'S7', 'ethernet-ip': 'ENIP', snmp: 'SNMP', icmp: 'ICMP', unknown: 'Unknown' };
+const PROTO_NAME = { modbus: 'Modbus', dnp3: 'DNP3', s7comm: 'S7', 'ethernet-ip': 'ENIP', snmp: 'SNMP', bacnet: 'BACnet', 'opc-ua': 'OPC UA', profinet: 'PROFINET', icmp: 'ICMP', unknown: 'Unknown' };
 // One colour per protocol on the graph; anything unnamed (including a service name Zeek made up) is grey like unknown.
-const PROTO_COLOR = { modbus: '#38BDF8', dnp3: '#F472B6', 'ethernet-ip': '#A3E635', s7comm: '#FB923C', snmp: '#C084FC', icmp: '#FACC15', unknown: '#7B8696' };
+const PROTO_COLOR = { modbus: '#38BDF8', dnp3: '#F472B6', 'ethernet-ip': '#A3E635', s7comm: '#FB923C', snmp: '#C084FC', bacnet: '#2DD4BF', 'opc-ua': '#818CF8', profinet: '#F87171', icmp: '#FACC15', unknown: '#7B8696' };
 const protoKey = (p) => (PROTO_COLOR[p] ? p : 'unknown');
 const protoColor = (p) => PROTO_COLOR[protoKey(p)];
 const protoName = (p) => PROTO_NAME[p] || p;
@@ -178,12 +178,12 @@ function parseQuery(q) {
   }
   return t;
 }
-const filterActive = () => !!(S.search.trim() || S.level !== 'ALL' || S.purdueFilter != null || S.kevOnly || S.unvalOnly);
+const filterActive = () => !!(S.search.trim() || S.levels.size || S.purdueFilter != null || S.kevOnly || S.unvalOnly);
 /** The chips (level, KEV, not validated) and the query box together: the table hides what fails, the graph dims it. */
 function matches(a) {
   const q = parseQuery(S.search), lv = levelOf(a), kev = !!(a.match && a.match.kevAtModel);
   const hay = [a.id, nameOf(a), val(a, 'vendor'), val(a, 'model'), val(a, 'mac'), val(a, 'hostname')].filter(Boolean).map((v) => str(v).toLowerCase());
-  return (S.level === 'ALL' || lv === S.level) && (S.purdueFilter == null || purdueOf(a) === S.purdueFilter) && (!S.kevOnly || kev) && (!S.unvalOnly || !isValidated(a))
+  return (!S.levels.size || S.levels.has(lv)) && (S.purdueFilter == null || purdueOf(a) === S.purdueFilter) && (!S.kevOnly || kev) && (!S.unvalOnly || !isValidated(a))
     && (!q.level || lv.toLowerCase() === q.level) && (!q.kev || kev) && (!q.unvalidated || !isValidated(a))
     && (!q.proto || str(val(a, 'protocols')).toLowerCase().includes(q.proto))
     && (q.rate == null || flowsOf(a).some(flowMatchesQuery))
@@ -293,20 +293,14 @@ function filterPanel() {
   const on = (label, is, fn) => h('button', { class: 'chip' + (is ? ' on' : ''), 'aria-pressed': String(is), onclick: () => { fn(); render(); } }, label);
   const group = (title, ...kids) => h('div', { class: 'stack', style: { gap: '6px' } }, h('div', { class: 'small strong' }, title), h('div', { class: 'row' }, kids));
   p.replaceChildren(
-    group('Advisory match', ['ALL', ...LEVELS].map((l) => on(l === 'ALL' ? 'All levels' : l, S.level === l, () => { S.level = l; }))),
-    group('Show only', on('KEV only', S.kevOnly, () => { S.kevOnly = !S.kevOnly; }), on('Not validated', S.unvalOnly, () => { S.unvalOnly = !S.unvalOnly; })),
-    h('div', { class: 'stack', style: { gap: '6px' }, id: 'hidden-facet' }, h('div', { class: 'small strong' }, 'Hidden by default'),
-      hiddenClasses().map((c) => h('div', { class: 'row small' },
-        on(c.hidden ? 'Show' : 'Hide', !c.hidden, c.flip), h('span', {}, c.label + ': ' + c.n), h('span', { class: 'muted' }, c.n === 0 ? 'none' : c.hidden ? 'hidden, kept in the inventory' : 'shown')))),
-    group('Protocols', Object.keys(PROTO_COLOR).filter((k) => k !== 'unknown').map((k) => h('label', { class: 'chip proto' + (S.protoOff.has(k) ? '' : ' on'), style: { borderLeft: '4px solid ' + PROTO_COLOR[k] } },
-      h('input', { type: 'checkbox', class: 'sr', checked: S.protoOff.has(k) ? null : true, 'aria-label': 'Show ' + protoName(k) + ' conversations',
-        onchange: () => { if (S.protoOff.has(k)) S.protoOff.delete(k); else S.protoOff.add(k); render(); } }), protoName(k)))),
+    group('Advisory match (pick any; advisory nodes follow EXACT and PROBABLE)', LEVELS.map((l) => on(l, S.levels.has(l), () => { if (S.levels.has(l)) S.levels.delete(l); else S.levels.add(l); }))),
+    group('Only assets that are', on('Not validated', S.unvalOnly, () => { S.unvalOnly = !S.unvalOnly; })),
+    h('div', { class: 'stack', style: { gap: '6px' }, id: 'hidden-facet' }, h('div', { class: 'small strong' }, 'Show on the graph'),
+      hiddenClasses().map((c) => h('div', { class: 'row small' }, on(c.label + ': ' + c.n, !c.hidden, c.flip)))),
     group('Colour nodes by', on('Role', S.color === 'role', () => { S.color = 'role'; }), on('Advisory risk', S.color === 'risk', () => { S.color = 'risk'; })),
-    group('Advisories on the graph', on(S.showAdv ? 'Shown (EXACT, PROBABLE)' : 'Hidden', S.showAdv, () => { S.showAdv = !S.showAdv; })),
-    group('Layout', on('Force', S.layout === 'force', () => { S.layout = 'force'; relayoutSoon(); }), on('Purdue levels', S.layout === 'purdue', () => { S.layout = 'purdue'; relayoutSoon(); })),
     doneCaps().length ? group('Captures on the graph', doneCaps().map((c) => on(c.file, !S.capOff.has(c.id), () => toggleCapture(c.id))))
       : group('Captures on the graph', h('span', { class: 'muted small' }, 'No merged captures yet')),
-    h('div', { class: 'row' }, h('button', { class: 'btn sm', onclick: resetView }, 'Reset view'), info('Filters dim the non-matching assets and conversations on the graph. Capture buttons hide or show everything that capture contributed.')));
+    info('Protocols, KEV only and layout are the chips above the graph. Reset filters is in the graph tools. Capture buttons hide or show everything that capture contributed.'));
   if (had >= 0) p.querySelectorAll('button')[had].focus();
 }
 /** Compact always-visible graph chips from the console reference; detailed facets stay in the filter popover. */
@@ -334,9 +328,9 @@ function focusCapture(id) {
 }
 /** Clear every view filter and selection; captures, edits and the change log stay untouched. */
 function resetView() {
-  S.search = ''; S.level = 'ALL'; S.purdueFilter = null; S.kevOnly = false; S.unvalOnly = false;
+  S.search = ''; S.levels = new Set(); S.purdueFilter = null; S.kevOnly = false; S.unvalOnly = false;
   S.hideUnknown = false; S.hideScans = true; S.hideSeenOnly = false; S.hideDecommissioned = true; S.showGroups = false; S.protoOff = new Set(); S.capOff = new Set();
-  S.color = 'role'; S.showAdv = true; S.layout = 'force'; S.path = null; S.pathPick = false; S.pathStart = null; S.openCap = null; S.openAdv = null;
+  S.color = 'role'; S.layout = 'force'; S.path = null; S.pathPick = false; S.pathStart = null; S.openCap = null; S.openAdv = null;
   $('q').value = ''; $('start').value = ''; $('target').value = '';
   lastRoute = '';
   if (location.hash && location.hash !== '#/graph') location.hash = '#/graph';
@@ -412,7 +406,7 @@ function overview() {
           h('div', { class: 'card-b muted small row' }, ['EXACT', 'PROBABLE', 'NONE'].map((l) => h('span', { class: 'row' }, dot(LEVEL_COLOR[l]), l)))),
         h('div', { class: 'stack narrow' },
           h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Advisory match level'),
-            h('div', { class: 'card-b stack' }, LEVELS.map((l) => h('a', { href: '#/graph', class: 'stack', title: 'Show only ' + l + ' on the graph', style: { gap: '6px', textDecoration: 'none', color: 'inherit' }, onclick: () => { S.level = l; } },
+            h('div', { class: 'card-b stack' }, LEVELS.map((l) => h('a', { href: '#/graph', class: 'stack', title: 'Show only ' + l + ' on the graph', style: { gap: '6px', textDecoration: 'none', color: 'inherit' }, onclick: () => { S.levels = new Set([l]); } },
               h('span', { class: 'head' }, levelBadge(l), h('span', { class: 'muted small' }, lv[l] + ' assets')), bar(lv[l] / n * 100, LEVEL_COLOR[l]))),
               h('div', { class: 'muted small' }, 'NONE means no advisory in this index, not a clean device.'))),
           h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Assets by role'),
@@ -688,7 +682,7 @@ const BEHAVIOUR_TEXT = { 'probe-like': 'SYNs nobody answered or a port refused: 
   'addressed-only': 'only ever the destination: it never sent a frame in these captures' };
 /** What the analyzer saw on the wire without being able to decode it: tags, DHCP details, the web server's identity, traffic to group addresses. */
 function observedCard(a) {
-  const obs = a.observed || {}, tags = Object.entries(obs), d = a.dhcp, w = a.http, ip = str(val(a, 'ip')) || a.id.split('/')[0];
+  const obs = a.observed || {}, tags = Object.entries(obs), syn = tags.filter(([k]) => k.startsWith('syn-target:')), d = a.dhcp, w = a.http, ip = str(val(a, 'ip')) || a.id.split('/')[0];
   const groups = S.flows.filter((f) => f.client === ip && S.groups.some((g) => g.address === f.server));
   const imgs = S.images.filter((i) => i.host === ip), notImages = ((S.imageSummary.nonImageByHost || {})[ip]) || 0;
   if (!tags.length && !d && !w && !groups.length && !(a.behaviour || []).length && !imgs.length && !notImages) return null;
@@ -696,7 +690,9 @@ function observedCard(a) {
   return h('div', { class: 'card', id: 'observed' }, h('div', { class: 'card-h' }, 'Observed on the wire', info('Traffic seen on the wire that is not a decoded industrial message: ARP, ICMP, DHCP, scan attempts and conversations the decoders could not read. It is evidence of what the host did, not proof of what it is.')),
     h('div', { class: 'card-b stack', style: { gap: '6px' } },
       (a.behaviour || []).map((b) => line(b + ':', BEHAVIOUR_TEXT[b] || b)),
-      tags.length ? h('div', { class: 'small row' }, tags.map(([k, n]) => h('span', { class: 'badge lv-NONE' }, (OBSERVED_TEXT[k] || k.replace(/^icmp:/, 'ICMP ')) + ' ×' + n))) : null,
+      tags.length ? h('div', { class: 'small row' }, tags.filter(([k]) => !k.startsWith('syn-target:')).map(([k, n]) => h('span', { class: 'badge lv-NONE' }, (OBSERVED_TEXT[k] || k.replace(/^icmp:/, 'ICMP ')) + ' ×' + n))) : null,
+      syn.length ? h('details', { class: 'small' }, h('summary', {}, 'SYNs to ' + syn.length + ' port' + (syn.length > 1 ? 's' : '') + ' (' + syn.reduce((t, [, n]) => t + n, 0) + ' in all)'),
+        h('div', { class: 'row' }, syn.map(([k, n]) => h('span', { class: 'badge lv-NONE' }, k.slice(11) + ' ×' + n)))) : null,
       groups.map((f) => line('To ' + f.server + ' ' + f.port + ':', (f.messages || f.packets || 0) + ' messages, ' + (f.protocol === 'unknown' ? (f.portHint ? protoName(f.portHint) + '?' : 'not decoded') : f.protocol))),
       d ? h('div', { class: 'stack small', style: { gap: '2px' } }, h('strong', {}, 'DHCP'), d.hostName ? line('Host name', d.hostName) : null, d.clientFqdn ? line('FQDN', d.clientFqdn) : null,
         d.vendorClass ? line('Vendor class', d.vendorClass) : null, d.requestedAddr ? line('Requested address', d.requestedAddr) : null, d.mac ? line('Client MAC', d.mac) : null,
@@ -1155,9 +1151,9 @@ function graphModel() {
     const f = { client: fs[0].client, server: fs[0].server, protocol: top, port: fs.length + ' ports', labels, messages: n, scanAttempts: scans, bytes: sum('bytes') || undefined, bytesToServer: sum('bytesToServer') || undefined, bytesToClient: sum('bytesToClient') || undefined, operations: fs.flatMap((x) => x.operations || []) };   // synthetic: what the drawing and the cards read
     edges.push({ id: 'm' + g[0].i, key: pairKey(g[0].from, g[0].to), kind: 'flow', from: g[0].from, to: g[0].to, f, n, members: fs, label: fs.length + ' threads' });
   }
-  if (S.showAdv) {
+  {
     for (const r of advisoryRows()) {
-      const hits = r.hits.filter((x) => (x.level === 'EXACT' || x.level === 'PROBABLE') && assetVisible(x.a));   // vendor-only matches would hang every advisory on every device
+      const hits = r.hits.filter((x) => (x.level === 'EXACT' || x.level === 'PROBABLE') && (!S.levels.size || S.levels.has(x.level)) && assetVisible(x.a));   // vendor-only matches would hang every advisory on every device
       if (!hits.length) continue;
       nodes.push({ id: 'adv:' + r.id, adv: r });
       for (const x of hits) edges.push({ id: 'a:' + r.id + '>' + x.a.id, kind: 'adv', from: x.a.id, to: 'adv:' + r.id, label: x.level });
@@ -1412,7 +1408,7 @@ function drawGraph() {
 
   const marker = (id, color) => sv('marker', { id, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 10, markerHeight: 10, markerUnits: 'userSpaceOnUse', orient: 'auto' }, sv('path', { d: 'M0 0L10 5L0 10z', fill: color }));
   const els = { nodes: new Map(), edges: [] };
-  const edgeEls = edges.filter((e) => !pathE || pathE.has(e.id)).map((e) => {   // a path hides everything off it; Back / Clear brings it back
+  const edgeEls = edges.filter((e) => (pathE ? pathE.has(e.id) : selEdge ? e.key === selEdge : sel ? e.from === sel || e.to === sel : true) && on.has(e.from) && on.has(e.to) && (e.kind !== 'flow' || (e.members || [e.f]).some(flowMatchesQuery))).map((e) => {   // a path, an open edge or an open node hides everything else; Back / Clear brings it back
     const flow = e.kind === 'flow', pk = flow ? protoKey(e.f.protocol) : '';
     const chosen = !!e.key && selEdge === e.key, hot = chosen || (pathE && pathE.has(e.id));
     const dim = !(on.has(e.from) && on.has(e.to)) || (pathE && !hot) || (sel && !(e.from === sel || e.to === sel)) || (selEdge && !chosen) || (flow && !(e.members || [e.f]).some(flowMatchesQuery));
@@ -1428,7 +1424,7 @@ function drawGraph() {
       sv('title', {}, edgeLabel(e, byNode)), hit, path, label);
   });
   const pinA = S.path ? S.path.nodes[0] : S.pathStart, pinB = S.path ? S.path.nodes[S.path.nodes.length - 1] : null;
-  const nodeEls = nodes.filter((n) => !pathN || pathN.has(n.id)).map((n) => {
+  const nodeEls = nodes.filter((n) => on.has(n.id)).map((n) => {
     const a = n.a, dim = !on.has(n.id), kev = a ? !!(a.match && a.match.kevAtModel) : !!(n.adv && n.adv.kev);
     const name = n.adv ? n.adv.id : n.g ? n.g.address : nameOf(a), short = name.length > 22 ? name.slice(0, 21) + '…' : name;
     const g = sv('g', { class: 'node' + (dim ? ' dim' : '') + (n.id === sel ? ' sel' : '') + (n.adv ? ' adv' : '') + (n.g ? ' grp' : '') + (a && isSeenOnly(a) ? ' seen' : ''), tabindex: '0', role: 'button', 'data-id': n.id, 'aria-label': nodeLabel(n),
@@ -1645,7 +1641,7 @@ function initChrome() {
   document.querySelectorAll('#tree [data-level]').forEach((n) => n.addEventListener('click', (e) => {
     e.preventDefault(); S.purdueFilter = n.dataset.level; if (location.hash !== '#/graph') location.hash = '#/graph'; else render();
   }));
-  $('tb-refresh').addEventListener('click', () => refresh());
+  $('tb-reset').addEventListener('click', resetView);
   $('import-pick').addEventListener('change', (e) => { upload([...e.target.files]); e.target.value = ''; });
   $('tb-layout').addEventListener('click', relayout);
   $('graph-reset').addEventListener('click', resetView);

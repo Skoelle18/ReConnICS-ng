@@ -34,13 +34,26 @@ public final class IcmpNames {
                 case 2 -> "protocol";
                 case 3 -> "port";
                 case 4 -> "fragmentation needed";
-                case 13 -> "administratively prohibited";
+                case 5 -> "source route failed";
+                case 6 -> "network unknown";
+                case 7 -> "host unknown";
+                case 9, 10, 13 -> "administratively prohibited";
+                case 11, 12 -> "unreachable for type of service";
                 default -> null;
             };
             return c == null ? base : base + " (" + c + ")";
         }
         if (type == 11) {
-            return code == 0 ? base + " (TTL)" : base;
+            return code == 0 ? base + " (TTL)" : code == 1 ? base + " (fragment reassembly)" : base;
+        }
+        if (type == 5) {
+            return base + switch (code) {
+                case 0 -> " (network)";
+                case 1 -> " (host)";
+                case 2 -> " (type of service and network)";
+                case 3 -> " (type of service and host)";
+                default -> "";
+            };
         }
         return base;
     }

@@ -53,6 +53,23 @@
     "portHint": {"type": "string", "maxLength": 32, "description": "Only on protocol unknown: the protocol the server port usually carries. Port-inferred, not dissected."},
     "trace": {"type": "array", "maxItems": 200, "items": {"type": "string", "maxLength": 300}, "description": "chat lines (HH:MM:SS UTC, then a marker) from the Zeek logs (conn, ssl, x509, http, ssh, dns, ftp, smtp, smb, dhcp, rdp, ntp, snmp, sip, kerberos, ntlm, ldap, mqtt and others): * session fact, > client to server, < server to client. Display text only."},
     "scanAttempts": {"$ref": "#/$defs/count"},
+    "connections": {
+      "type": "object",
+      "description": "TCP flows: how the connection attempts whose SYN was captured ended. completed = SYN, SYN-ACK and the client's ACK; unanswered = no SYN-ACK; refused = no SYN-ACK and a RST from the server; incomplete = SYN-ACK sent, client never finished (a half-open connection, also what a SYN scan of an open port looks like). Native engine only.",
+      "additionalProperties": false,
+      "properties": {"completed": {"$ref": "#/$defs/count"}, "unanswered": {"$ref": "#/$defs/count"}, "refused": {"$ref": "#/$defs/count"}, "incomplete": {"$ref": "#/$defs/count"}}
+    },
+    "icmp": {
+      "type": "object",
+      "description": "ICMP flows only: echo round-trip times from request/reply pairs (same hosts, id, sequence), echo requests and replies with no partner, and error messages (destination unreachable, time exceeded) with the destination of the packet they quote.",
+      "additionalProperties": false,
+      "properties": {
+        "rtt": {"type": "object", "additionalProperties": false, "properties": {"matched": {"$ref": "#/$defs/count"}, "minMs": {"type": "number", "minimum": 0}, "avgMs": {"type": "number", "minimum": 0}, "maxMs": {"type": "number", "minimum": 0}}},
+        "unmatchedRequests": {"$ref": "#/$defs/count"},
+        "unmatchedReplies": {"$ref": "#/$defs/count"},
+        "errors": {"type": "array", "maxItems": 16, "items": {"type": "object", "required": ["kind", "count"], "additionalProperties": false, "properties": {"kind": {"type": "string", "maxLength": 64}, "about": {"type": "string", "maxLength": 64}, "count": {"$ref": "#/$defs/count"}}}}
+      }
+    },
     "source": {"type": "string", "pattern": "^(zeek|native|tshark)(\\+(zeek|native|tshark))*$", "description": "Engines that saw the conversation, joined by +: zeek, native, tshark (a conversation only tshark saw, from the optional Wireshark fallback)"},
     "note": {"type": "string", "maxLength": 400, "description": "Present when an ICS decode was rejected and the flow went back to unknown: what was decoded and why another tool's classification outweighs it. See docs/foss-components.md, Modbus decodes that another tool contradicts."},
     "portHintSource": {"type": "string", "maxLength": 32, "description": "Present only when portHint came from a data file instead of the built-in table: nmap-services (Nmap's port list, read from an Nmap install)"},

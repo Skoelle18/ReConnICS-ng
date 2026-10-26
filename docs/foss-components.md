@@ -66,15 +66,23 @@ the console's capture queue uses the automatic mode. Environment: `RECONICS_SURI
   in Zeek 8; verified in the Zeek 8.0.0 script reference). `conn.log` then carries `community_id`, which `ZeekLogReader` keeps (at
   most 3 per conversation) as `communityIds` on the flow. Suricata writes the same ID, which is how a Suricata alert is matched to a
   Zeek conversation.
-- Other ICSNPP analyzers: the Zeek image has a build argument `ICSNPP_EXTRA`
-  (`--build-arg ICSNPP_EXTRA="icsnpp-bacnet icsnpp-opcua-binary icsnpp-ge-srtp"`). The names on the zkg index (cisagov/zkg.index)
+- Extended tier, built into the image at pinned versions and read by `ZeekLogReader`: icsnpp-bacnet, icsnpp-opcua-binary (v2.0.0),
+  icsnpp-profinet-io-cm (pins: the `ICSNPP_*` ARGs in `docker/zeek/Dockerfile`). `source.zeek.packages` reports per package whether
+  it gave rows and which of its logs were written but not read. `opcua_binary_activate_session*.log` (user names, passwords,
+  certificates) and the BACnet `password` column are never read.
+- Other ICSNPP analyzers (opt-in): the Zeek image has a build argument `ICSNPP_EXTRA`
+  (`--build-arg ICSNPP_EXTRA="icsnpp-ge-srtp icsnpp-bsap"`). The names on the zkg index (cisagov/zkg.index)
   and their BSD-3-Clause licence were checked: icsnpp-bacnet, icsnpp-bsap, icsnpp-genisys, icsnpp-ge-srtp, icsnpp-omron-fins,
   icsnpp-opcua-binary, icsnpp-profinet-io-cm, icsnpp-synchrophasor (icsnpp-hart-ip is listed with an unasserted licence and is
-  not suggested). They are off by default and have not been built or run here; `ZeekLogReader` has no reader for their logs yet,
-  so enabling one today only makes Zeek write the extra logs.
+  not suggested). They are off by default and have not been built or run here; `ZeekLogReader` has no reader for their logs,
+  so enabling one only makes Zeek write the extra logs (listed under `source.zeek.packages` only for the tiers above).
 
 ### Wireshark: tshark, capinfos (optional)
 
+- IEC 60870-5-104 (`iec-104` label): a second tshark pass (`-Y iec60870_asdu`, every occurrence of `iec60870_asdu.typeid`, `causetx`, `addr`) turns the ASDUs
+  into flow operations: one per ASDU type and common address, the cause of transmission as the status. Decoded by a tool, not by the native engine, and never added
+  to a conversation with malformed packets. Checked on `IEC 60870/iec104/iec104.pcap` of automayt/ICS-pcap (91 ASDUs). Ceilings: a packet whose three lists differ in
+  length is skipped, 64 distinct (type, cause, address) rows per conversation, and the information-object addresses are not kept.
 - `capinfos -T -m <pcap>`: one comma-separated row (file type, encapsulation, packet count). The count is compared with the
   native reader's frame count and a note is added when they disagree, as a sanity check that the capture was read completely.
 - `tshark -r <pcap> -n -T fields -E separator=/t -E occurrence=f -e frame.time_epoch -e ip.src -e ip.dst -e ipv6.src -e ipv6.dst

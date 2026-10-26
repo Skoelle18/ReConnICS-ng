@@ -94,12 +94,71 @@ public final class TsharkAdapter implements Adapter {
         f.facts().mergeMissing(p.facts);
         f.stats().put("packetsRead", p.lines);
         f.stats().put("conversations", p.conversations.size());
+        if (p.conversationsDropped > 0) {
+            f.stats().put("conversationsDropped", p.conversationsDropped);          // over MAX_CONVERSATIONS: counted, not silent
+            detail.append(p.conversationsDropped).append(" conversations over the ").append(MAX_CONVERSATIONS).append(" cap were not tracked. ");
+        }
         if (p.truncated) {
             f.stats().put("truncated", true);
             detail.append("stopped after ").append(MAX_LINES).append(" packets. ");
         }
+        if (p.conversations.stream().anyMatch(c -> "iec-104".equals(c.label()))) {
+            long n = iec104(l, env, pcap, work, p.conversations);
+            if (n > 0) {
+                f.stats().put("iec104Asdus", n);
+                detail.append(n).append(" IEC 104 ASDUs. ");
+            }
+        }
         detail.append(p.conversations.size()).append(" conversations from ").append(p.lines).append(" packets");
         return new Result(f, detail.toString());
+    }
+
+    static final int MAX_IEC_KEYS = 64, MAX_IEC_LINES = 200_000;
+
+    /**
+     * Second pass for IEC 60870-5-104: the first pass keeps one value per field, but a packet carries several ASDUs, so this one asks
+     * for every occurrence of type id, cause of transmission and common address. Counts land on the conversation ({@link Findings.Conversation#iec});
+     * a packet whose three lists differ in length is skipped (a dissector that lost track), never paired by guess.
+     */
+    private static long iec104(Launch l, Env env, Path pcap, Path work, List<Findings.Conversation> convs) throws IOException, InterruptedException {
+        List<String> args = new ArrayList<>(List.of("-r", "{IN}", "-n", "-Y", "iec60870_asdu", "-T", "fields", "-E", "separator=/t", "-E", "occurrence=a", "-E", "aggregator=,"));
+        for (String e : List.of("ip.src", "ip.dst", "tcp.srcport", "tcp.dstport", "iec60870_asdu.typeid", "iec60870_asdu.causetx", "iec60870_asdu.addr")) {
+            args.add("-e");
+            args.add(e);
+        }
+        long[] total = {0};
+        Exec.stream(l.command(args, pcap, work), work, work.resolve("tshark-iec.err"), env.timeout(), r -> {
+            try {
+                String line;
+                for (int i = 0; i < MAX_IEC_LINES && (line = r.readLine()) != null; i++) {
+                    String[] c = line.split("	", -1);
+                    if (c.length < 7) {
+                        continue;
+                    }
+                    String[] ty = c[4].split(","), ca = c[5].split(","), ad = c[6].split(",");
+                    if (ty.length != ca.length || ty.length != ad.length || ty.length > 200) {
+                        continue;
+                    }
+                    Findings.Conversation v = convs.stream().filter(x -> "iec-104".equals(x.label()) && (x.port().equals(c[2] + "/tcp") || x.port().equals(c[3] + "/tcp"))
+                            && java.util.Set.of(x.client(), x.server()).equals(java.util.Set.of(c[0], c[1]))).findFirst().orElse(null);
+                    if (v == null) {
+                        continue;
+                    }
+                    for (int k = 0; k < ty.length; k++) {
+                        if (ty[k].matches("\\d{1,3}") && ca[k].matches("\\d{1,2}") && ad[k].matches("\\d{1,5}")) {
+                            String key = ty[k] + "|" + ca[k] + "|" + ad[k];
+                            if (v.iec().size() < MAX_IEC_KEYS || v.iec().containsKey(key)) {
+                                v.iec().merge(key, 1L, Long::sum);
+                                total[0]++;
+                            }
+                        }
+                    }
+                }
+            } catch (IOException e) {
+                // a cut-off stream keeps what was read
+            }
+        });
+        return total[0];
     }
 
     @Override
@@ -169,14 +228,14 @@ public final class TsharkAdapter implements Adapter {
 
     // ------------------------------------------------------------------ -T fields
 
-    record Parsed(List<Findings.Conversation> conversations, long lines, boolean truncated, com.pcap.inventory.HostFacts facts) {
+    record Parsed(List<Findings.Conversation> conversations, long lines, boolean truncated, com.pcap.inventory.HostFacts facts, long conversationsDropped) {
     }
 
     private static final class Conv {
         final String a, b;                         // a < b
         final String transport;
         final int aPort, bPort;
-        long pkts, bytes, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
+        long pkts, bytes, malformed, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
         String synFrom, synAckFrom, firstFrom;
         boolean fromA, fromB;
         final Map<String, Integer> labels = new HashMap<>();
@@ -194,7 +253,7 @@ public final class TsharkAdapter implements Adapter {
     static Parsed parseFields(BufferedReader r, int maxLines) {
         Map<String, Conv> convs = new LinkedHashMap<>();
         com.pcap.inventory.HostFacts facts = new com.pcap.inventory.HostFacts();
-        long lines = 0;
+        long lines = 0, conversationsDropped = 0;
         boolean truncated = false;
         try {
             String line;
@@ -229,6 +288,7 @@ public final class TsharkAdapter implements Adapter {
                 Conv v = convs.get(key);
                 if (v == null) {
                     if (convs.size() >= MAX_CONVERSATIONS) {
+                        conversationsDropped++;
                         continue;
                     }
                     convs.put(key, v = new Conv(a, ap, b, bp, transport));
@@ -254,6 +314,9 @@ public final class TsharkAdapter implements Adapter {
                         v.synAckFrom = src;
                     }
                 }
+                if (c[11].contains("_ws.malformed")) {
+                    v.malformed++;                                     // the dissector raised an exception: whatever it named is a guess
+                }
                 String label = leaf(c[11]);
                 if (label != null && (v.labels.size() < 8 || v.labels.containsKey(label))) {
                     v.labels.merge(label, 1, Integer::sum);
@@ -270,9 +333,9 @@ public final class TsharkAdapter implements Adapter {
             String label = v.labels.entrySet().stream().max(Map.Entry.comparingByValue()).map(e -> NAMES.getOrDefault(e.getKey(), e.getKey())).orElse(null);
             out.add(new Findings.Conversation(client, server, serverPort + "/" + v.transport, v.pkts, v.bytes,
                     v.first == Long.MAX_VALUE ? 0 : v.first, v.last == Long.MIN_VALUE ? 0 : v.last, label,
-                    v.fromA && v.fromB && (v.transport.equals("udp") || v.synAckFrom != null || v.pkts >= 4)));
+                    v.fromA && v.fromB && (v.transport.equals("udp") || v.synAckFrom != null || v.pkts >= 4), v.malformed));
         }
-        return new Parsed(out, lines, truncated, facts);
+        return new Parsed(out, lines, truncated, facts, conversationsDropped);
     }
 
     private static final Map<String, String> DHCP_TYPES = Map.of("1", "discover", "2", "offer", "3", "request", "4", "decline", "5", "ack", "6", "nak", "7", "release", "8", "inform");
@@ -339,7 +402,7 @@ public final class TsharkAdapter implements Adapter {
         }
         String[] p = protocols.split(":");
         for (int i = p.length - 1; i >= 0; i--) {
-            if (!GENERIC.contains(p[i]) && p[i].matches("[a-z0-9_.-]{1,32}")) {
+            if (!GENERIC.contains(p[i]) && p[i].matches("[a-z0-9][a-z0-9_.-]{0,31}")) {      // "_ws.malformed" and the like are not protocols
                 return p[i];
             }
         }

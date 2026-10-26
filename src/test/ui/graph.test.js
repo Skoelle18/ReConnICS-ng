@@ -222,7 +222,7 @@ test('graph', async (t) => {
       assert.equal(node(app, '10.0.1.20'), null, 'the capture-exclusive node is gone');
       assert.ok(node(app, '10.0.1.40'), 'a node another capture also saw stays');
       assert.ok(node(app, '10.0.1.10'), 'the other capture stays');
-      app.$$('#pop-filter button').find((b) => b.textContent === 'Reset view').click();
+      app.$('#tb-reset').click();
       await settle();
       assert.ok(node(app, '10.0.1.20'), 'Reset view clears the hidden captures');
       assert.equal(app.get('S').capOff.size, 0);
@@ -334,11 +334,27 @@ test('graph', async (t) => {
   await t.test('the filter popover drives the graph filters', async () => {
     const app = await loadApp({ routes: defaultRoutes(), hash: '#/graph' });
     try {
-      app.$$('#pop-filter button').find((b) => b.textContent === 'KEV only').click();
+      app.$$('#graph-layout button').find((b) => b.textContent === 'KEV only').click();
       await settle();
       assert.equal(app.get('S').kevOnly, true);
-      assert.equal(app.$$('#pop-filter button').find((b) => b.textContent === 'KEV only').getAttribute('aria-pressed'), 'true');
+      assert.equal(app.$$('#graph-layout button').find((b) => b.textContent === 'KEV only').getAttribute('aria-pressed'), 'true');
       assert.equal(nodes(app).filter((n) => !n.classList.contains('dim') && !n.classList.contains('adv')).length, 1);
+    } finally { app.close(); }
+  });
+
+  await t.test('advisory match levels can be combined, and what does not match is removed from the graph', async () => {
+    const app = await loadApp({ routes: defaultRoutes(), hash: '#/graph' });
+    try {
+      const chip = (l) => app.$$('#pop-filter button').find((b) => b.textContent === l);
+      const all = nodes(app).length;
+      chip('EXACT').click(); await settle();
+      const exact = nodes(app).length;
+      assert.ok(exact < all && nodes(app).every((n) => !n.classList.contains('dim')), 'the rest is hidden, not dimmed');
+      chip('NONE').click(); await settle();
+      assert.deepEqual([...app.get('S').levels].sort(), ['EXACT', 'NONE']);
+      assert.ok(nodes(app).length > exact, 'a second level adds its assets');
+      chip('EXACT').click(); chip('NONE').click(); await settle();
+      assert.equal(nodes(app).length, all, 'no level picked means all');
     } finally { app.close(); }
   });
 
@@ -413,8 +429,9 @@ test('edges', async (t) => {
       assert.match(rows[0].textContent, /FC3 read holding registers.*read.*40001.*10.*1100.*12, 0, 7/, 'busiest first');
       assert.match(rows[1].textContent, /FC16 write multiple registers.*write.*40100.*2.*100.*1, 2/);
       assert.ok(edgeOf(app, 'modbus').classList.contains('hot'), 'the open edge is highlighted');
-      assert.ok(edgeOf(app, 'dnp3').classList.contains('dim'), 'the others dim');
-      assert.equal(app.$$('#graph .node').filter((n) => n.classList.contains('dim')).length > 0, true);
+      assert.equal(edgeOf(app, 'dnp3'), undefined, 'the other conversations disappear instead of dimming');
+      assert.equal(app.$$('#graph .edge').length, 1);
+      assert.equal(app.$$('#graph .node').length, 2, 'only the two ends stay');
     } finally { app.close(); }
   });
 
@@ -480,7 +497,8 @@ test('edges', async (t) => {
     const app = await richApp();
     try {
       assert.equal(flowEdges(app).length, 3, 'scan-only conversations are in the data but hidden by default');
-      assert.match(facetRow(app, 'Scan-only').textContent, /Scan-only conversations: 1.*hidden, kept in the inventory/);
+      assert.match(facetRow(app, 'Scan-only').textContent, /Scan-only conversations: 1/);
+      assert.equal(facetRow(app, 'Scan-only').querySelector('button').getAttribute('aria-pressed'), 'false', 'hidden');
       await showScans(app);
       assert.equal(flowEdges(app).length, 4);
       const hideUnknown = () => facetRow(app, 'Unknown-protocol').querySelector('button').click();
@@ -496,13 +514,11 @@ test('edges', async (t) => {
       assert.equal(flowEdges(app).some((e) => e.classList.contains('scan')), false);
       assert.ok(edgeOf(app, 'unknown'), 'the decoded-less host pair stays');
       await showScans(app);
-      const box = app.$$('#pop-filter input[type=checkbox]').find((c) => /Modbus/.test(c.getAttribute('aria-label')));
-      box.checked = false;
-      box.dispatchEvent(new app.window.Event('change', { bubbles: true }));
+      app.$$('#graph-chips button').find((c) => c.textContent === 'Modbus').click();
       await settle();
       assert.equal(edgeOf(app, 'modbus'), undefined);
       assert.ok(edgeOf(app, 'dnp3'));
-      assert.deepEqual(app.$$('#pop-filter input[type=checkbox]').map((c) => /DNP3|Modbus|ENIP|S7|SNMP|ICMP/.exec(c.getAttribute('aria-label'))[0]), ['Modbus', 'DNP3', 'ENIP', 'S7', 'SNMP', 'ICMP']);
+      assert.equal(app.$$('#pop-filter input[type=checkbox]').length, 0, 'the protocol chips are above the graph, not repeated in the filter panel');
     } finally { app.close(); }
   });
 
