@@ -32,7 +32,7 @@ import java.util.TreeSet;
  * All tables are capped; an overflow is counted and reported in {@code source.retention}.
  */
 public final class NetworkObserver {
-    public static final int MAX_HOSTS = 65_536, MAX_MACS = 20_000, MAX_GROUPS = 2_048, MAX_ICMP_FLOWS = 20_000, MAX_REASONS = 32, MAX_PENDING_ECHOES = 20_000, MAX_ICMP_ERRORS = 16;
+    public static final int MAX_HOSTS = 65_536, MAX_MACS = 20_000, MAX_GROUPS = 2_048, MAX_ICMP_FLOWS = 20_000, MAX_REASONS = 32, MAX_PENDING_ECHOES = 20_000, MAX_ICMP_ERRORS = 16, MAX_ARP_MACS = 8;
     static final int MAX_TAGS = 24, MAX_MAC_IPS = 1_024, MAX_SENDERS = 64, MAX_GROUP_PORTS = 8, MAX_LISTED = 16;
 
     /** Hosts whose only evidence is one of these bases and who carry no identity are "seen only". */
@@ -41,6 +41,7 @@ public final class NetworkObserver {
     private static final class Host {
         final Map<String, long[]> tags = new LinkedHashMap<>();
         final Map<String, long[]> macs = new LinkedHashMap<>();       // as sender: mac -> frames
+        final Set<String> arpMacs = new LinkedHashSet<>();            // MACs this address claimed in ARP (virtual router MACs excluded)
         long from, to, firstFrame = Long.MAX_VALUE, lastFrame;
 
         void tag(String t, long n) {
@@ -253,7 +254,17 @@ public final class NetworkObserver {
         if (s.isUnicastHost()) {
             Host h = hostOf(s.value());
             if (h != null) {
-                h.tag(sm != null && DeviceMatcher.isVirtualRouterMac(sm.value()) ? "arp-sender-virtual-router-mac" : "arp-sender", 1);
+                boolean virtual = sm != null && DeviceMatcher.isVirtualRouterMac(sm.value());
+                h.tag(virtual ? "arp-sender-virtual-router-mac" : "arp-sender", 1);
+                if (p.arpOp() == 2) {
+                    h.tag("arp-reply", 1);
+                }
+                if (s.equals(t)) {
+                    h.tag("arp-gratuitous", 1);              // an announcement: sender and target address are the same
+                }
+                if (sm != null && !virtual && (h.arpMacs.size() < MAX_ARP_MACS || h.arpMacs.contains(sm.value())) && h.arpMacs.add(sm.value()) && h.arpMacs.size() > 1) {
+                    h.tag("arp-mac-changed", 1);             // a second MAC claimed this address: a NIC swap, a failover, or someone else answering for it
+                }
                 h.from++;
                 h.frame(p.frameNumber());
                 h.sentFrom(sm);
@@ -636,6 +647,13 @@ public final class NetworkObserver {
         if (h.tags.keySet().stream().anyMatch(t -> t.startsWith("handshake-incomplete:"))) {
             behaviour.add("incomplete-handshake");
         }
+        if (h.tags.containsKey("arp-asked") && !h.tags.containsKey("arp-reply")) {
+            behaviour.add("arp-unanswered");
+        }
+        if (h.tags.containsKey("arp-mac-changed")) {
+            behaviour.add("arp-mac-conflict");
+            a.attributes.put("arpMacs", new ArrayList<>(h.arpMacs));
+        }
         if (h.from == 0) {
             behaviour.add("addressed-only");
         }
@@ -667,8 +685,14 @@ public final class NetworkObserver {
             boolean echo = h.tags.keySet().stream().anyMatch(t -> t.startsWith("icmp-echo"));
             parts.add(echo ? "ICMP echo" : "ICMP " + h.tags.keySet().stream().filter(t -> t.startsWith("icmp:")).findFirst().map(t -> t.substring(5)).orElse("traffic"));
         }
+        if (h.tags.containsKey("arp-mac-changed")) {
+            parts.add("ARP: " + h.arpMacs.size() + " MACs claimed this address (" + String.join(", ", h.arpMacs) + ")");
+        }
         if (h.tags.containsKey("arp-probe")) {
             parts.add("ARP probe");
+        }
+        if (h.tags.containsKey("arp-gratuitous")) {
+            parts.add("gratuitous ARP announcement");
         }
         if (h.tags.containsKey("arp-sender-virtual-router-mac")) {
             parts.add("ARP sender with a virtual router MAC (VRRP/HSRP)");
@@ -681,6 +705,8 @@ public final class NetworkObserver {
         }
         if (parts.isEmpty() && h.from == 0 && h.tags.containsKey("arp-asked")) {
             parts.add("ARP target (asked about, never seen answering)");
+        } else if (parts.isEmpty() && h.tags.containsKey("arp-reply")) {
+            parts.add("ARP reply sender");
         } else if (parts.isEmpty() && h.from == 0) {
             parts.add("destination only (nothing from this address was captured)");
         }

@@ -162,7 +162,7 @@ gains the two tags below. The console treats a basis set of only `PORT_HEURISTIC
 
 | Attribute | Meaning |
 |---|---|
-| `observed` | map of tag to count: `tcp`, `udp`, `icmp-echo-request`, `icmp-echo-reply`, `icmp-echo-target`, `icmp:<type>`, `dhcp-client`, `group-sender`, `arp-sender`, `arp-asked`, `arp-probe`, `arp-sender-virtual-router-mac`, `source-0.0.0.0`, `syn-target:<port>`, `syn-unanswered:<port>`, `syn-refused:<port>`, `handshake-incomplete:<port>`, `udp-unreplied:<port>` |
+| `observed` | map of tag to count: `tcp`, `udp`, `icmp-echo-request`, `icmp-echo-reply`, `icmp-echo-target`, `icmp:<type>`, `dhcp-client`, `group-sender`, `arp-sender`, `arp-asked`, `arp-probe`, `arp-sender-virtual-router-mac`, `arp-reply`, `arp-gratuitous`, `arp-mac-changed`, `source-0.0.0.0`, `syn-target:<port>`, `syn-unanswered:<port>`, `syn-refused:<port>`, `handshake-incomplete:<port>`, `udp-unreplied:<port>` |
 | `behaviour` | classification derived from `observed`: `probe-like` (SYNs nobody answered or refused), `incomplete-handshake` (the server answered SYN-ACK and the client never completed it: a half-open connection, **not** the same as a scan), `addressed-only` (the host never sent a frame) |
 | `seenOnly` | `true` when nothing but weak observation supports the asset |
 | `dhcp` | `{messages, mac, hostName, clientFqdn, vendorClass, requestedAddr, assignedAddr, messageTypes[]}`, from Zeek `dhcp.log`, else tshark `bootp`/`dhcp` fields. Bounded, cleaned text. |
