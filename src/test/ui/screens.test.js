@@ -8,9 +8,9 @@ const { defaultRoutes, exampleInventory, field } = require('./support/fixtures')
 
 test('reference console shell and navigation', async (t) => {
   await t.test('the graph opens inside the persistent three-pane console shell', async () => {
-    const app = await loadApp({ routes: defaultRoutes(), hash: '#/inventory' });
+    const app = await loadApp({ routes: defaultRoutes(), hash: '#/graph' });
     try {
-      assert.equal(app.get('route()').name, 'graph', 'an old bookmark lands on the graph');
+      assert.equal(app.get('route()').name, 'graph');
       assert.equal(app.$('#main').hidden, true);
       assert.ok(app.$('#top'), 'top bar');
       assert.ok(app.$('#tree'), 'persistent site tree');
@@ -22,10 +22,47 @@ test('reference console shell and navigation', async (t) => {
       assert.equal(app.$$('#graph .node').filter((n) => !n.classList.contains('adv')).length, 10, 'every asset is a node');
       assert.ok(app.$('#top-search input#q'));
       assert.ok(app.$('#top-upload'));
+      assert.equal(app.$('#tree [data-level="4"]').textContent.trim(), '◉Level 4 · External');
+      assert.equal(app.$('#nav'), null);
+      assert.equal(app.$('#menu-btn'), null);
+      assert.equal(app.$('#rawq-btn'), null);
+      assert.equal(app.$('#rawq-body'), null);
       app.$('#mobile-menu').click();
       assert.ok(app.$('#tree').classList.contains('mobile-open'));
       app.document.dispatchEvent(new app.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       assert.equal(app.$('#tree').classList.contains('mobile-open'), false);
+    } finally { app.close(); }
+  });
+
+  await t.test('Purdue tree filters are independent of advisory match levels', async () => {
+    const app = await loadApp({ routes: defaultRoutes() });
+    try {
+      const row = app.$('#tree [data-level="2"]');
+      row.click(); await settle();
+      assert.equal(app.get('S.purdueFilter'), '2');
+      assert.equal(app.get('S.level'), 'ALL');
+      assert.equal(row.classList.contains('selected'), true);
+      const client = app.$('#graph .node[data-id="10.0.1.50"]');
+      assert.ok(client && !client.classList.contains('dim'), 'the Level 2 inferred client remains visible');
+      const plc = app.$('#graph .node[data-id="10.0.1.40"]');
+      assert.ok(plc.classList.contains('dim'), 'Level 1 PLC is outside the selected Purdue level');
+      app.$('#btn-filter').click();
+      const reset = app.$$('#pop-filter button').find((b) => b.textContent === 'Reset view');
+      reset.click(); await settle();
+      assert.equal(app.get('S.purdueFilter'), null);
+      assert.equal(row.classList.contains('selected'), false);
+      assert.ok(!app.$('#graph .node[data-id="10.0.1.40"]').classList.contains('dim'));
+    } finally { app.close(); }
+  });
+
+  await t.test('the tree Export row opens the same multi-format export popover', async () => {
+    const app = await loadApp({ routes: defaultRoutes() });
+    try {
+      app.$('#tree-export').click();
+      assert.equal(app.$('#pop-export').hidden, false);
+      assert.equal(app.$('#tb-export').getAttribute('aria-expanded'), 'true');
+      assert.equal(app.$('#tree-export').getAttribute('aria-expanded'), 'true');
+      assert.deepEqual(app.$$('#pop-export a').map((a) => a.textContent), ['inventory.csv', 'inventory.json', 'report.html']);
     } finally { app.close(); }
   });
 

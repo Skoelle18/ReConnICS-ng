@@ -27,8 +27,8 @@ test('the Engines screen lists every component with its state and licence', asyn
     assert.match(text, /Suricata[\s\S]*not installed/, 'a missing tool is shown as not installed, not hidden');
     assert.match(text, /GPL-2\.0/);
     assert.match(text, /GRASSMARLIN/);
-    assert.ok(app.$('[data-nav="engines"]'), 'a menu entry');
-    assert.equal(app.$('[data-nav="engines"]').classList.contains('on'), true);
+    assert.ok(app.$('#tree a[href="#/engines"]'), 'a system tree entry');
+    assert.equal(app.$('#tree a[href="#/engines"]').classList.contains('selected'), true);
   } finally { app.close(); }
 });
 

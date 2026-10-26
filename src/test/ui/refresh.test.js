@@ -58,7 +58,7 @@ test('background refresh', async (t) => {
       setHidden(app, false);
       const main = app.$('#main > *');
       captures = [cap('late', 'running')];
-      await waitFor(() => app.$('#n-queue').textContent === '1', 'chrome (sidebar counts) still updates');
+      await waitFor(() => app.$('#tb-queue').textContent === '1', 'chrome (toolbar queue count) still updates');
       assert.ok(main.isConnected, 'the main pane was not replaced');
     } finally { await stop(app); }
   });

@@ -22,7 +22,7 @@ const NO_IDENTITY = 'No identity message observed (needs Modbus FC43 / ENIP List
 const EXTRA_HINT = { alerts: 'Only with Suricata (optional engine, see Engines): rule matches on this host traffic.', serial: 'Modbus FC43 object, ENIP ListIdentity serial, S7 SZL 0x0011.', deviceType: 'ENIP ListIdentity device type or S7 SZL 0x001C module type.' };
 const LEVELS = ['EXACT', 'PROBABLE', 'POSSIBLE', 'NONE'];
 const LEVEL_COLOR = { EXACT: '#FF6B61', PROBABLE: '#F59E4B', POSSIBLE: '#E8C84A', NONE: '#8793A5', UNRUN: '#6B7585' };
-const ROLE_COLOR = { PLC: '#2DD4BF', Drive: '#4ADE80', 'Comms adapter': '#A78BFA', Network: '#60A5FA', Workstation: '#F5C542', Other: '#94A3B8', Unknown: '#6B7585' };
+const ROLE_COLOR = { PLC: '#2DD4BF', Drive: '#4ADE80', 'Comms adapter': '#A78BFA', Network: '#60A5FA', Workstation: '#F5C542', Other: '#94A3B8', External: '#687384', Unknown: '#6B7585' };
 const PURDUE = [['3', 'Level 3', 'Site operations'], ['2', 'Level 2', 'Supervisory: HMI, EWS'], ['1', 'Level 1', 'Basic control: PLCs, adapters'],
   ['0', 'Level 0', 'Process: drives, I/O'], ['', 'Unplaced', 'Not enough identity yet']];
 const LIFECYCLE = ['Acquisition', 'Deployment', 'Commissioning', 'In service', 'Maintenance', 'Decommissioned'];
@@ -30,7 +30,7 @@ const LIFECYCLE = ['Acquisition', 'Deployment', 'Commissioning', 'In service', '
 // or saving an untouched form would log a change nobody made.
 const SITE_DEFAULTS = { lifecycle: 'In service' };
 
-const S = { engines: null, inv: null, rank: [], site: {}, flows: [], caps: [], changes: [], index: null, search: '', level: 'ALL', kevOnly: false, unvalOnly: false,
+const S = { engines: null, inv: null, rank: [], site: {}, flows: [], caps: [], changes: [], index: null, search: '', level: 'ALL', purdueFilter: null, kevOnly: false, unvalOnly: false,
   openCap: null, openAdv: null, tab: 'attrs', editing: false, staged: null,
   color: 'role', showAdv: true, layout: 'force', path: null, pathPick: false, pathStart: null,
   hideUnknown: false, hideScans: true, hideSeenOnly: false, hideDecommissioned: true, showGroups: false, groups: [], macs: [], images: [], imageSummary: {}, protoOff: new Set(),
@@ -102,11 +102,12 @@ function roleGroup(a) {
   if (/adapter|0x0c/.test(r)) return 'Comms adapter';
   if (/switch|gateway|router|dns server|dhcp server|ntp server|syslog server|vpn gateway/.test(r)) return 'Network';
   if (/hmi|workstation|ews|client|initiator/.test(r)) return 'Workstation';
+  if (/external|internet|public/.test(r)) return 'External';
   return 'Other';
 }
 function purdueOf(a) {
-  if (siteOf(a).purdue) return siteOf(a).purdue;
-  return { PLC: '1', 'Comms adapter': '1', Network: '1', Drive: '0', Workstation: '2' }[roleGroup(a)] || '';
+  if (siteOf(a).purdue) return String(siteOf(a).purdue);
+  return { PLC: '1', 'Comms adapter': '1', Network: '1', Drive: '0', Workstation: '2', External: '4' }[roleGroup(a)] || '';
 }
 
 // ------------------------------------------------------------------ flows (edges)
@@ -165,12 +166,12 @@ function parseQuery(q) {
   }
   return t;
 }
-const filterActive = () => !!(S.search.trim() || S.level !== 'ALL' || S.kevOnly || S.unvalOnly);
+const filterActive = () => !!(S.search.trim() || S.level !== 'ALL' || S.purdueFilter != null || S.kevOnly || S.unvalOnly);
 /** The chips (level, KEV, not validated) and the query box together: the table hides what fails, the graph dims it. */
 function matches(a) {
   const q = parseQuery(S.search), lv = levelOf(a), kev = !!(a.match && a.match.kevAtModel);
   const hay = [a.id, nameOf(a), val(a, 'vendor'), val(a, 'model'), val(a, 'mac'), val(a, 'hostname')].filter(Boolean).map((v) => str(v).toLowerCase());
-  return (S.level === 'ALL' || lv === S.level) && (!S.kevOnly || kev) && (!S.unvalOnly || !isValidated(a))
+  return (S.level === 'ALL' || lv === S.level) && (S.purdueFilter == null || purdueOf(a) === S.purdueFilter) && (!S.kevOnly || kev) && (!S.unvalOnly || !isValidated(a))
     && (!q.level || lv.toLowerCase() === q.level) && (!q.kev || kev) && (!q.unvalidated || !isValidated(a))
     && (!q.proto || str(val(a, 'protocols')).toLowerCase().includes(q.proto))
     && (q.rate == null || flowsOf(a).some(flowMatchesQuery))
@@ -220,20 +221,17 @@ async function loadAll() {
 // ------------------------------------------------------------------ chrome
 
 function chrome(route) {
-  document.querySelectorAll('[data-nav]').forEach((n) => n.classList.toggle('on', n.dataset.nav === route || ((route === 'asset' || route === 'edge' || route === 'group') && n.dataset.nav === 'graph')));
   const mode = route === 'overview' || route === 'ethernet' ? 'inventory' : route === 'advisories' || route === 'review' ? 'findings'
     : ['captures', 'index', 'engines', 'log'].includes(route) ? 'data' : 'graph';
   document.querySelectorAll('#modes [data-mode]').forEach((n) => n.classList.toggle('on', n.dataset.mode === mode));
   const active = S.caps.filter((c) => c.state === 'queued' || c.state === 'running').length;
-  $('n-queue').textContent = active || '';
-  $('n-review').textContent = reviewCount() || '';
-  $('n-adv').textContent = advisoryRows().length || '';
   $('mode-review-count').textContent = reviewCount() || '';
   $('tree-capture-count').textContent = S.caps.length || '';
   $('tree-advisory-count').textContent = advisoryRows().length || '';
   $('tree-review-count').textContent = reviewCount() || '';
-  document.querySelectorAll('#tree .tree-row[href]').forEach((n) => n.classList.toggle('selected', n.getAttribute('href') === location.hash ||
+  document.querySelectorAll('#tree .tree-row[href]:not([data-level])').forEach((n) => n.classList.toggle('selected', n.getAttribute('href') === location.hash ||
     (route === 'asset' || route === 'edge' || route === 'group') && n.getAttribute('href') === '#/graph'));
+  document.querySelectorAll('#tree .tree-row[data-level]').forEach((n) => n.classList.toggle('selected', S.purdueFilter === n.dataset.level));
   $('tb-queue').textContent = active || '';
   $('tb-review-n').textContent = reviewCount() || '';
   $('asset-list').replaceChildren(...S.rank.map(byId).filter(Boolean).slice(0, 500).map((a) => h('option', { value: a.id }, nameOf(a))));
@@ -315,7 +313,7 @@ function focusCapture(id) {
 }
 /** Clear every view filter and selection; captures, edits and the change log stay untouched. */
 function resetView() {
-  S.search = ''; S.level = 'ALL'; S.kevOnly = false; S.unvalOnly = false;
+  S.search = ''; S.level = 'ALL'; S.purdueFilter = null; S.kevOnly = false; S.unvalOnly = false;
   S.hideUnknown = false; S.hideScans = true; S.hideSeenOnly = false; S.hideDecommissioned = true; S.showGroups = false; S.protoOff = new Set(); S.capOff = new Set();
   S.color = 'role'; S.showAdv = true; S.layout = 'force'; S.path = null; S.pathPick = false; S.pathStart = null; S.openCap = null; S.openAdv = null;
   $('q').value = ''; $('start').value = ''; $('target').value = '';
@@ -1246,7 +1244,7 @@ function initGraph() {
 
 function route() {
   const [, name, arg] = (location.hash || '#/graph').match(/^#\/([a-z]+)\/?(.*)$/) || [, 'graph', ''];
-  return { name: name === 'inventory' ? 'graph' : name, arg: decodeURIComponent(arg || '') };   // the row table is gone; old bookmarks open the graph
+  return { name, arg: decodeURIComponent(arg || '') };
 }
 
 async function copyCurrentLink() {
@@ -1301,9 +1299,18 @@ async function refresh(background) {
 
 /** Search panel, toolbar and popovers: one popover open at a time, Escape closes it (or the sheet). */
 function initChrome() {
-  const pops = [['btn-filter', 'pop-filter'], ['tb-export', 'pop-export'], ['tb-settings', 'pop-settings'], ['tb-info', 'pop-info']];
-  const closeAll = (except) => pops.forEach(([b, p]) => { if (p !== except) { $(p).hidden = true; $(b).setAttribute('aria-expanded', 'false'); } });
-  pops.forEach(([b, p]) => $(b).addEventListener('click', () => { const open = $(p).hidden; closeAll(p); $(p).hidden = !open; $(b).setAttribute('aria-expanded', String(open)); }));
+  const pops = [['btn-filter', 'pop-filter'], ['tb-export', 'pop-export'], ['tree-export', 'pop-export'], ['tb-settings', 'pop-settings'], ['tb-info', 'pop-info']];
+  const closeAll = (except) => {
+    const closed = new Set();
+    pops.forEach(([b, p]) => {
+      if (p !== except && !closed.has(p)) { $(p).hidden = true; closed.add(p); }
+      if (p !== except) $(b).setAttribute('aria-expanded', 'false');
+    });
+  };
+  pops.forEach(([b, p]) => $(b).addEventListener('click', () => {
+    const open = $(p).hidden; closeAll(p); $(p).hidden = !open;
+    pops.filter(([, target]) => target === p).forEach(([button]) => $(button).setAttribute('aria-expanded', String(open)));
+  }));
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     if ($('tree').classList.contains('mobile-open')) { $('tree').classList.remove('mobile-open'); $('mobile-menu').setAttribute('aria-expanded', 'false'); return; }
@@ -1316,8 +1323,6 @@ function initChrome() {
     $('btn-route').setAttribute('aria-pressed', String(S.pathPick));
     toast(S.pathPick ? 'Choose a start and target asset on the graph' : 'Graph path selection cancelled');
   });
-  $('btn-route').title = 'Click two graph assets to find their shortest path';
-  $('btn-route').setAttribute('aria-label', 'Click two graph assets to find their shortest path');
   $('btn-route').setAttribute('aria-pressed', 'false');
   $('top-upload').addEventListener('click', () => $('import-pick').click());
   $('mobile-menu').addEventListener('click', () => {
@@ -1344,7 +1349,7 @@ function initChrome() {
     $('q').focus(); render();
   });
   document.querySelectorAll('#tree [data-level]').forEach((n) => n.addEventListener('click', (e) => {
-    e.preventDefault(); S.level = n.dataset.level; if (location.hash !== '#/graph') location.hash = '#/graph'; else render();
+    e.preventDefault(); S.purdueFilter = n.dataset.level; if (location.hash !== '#/graph') location.hash = '#/graph'; else render();
   }));
   $('tb-refresh').addEventListener('click', () => refresh());
   $('tb-import').addEventListener('click', () => $('import-pick').click());
