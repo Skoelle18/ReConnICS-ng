@@ -79,6 +79,10 @@ the console's capture queue uses the automatic mode. Environment: `RECONICS_SURI
 
 ### Wireshark: tshark, capinfos (optional)
 
+- IEC 60870-5-104 (`iec-104` label): a second tshark pass (`-Y iec60870_asdu`, every occurrence of `iec60870_asdu.typeid`, `causetx`, `addr`) turns the ASDUs
+  into flow operations: one per ASDU type and common address, the cause of transmission as the status. Decoded by a tool, not by the native engine, and never added
+  to a conversation with malformed packets. Checked on `IEC 60870/iec104/iec104.pcap` of automayt/ICS-pcap (91 ASDUs). Ceilings: a packet whose three lists differ in
+  length is skipped, 64 distinct (type, cause, address) rows per conversation, and the information-object addresses are not kept.
 - `capinfos -T -m <pcap>`: one comma-separated row (file type, encapsulation, packet count). The count is compared with the
   native reader's frame count and a note is added when they disagree, as a sanity check that the capture was read completely.
 - `tshark -r <pcap> -n -T fields -E separator=/t -E occurrence=f -e frame.time_epoch -e ip.src -e ip.dst -e ipv6.src -e ipv6.dst

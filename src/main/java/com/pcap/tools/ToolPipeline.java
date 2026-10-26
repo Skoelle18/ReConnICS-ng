@@ -169,6 +169,9 @@ public final class ToolPipeline {
                             f.classifiedBy("tshark", ver, c.label(), c.malformed() > 0 ? "LOW" : "MEDIUM", "dissector");   // a dissector that threw on the payload only matched by port
                             labelled++;
                         }
+                        if ("iec-104".equals(c.label()) && c.malformed() == 0 && "unknown".equals(f.protocolName())) {
+                            iecOperations(f, c.iec());
+                        }
                     }
                     st.put("flowsAdded", added);
                     st.put("flowsLabelled", labelled);
@@ -339,6 +342,37 @@ public final class ToolPipeline {
     }
 
     /** A host tshark found that nothing else did: LOW presence evidence, no identity, no protocol. */
+    /** IEC 60870-5-104 ASDU type ids, the common ones; any other id is shown as "type N". Monitor types (below 45, and 70) report; 45 to 69 and 100 up command. */
+    private static final Map<Integer, String> IEC_TYPES = Map.ofEntries(Map.entry(1, "M_SP_NA_1"), Map.entry(3, "M_DP_NA_1"), Map.entry(5, "M_ST_NA_1"),
+            Map.entry(7, "M_BO_NA_1"), Map.entry(9, "M_ME_NA_1"), Map.entry(11, "M_ME_NB_1"), Map.entry(13, "M_ME_NC_1"), Map.entry(15, "M_IT_NA_1"),
+            Map.entry(30, "M_SP_TB_1"), Map.entry(31, "M_DP_TB_1"), Map.entry(32, "M_ST_TB_1"), Map.entry(33, "M_BO_TB_1"), Map.entry(34, "M_ME_TD_1"), Map.entry(35, "M_ME_TE_1"), Map.entry(36, "M_ME_TF_1"),
+            Map.entry(45, "C_SC_NA_1"), Map.entry(46, "C_DC_NA_1"), Map.entry(47, "C_RC_NA_1"), Map.entry(48, "C_SE_NA_1"), Map.entry(49, "C_SE_NB_1"),
+            Map.entry(50, "C_SE_NC_1"), Map.entry(51, "C_BO_NA_1"), Map.entry(58, "C_SC_TA_1"), Map.entry(70, "M_EI_NA_1"), Map.entry(100, "C_IC_NA_1"), Map.entry(101, "C_CI_NA_1"),
+            Map.entry(102, "C_RD_NA_1"), Map.entry(103, "C_CS_NA_1"), Map.entry(105, "C_RP_NA_1"));
+    private static final Map<Integer, String> IEC_CAUSES = Map.ofEntries(Map.entry(1, "periodic"), Map.entry(2, "background scan"), Map.entry(3, "spontaneous"),
+            Map.entry(4, "initialised"), Map.entry(5, "requested"), Map.entry(6, "activation"), Map.entry(7, "activation confirmed"), Map.entry(8, "deactivation"),
+            Map.entry(9, "deactivation confirmed"), Map.entry(10, "activation terminated"), Map.entry(20, "interrogated by station"), Map.entry(44, "unknown type"),
+            Map.entry(45, "unknown cause"), Map.entry(46, "unknown common address"), Map.entry(47, "unknown object address"));
+
+    /** What tshark's IEC 104 dissector decoded on a conversation it labelled iec-104: one operation per ASDU type and common address, cause of transmission as the status. */
+    private static void iecOperations(FlowTable.Flow f, Map<String, Long> iec) {
+        Map<String, Map<String, Long>> byOp = new java.util.LinkedHashMap<>();
+        Map<String, Long> counts = new java.util.LinkedHashMap<>();
+        for (Map.Entry<String, Long> e : iec.entrySet()) {
+            String[] k = e.getKey().split("[|]");
+            int type = Integer.parseInt(k[0]), cause = Integer.parseInt(k[1]);
+            String op = type + "|" + k[2];
+            counts.merge(op, e.getValue(), Long::sum);
+            byOp.computeIfAbsent(op, x -> new java.util.LinkedHashMap<>()).merge("cause: " + IEC_CAUSES.getOrDefault(cause, "cause " + cause), e.getValue(), Long::sum);
+        }
+        counts.forEach((op, n) -> {
+            String[] k = op.split("[|]");
+            int type = Integer.parseInt(k[0]);
+            String access = type >= 45 && type != 70 ? "control" : "read";
+            f.operation((IEC_TYPES.containsKey(type) ? IEC_TYPES.get(type) + " (type " + type + ")" : "type " + type), access, "common address " + k[1], null, null, null, n, null, byOp.get(op));
+        });
+    }
+
     private static List<DeviceObservation> hostObservations(Findings.Conversation c) {
         List<DeviceObservation> out = new ArrayList<>();
         String port = c.port();

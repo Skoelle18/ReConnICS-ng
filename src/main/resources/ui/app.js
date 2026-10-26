@@ -32,7 +32,7 @@ const SITE_DEFAULTS = { lifecycle: 'In service' };
 
 const S = { engines: null, inv: null, rank: [], site: {}, flows: [], caps: [], changes: [], index: null, search: '', level: 'ALL', purdueFilter: null, kevOnly: false, unvalOnly: false,
   openCap: null, openAdv: null, tab: 'attrs', editing: false, staged: null,
-  color: 'role', showAdv: true, layout: 'force', path: null, pathPick: false, pathStart: null,
+  color: 'role', showAdv: false, showLabels: false, layout: 'force', path: null, pathPick: false, pathStart: null,
   hideUnknown: false, hideScans: true, hideSeenOnly: false, hideDecommissioned: true, showGroups: false, groups: [], macs: [], images: [], imageSummary: {}, protoOff: new Set(),
   capAssets: {}, assetCaps: new Map(), capOff: new Set(), inventoryGroupMac: false, bulkSelected: new Set(), macExpanded: new Set(),
   findingsTab: 'advisories', advisorySearch: '', reviewSearch: '', logSearch: '', dataTab: 'captures' };
@@ -318,6 +318,8 @@ function graphControls() {
     if (S.protoOff.has(p)) S.protoOff.delete(p); else S.protoOff.add(p);
   }, PROTO_COLOR[p])));
   layout.replaceChildren(toggle('KEV only', S.kevOnly, () => { S.kevOnly = !S.kevOnly; }),
+    toggle('Labels', S.showLabels, () => { S.showLabels = !S.showLabels; }),
+    toggle('Advisories', S.showAdv, () => { S.showAdv = !S.showAdv; }),
     toggle('Force', S.layout === 'force', () => { S.layout = 'force'; relayoutSoon(); }),
     toggle('Purdue', S.layout === 'purdue', () => { S.layout = 'purdue'; relayoutSoon(); }));
 }
@@ -1489,6 +1491,7 @@ function fitLabels() {
   svg.style.setProperty('--efs', efs + 'px');
   svg.style.setProperty('--lsw', Math.max(4, 4 / k) + 'px');
   svg.classList.toggle('no-elabels', k < EDGE_LABEL_ZOOM);
+  svg.classList.toggle('labels-off', !S.showLabels);
   if (!GR.els) return;
   for (const { e, label } of GR.els.edges) {
     if ((e.len || 0) < e.label.length * 0.62 * efs + 40) label.setAttribute('display', 'none'); else label.removeAttribute('display');

@@ -102,8 +102,63 @@ public final class TsharkAdapter implements Adapter {
             f.stats().put("truncated", true);
             detail.append("stopped after ").append(MAX_LINES).append(" packets. ");
         }
+        if (p.conversations.stream().anyMatch(c -> "iec-104".equals(c.label()))) {
+            long n = iec104(l, env, pcap, work, p.conversations);
+            if (n > 0) {
+                f.stats().put("iec104Asdus", n);
+                detail.append(n).append(" IEC 104 ASDUs. ");
+            }
+        }
         detail.append(p.conversations.size()).append(" conversations from ").append(p.lines).append(" packets");
         return new Result(f, detail.toString());
+    }
+
+    static final int MAX_IEC_KEYS = 64, MAX_IEC_LINES = 200_000;
+
+    /**
+     * Second pass for IEC 60870-5-104: the first pass keeps one value per field, but a packet carries several ASDUs, so this one asks
+     * for every occurrence of type id, cause of transmission and common address. Counts land on the conversation ({@link Findings.Conversation#iec});
+     * a packet whose three lists differ in length is skipped (a dissector that lost track), never paired by guess.
+     */
+    private static long iec104(Launch l, Env env, Path pcap, Path work, List<Findings.Conversation> convs) throws IOException, InterruptedException {
+        List<String> args = new ArrayList<>(List.of("-r", "{IN}", "-n", "-Y", "iec60870_asdu", "-T", "fields", "-E", "separator=/t", "-E", "occurrence=a", "-E", "aggregator=,"));
+        for (String e : List.of("ip.src", "ip.dst", "tcp.srcport", "tcp.dstport", "iec60870_asdu.typeid", "iec60870_asdu.causetx", "iec60870_asdu.addr")) {
+            args.add("-e");
+            args.add(e);
+        }
+        long[] total = {0};
+        Exec.stream(l.command(args, pcap, work), work, work.resolve("tshark-iec.err"), env.timeout(), r -> {
+            try {
+                String line;
+                for (int i = 0; i < MAX_IEC_LINES && (line = r.readLine()) != null; i++) {
+                    String[] c = line.split("	", -1);
+                    if (c.length < 7) {
+                        continue;
+                    }
+                    String[] ty = c[4].split(","), ca = c[5].split(","), ad = c[6].split(",");
+                    if (ty.length != ca.length || ty.length != ad.length || ty.length > 200) {
+                        continue;
+                    }
+                    Findings.Conversation v = convs.stream().filter(x -> "iec-104".equals(x.label()) && (x.port().equals(c[2] + "/tcp") || x.port().equals(c[3] + "/tcp"))
+                            && java.util.Set.of(x.client(), x.server()).equals(java.util.Set.of(c[0], c[1]))).findFirst().orElse(null);
+                    if (v == null) {
+                        continue;
+                    }
+                    for (int k = 0; k < ty.length; k++) {
+                        if (ty[k].matches("\\d{1,3}") && ca[k].matches("\\d{1,2}") && ad[k].matches("\\d{1,5}")) {
+                            String key = ty[k] + "|" + ca[k] + "|" + ad[k];
+                            if (v.iec().size() < MAX_IEC_KEYS || v.iec().containsKey(key)) {
+                                v.iec().merge(key, 1L, Long::sum);
+                                total[0]++;
+                            }
+                        }
+                    }
+                }
+            } catch (IOException e) {
+                // a cut-off stream keeps what was read
+            }
+        });
+        return total[0];
     }
 
     @Override
