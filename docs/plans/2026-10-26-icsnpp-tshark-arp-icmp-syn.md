@@ -1,61 +1,82 @@
-# Scope: ICSNPP, tshark, ARP, ICMP and SYN in one inventory
+# Scope: wider ICSNPP, tshark fallback, and ARP / ICMP / SYN evidence
 
-Date: 26 Oct 2026. Branch: `feature/icsnpp-tshark-arp-icmp-syn` (off main at 2464d85). Status: scoping only, no code yet.
+Date: 26 Oct 2026. Branch: `feature/icsnpp-tshark-arp-icmp-syn` (off main at 2464d85). Status: scoping, no code yet.
+Basis: the findings in `E:\Downloads\findings.txt` (Codex research session, 26 Oct) checked against the code.
 
-Finding: most of the brief is already built. The work is closing specific gaps, not new subsystems. Each row below was
-checked against the code (file in the second column).
+## Principle from the findings
 
-## What exists
+Three evidence levels stay distinct everywhere (data, UI, docs): **decoded** (Zeek/ICSNPP or native, structured fields),
+**tool-classified** (tshark / nDPI dissector or DPI label, `classifiedBy`), **port hint** (`portHint`). ARP, ICMP and SYN-only
+traffic has no application payload: it is network evidence, shown as "no application payload observed", never as a decode.
 
-| Brief item | State | Where |
+## What already exists
+
+| Item | State | Where |
 |---|---|---|
-| ICSNPP Modbus/DNP3/ENIP/S7 into flows and operations | Built; S7 model/firmware stays native | `zeek/ZeekLogReader`, `docs/Zeek-and-ICSNPP.md` |
-| tshark conversation classification (BACnet, OPC UA, IEC-104, PROFINET, MMS) | Built as a dissector-name map | `tools/TsharkAdapter` (`frame.protocols` leaf) |
-| ARP sender/target/probe/virtual-router MAC | Built as per-host tags; MAC-only hosts exist (`mac:` key) | `inventory/NetworkObserver.arp` |
-| ICMP flows and labels (type, code 3 subcodes) | Built as counts | `NetworkObserver`, `IcmpNames` |
-| Unanswered / refused / incomplete SYN | Built as per-host tags, `scanAttempts`, `probe-like` | `ConversationTracker`, `NetworkObserver` |
-| p0f OS and Suricata alerts kept apart from identity | Built (p0f is LOW, `os` field only) | `tools/P0fAdapter`, `SuricataAdapter` |
+| Core ICSNPP (Modbus, DNP3, ENIP/CIP, S7) into flows, operations, identity | Built | `zeek/ZeekLogReader`, `docs/Zeek-and-ICSNPP.md` |
+| `ICSNPP_EXTRA` build arg; `@load packages` | Built, but the reader ignores the extra logs | `docker/zeek/Dockerfile`, `docs/foss-components.md` |
+| tshark conversation label (BACnet, OPC UA, IEC-104, PROFINET, MMS) | Built as a label only (`classifiedBy`) | `tools/TsharkAdapter`, `ToolPipeline` |
+| ARP sender / asked / probe / virtual-MAC tags; MAC-only hosts | Built (counts) | `NetworkObserver.arp` |
+| ICMP flows with type/code label | Built (counts) | `NetworkObserver`, `IcmpNames` |
+| `syn-unanswered`, `syn-refused`, `handshake-incomplete`, `scanAttempts`, `probe-like` | Built per host | `ConversationTracker`, `NetworkObserver` |
+| p0f OS (LOW, `os` only), Suricata alerts as evidence | Built | `tools/P0fAdapter`, `SuricataAdapter` |
 
-## Gaps (the actual work)
+## Workstreams
 
-1. **ICMP RTT.** No echo request/reply matching; no `rtt` anywhere. Add matching on (src, dst, id, seq) with a bounded pending map;
-   emit min/avg/max RTT on the icmp flow, count unmatched requests and replies (`icmpUnmatchedRequests/Replies`).
-   Needs `ParsedPacket` to expose ICMP id/seq (check `capture/TransportParser`).
-2. **ICMP outcome detail.** `IcmpNames` covers dest-unreachable codes 0-4 and 13 and time-exceeded code 0 only. Add time-exceeded code 1
-   (reassembly), codes 5, 9, 10 and redirect codes, and carry the offending original destination/port out of the payload so
-   "port unreachable" can be tied to the probe that caused it.
-3. **ARP as evidence.** Tags are counts only. Add: gratuitous ARP, ARP reply without request, IP-to-MAC change (conflict) per IP,
-   and first/last seen per tag. Keep the virtual-MAC rule from `DeviceMatcher.isVirtualRouterMac`; add a test that a VRRP MAC never merges
-   with a physical asset.
-4. **Scan correlation.** Today a scan is a per-host tag plus a flow counter. Add a source-level summary: distinct destination ports and
-   hosts per source inside a time window, split into unanswered / refused / completed / incomplete, flagged `scan-like` above a threshold
-   (a single refused port stays a refused connection, not a scan). Output as an observation with evidence, never as device identity.
-5. **tshark as evidence, not decode.** Wireshark assigns dissectors by port too, so the leaf name can be a port guess. Record whether
-   the classification was payload-confirmed (needs one extra field per packet, e.g. the dissector's own `_ws.col.protocol` / an
-   expert-info check) or port-only, and cap port-only at LOW. Merge into the conversation table only where no Zeek/native decode exists.
-6. **Coverage reporting.** Surface in `source.*`: analyzer missing/failed, tshark `MAX_LINES` truncation, `MAX_CONVERSATIONS` overflow,
-   ICMP/ARP caps. Several caps count already (`NetworkObserver.over`); tshark and Zeek truncation need to land in the same block.
-7. **Packages.** "Updated packages" = ICSNPP pins in `scripts/install-icsnpp.sh` and `docker/zeek/Dockerfile`, and the `zeek/zeek:8.0.9`
-   tag. Check upstream for newer commits and only bump if `ZeekIntegrationTest` passes; ICSNPP DNP3/ENIP/S7 have no tags, so bumps are commit pins.
+### A. ICSNPP, full extent (findings: "per-package reader")
+1. **Package registry.** One table: package, zkg name, pin, licence, log names, Zeek-8.0.9 build status, maturity note (e.g. HART-IP is a
+   minimal release). Tiers: core (4, existing) / extended (BACnet, OPC UA Binary, PROFINET IO CM) / optional (Omron FINS, EtherCAT,
+   GE-SRTP, HART-IP, BSAP, C12.22, Genisys, ROC Plus, Synchrophasor). Extended is built into the image by default once it passes; the
+   optional set stays behind `ICSNPP_EXTRA`.
+2. **Reproducible pins.** Replace the free-text `ICSNPP_EXTRA` with pinned `ARG`s for the extended tier; verify each loads on
+   `zeek/zeek:8.0.9`, emits logs, survives a malformed capture.
+3. **Per-package reader + mapping** in `ZeekLogReader` (one mapper per package, only where the log supports the meaning: BACnet
+   discovery / property / device-control logs -> operations; OPC UA -> service calls; PROFINET -> CM operations). Evidence carries the
+   source log and parser. Extend `data-contract.md` / `flow.schema.json` only with optional fields where operations cannot express it.
+4. **Engine status per package**: installed / read / rows used / rows skipped / failed, in `source.zeek.packages`.
+5. Out of the catalog: IEC 60870-5-104 (no ICSNPP parser) -> workstream B.
+
+### B. tshark as the wider fallback
+1. Keep dissector name + tshark version as evidence on every classified flow (already `classifiedBy`); extend the protocol map beyond
+   the current five and record whether the label is port-based or payload-based (Wireshark picks dissectors by port and heuristics), port-only capped LOW.
+2. Promote to **decoded** only when allowlisted fields are extracted and the message framing validated. First: IEC 104 (`iec60870_104`,
+   `iec60870_asdu` fields), then IEC 61850 / MMS if captures demand it. Use `tshark -G fields` to pin field names; never ingest packet trees or payloads.
+3. Merge into the conversation table only where Zeek/native has no decode (existing precedence in `ToolPipeline`).
+
+### C. ARP / ICMP / SYN-only (findings: "better observation and correlation")
+1. **ARP:** replies, gratuitous announcements, unanswered requests, IP<->MAC change within a capture (arpwatch model, no runtime dependency);
+   virtual MACs still never merge with a physical asset. Optional: across-captures change via the Site history.
+2. **ICMP:** echo request/reply matching for RTT (min/avg/max on the flow), unmatched requests and replies kept as observations;
+   outcomes by type+code: destination unreachable (net/host/port/admin), time exceeded, fragmentation needed. Today `IcmpNames` covers
+   only part of these. Needs ICMP id/seq out of the packet parser.
+3. **SYN-only:** one outcome per connection attempt: unanswered / refused (RST) / SYN-ACK seen but handshake incomplete / completed. Zeek
+   `conn_state` (S0, REJ, RSTO...) and Suricata flow state/TCP flags are cross-checks where those engines ran.
+4. **Probe patterns:** per source over a time window: many ports on one host, or one port on many hosts. Reported as `scan-like`, an
+   inference with its evidence, separate from device identity (Zeek's `scan.zeek` is the behaviour model only, it is being removed upstream).
+5. p0f stays LOW and in `os`; Suricata flow fields are supporting evidence only.
+
+### D. Reporting and tests
+- Coverage block in `source.*`: missing / failed analyzer, tshark `MAX_LINES` or conversation-cap truncation, ICMP/ARP caps, per-package Zeek status.
+- Tests: a synthetic capture (`PcapTestSupport`) per observation type; Zeek log fixtures (checked in) per extended package; real-tool
+  tests run against the `docker/tools` and `docker/zeek` images and skip when absent, as `ZeekIntegrationTest` does now.
+  `FuzzTest` gets the ICMP payload parse.
+
+## Decisions (from you, 26 Oct)
+
+- **Tools:** use the Docker images a user can build (`docker/tools`, `docker/zeek`), not host installs. No tshark/p0f on this machine, only Docker.
+- **Scan thresholds:** CLI flags with defaults, in `AnalyzeCommand` / `AnalysisOptions`: `--scan-ports N` (default 20 distinct ports per
+  source+target in the window), `--scan-hosts N` (default 20 distinct hosts per source+port), `--scan-window SECONDS` (default 60).
+  Document in `docs/Command-line.md`.
 
 ## Order
 
-1. Gap 1 + 2 (ICMP; self-contained, pure Java, synthetic-pcap tests via `PcapTestSupport`).
-2. Gap 3 + 4 (ARP, SYN; extends `NetworkObserver`/`ConversationTracker`).
-3. Gap 5 + 6 (tshark confirmation, coverage block).
-4. Gap 7 (package bumps; needs Docker, run `ZeekIntegrationTest`).
+1. C2 (ICMP) and C1 (ARP): pure Java, self-contained.
+2. C3-C4 (SYN outcomes, probe windows, flags).
+3. A1-A2 (registry, pins, image build on Docker), then A3-A4 per package: BACnet, OPC UA, PROFINET.
+4. B (tshark evidence level, IEC 104 fields) and D (coverage block) alongside A.
+5. Docs: `Zeek-and-ICSNPP.md`, `foss-components.md`, `data-contract.md`, `limitations.md`, `Command-line.md`.
 
 ## Constraints carried over
 
-- Schema fields optional only (`docs/data-contract.md`, `docs/asset.schema.json`, `IngestSchemaValidatorTest`). New: flow `rtt`,
-  `icmp` counters, host `observations[]` with evidence, `source.coverage`.
-- Every new table is capped and the overflow counted (see `docs/limitations.md`, Resource limits).
-- Retain, don't skip: nothing observed is dropped by rule; classify and let the UI hide.
-- No AI; tshark, p0f, Suricata and Zeek output stay untrusted input.
-- Tests per gap: one synthetic capture each, plus `FuzzTest` additions for the ICMP payload parse.
-
-## Open questions
-
-- tshark and p0f are not installed on this machine (Docker is); the real-output tests (`RealToolOutputTest`) need captured fixtures
-  or the `docker/tools` image. Which do you want?
-- Scan thresholds (ports per source per window): pick defaults (suggest 20 distinct ports or 20 hosts in 60 s) or make them flags?
+Schema fields optional only (`IngestSchemaValidatorTest`); every new table capped and the overflow counted; retain, don't skip (classify,
+let the UI hide); no AI; all tool output is untrusted input; `mvn test` and `npm test` green per commit; PR to main, no direct push.
