@@ -65,7 +65,7 @@ test('reference console shell and navigation', async (t) => {
       const plc = app.$('#graph .node[data-id="10.0.1.40"]');
       assert.ok(plc.classList.contains('dim'), 'Level 1 PLC is outside the selected Purdue level');
       app.$('#btn-filter').click();
-      const reset = app.$$('#pop-filter button').find((b) => b.textContent === 'Reset view');
+      const reset = app.$('#tb-reset');
       reset.click(); await settle();
       assert.equal(app.get('S.purdueFilter'), null);
       assert.equal(row.classList.contains('selected'), false);
@@ -166,7 +166,7 @@ test('graph controls and inspector', async (t) => {
     const app = await loadApp({ routes: defaultRoutes({ inventory: inv, site: { [id]: { lifecycle: 'Decommissioned' } } }) });
     try {
       assert.deepEqual(app.$$('#graph-chips button').map((b) => b.textContent), ['Modbus', 'DNP3', 'ENIP', 'S7', 'SNMP', 'BACnet', 'OPC UA', 'PROFINET', 'ICMP', 'Unknown']);
-      assert.deepEqual(app.$$('#graph-layout button').map((b) => b.textContent), ['KEV only', 'Force', 'Purdue']);
+      assert.deepEqual(app.$$('#graph-layout button').map((b) => b.textContent), ['KEV only', 'Labels', 'Advisories', 'Force', 'Purdue']);
       app.$('#btn-filter').click();
       await settle();
       assert.match(app.text('#hidden-facet'), /Decommissioned hosts: 1.*hidden, kept in the inventory/);

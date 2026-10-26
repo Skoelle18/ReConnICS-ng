@@ -294,19 +294,14 @@ function filterPanel() {
   const group = (title, ...kids) => h('div', { class: 'stack', style: { gap: '6px' } }, h('div', { class: 'small strong' }, title), h('div', { class: 'row' }, kids));
   p.replaceChildren(
     group('Advisory match', ['ALL', ...LEVELS].map((l) => on(l === 'ALL' ? 'All levels' : l, S.level === l, () => { S.level = l; }))),
-    group('Show only', on('KEV only', S.kevOnly, () => { S.kevOnly = !S.kevOnly; }), on('Not validated', S.unvalOnly, () => { S.unvalOnly = !S.unvalOnly; })),
+    group('Show only', on('Not validated', S.unvalOnly, () => { S.unvalOnly = !S.unvalOnly; })),
     h('div', { class: 'stack', style: { gap: '6px' }, id: 'hidden-facet' }, h('div', { class: 'small strong' }, 'Hidden by default'),
       hiddenClasses().map((c) => h('div', { class: 'row small' },
         on(c.hidden ? 'Show' : 'Hide', !c.hidden, c.flip), h('span', {}, c.label + ': ' + c.n), h('span', { class: 'muted' }, c.n === 0 ? 'none' : c.hidden ? 'hidden, kept in the inventory' : 'shown')))),
-    group('Protocols', Object.keys(PROTO_COLOR).filter((k) => k !== 'unknown').map((k) => h('label', { class: 'chip proto' + (S.protoOff.has(k) ? '' : ' on'), style: { borderLeft: '4px solid ' + PROTO_COLOR[k] } },
-      h('input', { type: 'checkbox', class: 'sr', checked: S.protoOff.has(k) ? null : true, 'aria-label': 'Show ' + protoName(k) + ' conversations',
-        onchange: () => { if (S.protoOff.has(k)) S.protoOff.delete(k); else S.protoOff.add(k); render(); } }), protoName(k)))),
     group('Colour nodes by', on('Role', S.color === 'role', () => { S.color = 'role'; }), on('Advisory risk', S.color === 'risk', () => { S.color = 'risk'; })),
-    group('Advisories on the graph', on(S.showAdv ? 'Shown (EXACT, PROBABLE)' : 'Hidden', S.showAdv, () => { S.showAdv = !S.showAdv; })),
-    group('Layout', on('Force', S.layout === 'force', () => { S.layout = 'force'; relayoutSoon(); }), on('Purdue levels', S.layout === 'purdue', () => { S.layout = 'purdue'; relayoutSoon(); })),
     doneCaps().length ? group('Captures on the graph', doneCaps().map((c) => on(c.file, !S.capOff.has(c.id), () => toggleCapture(c.id))))
       : group('Captures on the graph', h('span', { class: 'muted small' }, 'No merged captures yet')),
-    h('div', { class: 'row' }, h('button', { class: 'btn sm', onclick: resetView }, 'Reset view'), info('Filters dim the non-matching assets and conversations on the graph. Capture buttons hide or show everything that capture contributed.')));
+    info('Protocols, KEV only, labels, advisories and layout are the chips above the graph. Reset filters is in the graph tools. Capture buttons hide or show everything that capture contributed.'));
   if (had >= 0) p.querySelectorAll('button')[had].focus();
 }
 /** Compact always-visible graph chips from the console reference; detailed facets stay in the filter popover. */
@@ -338,7 +333,7 @@ function focusCapture(id) {
 function resetView() {
   S.search = ''; S.level = 'ALL'; S.purdueFilter = null; S.kevOnly = false; S.unvalOnly = false;
   S.hideUnknown = false; S.hideScans = true; S.hideSeenOnly = false; S.hideDecommissioned = true; S.showGroups = false; S.protoOff = new Set(); S.capOff = new Set();
-  S.color = 'role'; S.showAdv = true; S.layout = 'force'; S.path = null; S.pathPick = false; S.pathStart = null; S.openCap = null; S.openAdv = null;
+  S.color = 'role'; S.showAdv = false; S.showLabels = false; S.layout = 'force'; S.path = null; S.pathPick = false; S.pathStart = null; S.openCap = null; S.openAdv = null;
   $('q').value = ''; $('start').value = ''; $('target').value = '';
   lastRoute = '';
   if (location.hash && location.hash !== '#/graph') location.hash = '#/graph';
@@ -1650,7 +1645,7 @@ function initChrome() {
   document.querySelectorAll('#tree [data-level]').forEach((n) => n.addEventListener('click', (e) => {
     e.preventDefault(); S.purdueFilter = n.dataset.level; if (location.hash !== '#/graph') location.hash = '#/graph'; else render();
   }));
-  $('tb-refresh').addEventListener('click', () => refresh());
+  $('tb-reset').addEventListener('click', resetView);
   $('import-pick').addEventListener('change', (e) => { upload([...e.target.files]); e.target.value = ''; });
   $('tb-layout').addEventListener('click', relayout);
   $('graph-reset').addEventListener('click', resetView);

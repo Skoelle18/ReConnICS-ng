@@ -107,6 +107,8 @@ test('graph', async (t) => {
   await t.test('gateway units and slots hang off their parent; advisories hang off matched assets', async () => {
     const app = await loadApp({ routes: defaultRoutes(), hash: '#/graph' });
     try {
+      app.$$('#graph-layout button').find((b) => b.textContent === 'Advisories').click();
+      await settle();
       const { edges: es, nodes: ns } = app.get('graphModel()');
       assert.ok(es.some((e) => e.kind === 'unit' && e.from === '10.0.1.30' && e.to === '10.0.1.30/u3'));
       assert.ok(es.some((e) => e.kind === 'unit' && e.from === '10.0.1.10' && e.to === '10.0.1.10/slot0'));
@@ -222,7 +224,7 @@ test('graph', async (t) => {
       assert.equal(node(app, '10.0.1.20'), null, 'the capture-exclusive node is gone');
       assert.ok(node(app, '10.0.1.40'), 'a node another capture also saw stays');
       assert.ok(node(app, '10.0.1.10'), 'the other capture stays');
-      app.$$('#pop-filter button').find((b) => b.textContent === 'Reset view').click();
+      app.$('#tb-reset').click();
       await settle();
       assert.ok(node(app, '10.0.1.20'), 'Reset view clears the hidden captures');
       assert.equal(app.get('S').capOff.size, 0);
@@ -334,10 +336,10 @@ test('graph', async (t) => {
   await t.test('the filter popover drives the graph filters', async () => {
     const app = await loadApp({ routes: defaultRoutes(), hash: '#/graph' });
     try {
-      app.$$('#pop-filter button').find((b) => b.textContent === 'KEV only').click();
+      app.$$('#graph-layout button').find((b) => b.textContent === 'KEV only').click();
       await settle();
       assert.equal(app.get('S').kevOnly, true);
-      assert.equal(app.$$('#pop-filter button').find((b) => b.textContent === 'KEV only').getAttribute('aria-pressed'), 'true');
+      assert.equal(app.$$('#graph-layout button').find((b) => b.textContent === 'KEV only').getAttribute('aria-pressed'), 'true');
       assert.equal(nodes(app).filter((n) => !n.classList.contains('dim') && !n.classList.contains('adv')).length, 1);
     } finally { app.close(); }
   });
@@ -497,13 +499,11 @@ test('edges', async (t) => {
       assert.equal(flowEdges(app).some((e) => e.classList.contains('scan')), false);
       assert.ok(edgeOf(app, 'unknown'), 'the decoded-less host pair stays');
       await showScans(app);
-      const box = app.$$('#pop-filter input[type=checkbox]').find((c) => /Modbus/.test(c.getAttribute('aria-label')));
-      box.checked = false;
-      box.dispatchEvent(new app.window.Event('change', { bubbles: true }));
+      app.$$('#graph-chips button').find((c) => c.textContent === 'Modbus').click();
       await settle();
       assert.equal(edgeOf(app, 'modbus'), undefined);
       assert.ok(edgeOf(app, 'dnp3'));
-      assert.deepEqual(app.$$('#pop-filter input[type=checkbox]').map((c) => /DNP3|Modbus|ENIP|S7|SNMP|BACnet|OPC UA|PROFINET|ICMP/.exec(c.getAttribute('aria-label'))[0]), ['Modbus', 'DNP3', 'ENIP', 'S7', 'SNMP', 'BACnet', 'OPC UA', 'PROFINET', 'ICMP']);
+      assert.equal(app.$$('#pop-filter input[type=checkbox]').length, 0, 'the protocol chips are above the graph, not repeated in the filter panel');
     } finally { app.close(); }
   });
 
