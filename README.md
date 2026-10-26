@@ -4,6 +4,48 @@ Passive OT asset inventory from classic PCAP captures. CLI-only Java 21 applicat
 
 **Not** a scanner. No packets are sent. Results are passive observations and may be incomplete or spoofed.
 
+## Quick start: the full console (Zeek + ICSNPP + all open-source engines)
+
+This is the best version of the UI. The other sections below are options and details; you do not need them to get started.
+
+You need JDK 21+, Maven 3.9+ and **Docker Desktop running** (Windows, macOS or Linux). Do the first two steps once.
+
+```bash
+# 1. Build the jar
+mvn -q clean package -DskipTests
+
+# 2. Build the two engine images (needs network once, then they run offline; about 1.3 GB and 0.5 GB)
+docker build -t reconics-zeek  docker/zeek      # Zeek + the ICSNPP Modbus, DNP3, EtherNet/IP and S7comm parsers
+docker build -t reconics-tools docker/tools     # tshark, Suricata, nDPI, p0f
+
+# 3. Start the console (a fresh --data folder gives you an empty site; reuse a folder to keep your captures)
+java -jar target/reconnics-ng.jar serve --index data/index.json --pubkey keys/index-signing.pub --data data/site-mine
+```
+
+Then open <http://127.0.0.1:8088/>, click the **upload** icon in the right-hand tool strip and drop in one or more `.pcap` /
+`.pcapng` files. Each capture runs through Zeek + ICSNPP, then tshark, Suricata, nDPI and p0f, and takes about 20 seconds (most of that
+is Docker starting). When it shows `done` you get:
+
+- the **graph** with every host the capture shows, including hosts that were only pinged or only sent a SYN ("seen only"),
+  with broadcast and multicast addresses available behind the **Hidden by default** facet;
+- click a node for its attributes, advisories, conversations, DHCP and web-server facts and the images its web server sent;
+- click an edge for protocol, bytes in each direction, rate, message kinds, the operations table (function, address, values,
+  outcome) and any Suricata or nDPI evidence;
+- the **Engines** screen (`#/engines`) for which tools ran on each capture, and the **Ethernet** screen for MAC addresses.
+
+If it does not look like that:
+
+| Symptom | Fix |
+|---|---|
+| Only generic "unknown" edges, no operations table | Docker is not running or the `reconics-zeek` image is missing. Start Docker Desktop, run step 2, upload again. |
+| Engines screen shows tools as "not installed" | The `reconics-tools` image is missing, or Docker was not running when the capture ran. |
+| `advisory index signature INVALID` | `keys/index-signing.pub` does not match the signed `data/index.json`. `git pull`, or run `java -jar target/reconnics-ng.jar verify --index data/index.json --pubkey keys/index-signing.pub`. |
+| Old UI after pulling new code | Re-run step 1 and restart `serve`. The UI is packaged inside the jar. |
+| Port 8088 already in use | Stop the old console first (the new one cannot start on the same port). |
+
+No Docker? The console still works with the built-in decoders only (`-Dreconics.engine=NATIVE` forces this): you get the graph and
+message kinds, but no operations table and none of the extra engines.
+
 ## Prerequisites
 
 - JDK 21+ (developed/tested with newer OpenJDK; `--release 21`)
