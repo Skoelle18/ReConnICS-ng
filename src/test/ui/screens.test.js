@@ -3,7 +3,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { loadApp, settle } = require('./support/load-app');
+const { loadApp, settle, waitFor } = require('./support/load-app');
 const { defaultRoutes, exampleInventory, field } = require('./support/fixtures');
 
 test('reference console shell and navigation', async (t) => {
@@ -81,7 +81,8 @@ test('reference console shell and navigation', async (t) => {
     const app = await loadApp({ routes: defaultRoutes(), hash: '#/overview' });
     try {
       app.$$('#main a').find((a) => /EXACT/.test(a.textContent) && a.getAttribute('href') === '#/graph').click();
-      await settle();
+      await waitFor(() => app.$$('#graph .node').filter((n) => !n.classList.contains('dim') && !n.classList.contains('adv')).length === 1,
+        'the graph applies the advisory match filter');
       assert.equal(app.get('route()').name, 'graph');
       assert.equal(app.get('S').level, 'EXACT');
       assert.equal(app.$$('#graph .node').filter((n) => !n.classList.contains('dim') && !n.classList.contains('adv')).length, 1);
@@ -94,6 +95,51 @@ test('reference console shell and navigation', async (t) => {
     const app = await loadApp({ routes, hash: '#/overview' });
     try {
       assert.match(app.text(), /No assets yet\. Queue a capture/);
+    } finally { app.close(); }
+  });
+});
+
+test('inventory screen', async (t) => {
+  await t.test('lists real assets and groups by MAC with inference notes', async () => {
+    const inv = exampleInventory();
+    inv.assets.find((a) => a.id === '10.0.1.10').mac = field('02:1d:9c:c1:00:10');
+    const mac = '02:1d:9c:c1:00:10';
+    const app = await loadApp({ routes: defaultRoutes({ inventory: inv, macs: [{ mac, kind: 'host', ips: ['10.0.1.10'], ipCount: 1, notes: ['Multiple IPs can indicate a router or NAT interface.'] }] }), hash: '#/inventory' });
+    try {
+      assert.equal(app.get('route()').name, 'inventory');
+      assert.match(app.text('#main'), /Inventory/);
+      assert.ok(app.$('#main .inventory-table'));
+      assert.match(app.text('#main'), /10\.0\.1\.40/);
+      app.$('#main .inventory-group-toggle input').click();
+      await settle();
+      assert.match(app.text('#main'), /Group by MAC/);
+      assert.match(app.text('#main'), /router or NAT inference/);
+      assert.match(app.text('#main'), /locally administered MAC/);
+      assert.ok(app.$$('#main .mac-group').length > 0);
+    } finally { app.close(); }
+  });
+
+  await t.test('bulk edits use one audited PATCH per selected asset', async () => {
+    const writes = [];
+    const routes = defaultRoutes();
+    routes['PATCH assets/10.0.1.40'] = (req) => { writes.push(req); return { changes: [{ field: 'zone' }] }; };
+    routes['PATCH assets/10.0.1.50'] = (req) => { writes.push(req); return { changes: [{ field: 'zone' }] }; };
+    const app = await loadApp({ routes, hash: '#/inventory', storage: { actor: 'V. Analyst' } });
+    try {
+      for (const id of ['10.0.1.40', '10.0.1.50']) {
+        app.$(`#main [aria-label="Select ${id}"]`).checked = true;
+        app.$(`#main [aria-label="Select ${id}"]`).dispatchEvent(new app.window.Event('change', { bubbles: true }));
+      }
+      const fieldSel = app.$('#main .bulk-edit select');
+      fieldSel.value = 'zone'; fieldSel.dispatchEvent(new app.window.Event('change', { bubbles: true }));
+      const value = app.$('#main .bulk-edit input[aria-label="Bulk edit value"]');
+      value.value = 'North cell'; value.dispatchEvent(new app.window.Event('input', { bubbles: true }));
+      app.$('#main .bulk-edit button[type="submit"]').click();
+      await settle();
+      assert.equal(writes.length, 2);
+      assert.ok(writes.every((w) => w.headers['X-Actor'] === 'V. Analyst'));
+      assert.ok(writes.every((w) => JSON.parse(w.body).zone === 'North cell'));
+      assert.match(app.text('#toast'), /2 assets updated and logged/);
     } finally { app.close(); }
   });
 });

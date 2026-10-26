@@ -34,7 +34,7 @@ const S = { engines: null, inv: null, rank: [], site: {}, flows: [], caps: [], c
   openCap: null, openAdv: null, tab: 'attrs', editing: false, staged: null,
   color: 'role', showAdv: true, layout: 'force', path: null, pathPick: false, pathStart: null,
   hideUnknown: false, hideScans: true, hideSeenOnly: false, hideDecommissioned: true, showGroups: false, groups: [], macs: [], images: [], imageSummary: {}, protoOff: new Set(),
-  capAssets: {}, assetCaps: new Map(), capOff: new Set() };
+  capAssets: {}, assetCaps: new Map(), capOff: new Set(), inventoryGroupMac: false, bulkSelected: new Set(), macExpanded: new Set() };
 
 // ------------------------------------------------------------------ helpers
 
@@ -221,7 +221,7 @@ async function loadAll() {
 // ------------------------------------------------------------------ chrome
 
 function chrome(route) {
-  const mode = route === 'overview' || route === 'ethernet' ? 'inventory' : route === 'advisories' || route === 'review' ? 'findings'
+  const mode = route === 'overview' || route === 'inventory' || route === 'ethernet' ? 'inventory' : route === 'advisories' || route === 'review' ? 'findings'
     : ['captures', 'index', 'engines', 'log'].includes(route) ? 'data' : 'graph';
   document.querySelectorAll('#modes [data-mode]').forEach((n) => n.classList.toggle('on', n.dataset.mode === mode));
   const active = S.caps.filter((c) => c.state === 'queued' || c.state === 'running').length;
@@ -397,6 +397,89 @@ function overview() {
           })))),
     ],
   ];
+}
+
+const BULK_FIELDS = [['zone', 'Zone'], ['purdue', 'Purdue level'], ['owner', 'Owner'], ['lifecycle', 'Lifecycle'],
+  ['criticality', 'Criticality'], ['asset_number', 'Asset number'], ['location', 'Physical location'], ['logging', 'Logging'], ['user_accounts', 'User accounts']];
+function inventoryAssetRow(a, grouped) {
+  const mac = str(val(a, 'mac'));
+  const vendor = val(a, 'vendor') || val(a, 'vendor_oui');
+  const locallyAdministered = mac && ((parseInt(mac.slice(0, 2), 16) || 0) & 2) !== 0;
+  return h('tr', { class: grouped ? 'inventory-child' : '' },
+    h('td', {}, h('input', { type: 'checkbox', checked: S.bulkSelected.has(a.id), 'aria-label': 'Select ' + a.id,
+      onchange: (e) => { e.target.checked ? S.bulkSelected.add(a.id) : S.bulkSelected.delete(a.id); render(); } })),
+    h('td', {}, h('a', { class: 'inventory-asset', href: '#/asset/' + encodeURIComponent(a.id) }, nameOf(a)), h('span', { class: 'mono muted small' }, a.id)),
+    h('td', { class: 'mono small' }, mac || '—', locallyAdministered ? h('span', { class: 'badge warn', title: 'Locally administered bit is set; this address may be assigned locally' }, 'local MAC') : null),
+    h('td', {}, vendor ? str(vendor.value) : '—'), h('td', {}, val(a, 'role') || '—'), h('td', {}, purdueOf(a) ? 'Level ' + purdueOf(a) : 'Unplaced'),
+    h('td', {}, levelBadge(levelOf(a)), a.match && a.match.kevAtModel ? h('span', { class: 'badge kev' }, 'KEV') : null),
+    h('td', {}, a.completeness ? a.completeness.filled + ' / 14' : '—'),
+    h('td', { class: 'muted small' }, capturesOf(a).map(capFileName).join(', ') || 'No capture provenance'));
+}
+
+function inventory() {
+  const rows = S.rank.map(byId).filter((a) => a && matches(a));
+  const selectedVisible = rows.filter((a) => S.bulkSelected.has(a.id)).length;
+  const checkAll = h('input', { type: 'checkbox', checked: rows.length > 0 && selectedVisible === rows.length, 'aria-label': 'Select all filtered assets',
+    onchange: (e) => { rows.forEach((a) => e.target.checked ? S.bulkSelected.add(a.id) : S.bulkSelected.delete(a.id)); render(); } });
+  const valueOptions = S.bulkField === 'purdue' ? [['', 'Clear / use role suggestion'], ['3.5', 'Level 3.5'], ['3', 'Level 3'], ['2', 'Level 2'], ['1', 'Level 1'], ['0', 'Level 0']]
+    : S.bulkField === 'lifecycle' ? LIFECYCLE.map((v) => [v, v])
+      : S.bulkField === 'criticality' ? [['', 'Clear'], ['critical', 'Critical'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']] : null;
+  const valueInput = valueOptions ? h('select', { 'aria-label': 'Bulk edit value', value: S.bulkValue, onchange: (e) => { S.bulkValue = e.target.value; } },
+    valueOptions.map(([value, label]) => h('option', { value, selected: value === S.bulkValue }, label)))
+    : h('input', { 'aria-label': 'Bulk edit value', placeholder: 'Value (blank clears this field)', value: S.bulkValue, oninput: (e) => { S.bulkValue = e.target.value; } });
+
+  let bodyRows;
+  if (!S.inventoryGroupMac) bodyRows = rows.map((a) => inventoryAssetRow(a, false));
+  else {
+    const groups = new Map();
+    rows.forEach((a) => {
+      const mac = str(val(a, 'mac')) || '(no MAC) ' + a.id;
+      (groups.get(mac) || groups.set(mac, []).get(mac)).push(a);
+    });
+    bodyRows = [...groups.entries()].map(([mac, members]) => {
+      const info = S.macs.find((m) => m.mac === mac), open = S.macExpanded.has(mac);
+      const locallyAdministered = mac.startsWith('(') ? false : (((parseInt(mac.slice(0, 2), 16) || 0) & 2) !== 0);
+      const inferred = (info && (info.notes || []).join('; ')) || (members.length > 1 ? 'Multiple assets share this MAC; router or NAT is possible (inferred).' : '');
+      return [h('tr', { class: 'mac-group' },
+        h('td', { colspan: 9 }, h('button', { class: 'mac-expander', 'aria-expanded': String(open), 'aria-label': (open ? 'Collapse' : 'Expand') + ' MAC group ' + mac,
+          onclick: () => { open ? S.macExpanded.delete(mac) : S.macExpanded.add(mac); render(); } }, open ? '▾' : '▸'),
+        h('span', { class: 'mono strong' }, mac), h('span', { class: 'muted small' }, members.length + (members.length === 1 ? ' asset' : ' assets')),
+        locallyAdministered ? h('span', { class: 'badge warn' }, 'locally administered MAC') : null,
+        inferred ? h('span', { class: 'badge warn', title: inferred }, 'router or NAT inference') : null)),
+      open ? members.map((a) => inventoryAssetRow(a, true)) : null];
+    });
+  }
+  return [
+    h('div', { class: 'head inventory-heading' }, h('div', {}, h('h1', {}, 'Inventory'), h('div', { class: 'muted' }, rows.length + ' of ' + assets().length + ' assets · fix-first order')),
+      h('label', { class: 'row inventory-group-toggle' }, h('input', { type: 'checkbox', checked: S.inventoryGroupMac, onchange: (e) => { S.inventoryGroupMac = e.target.checked; render(); } }), 'Group by MAC')),
+    h('form', { class: 'card bulk-edit', onsubmit: (e) => { e.preventDefault(); applyBulkEdit(rows); } },
+      h('div', { class: 'card-h' }, 'Bulk edit', h('span', { class: 'muted small' }, selectedVisible + ' selected / ' + S.bulkSelected.size + ' total')),
+      h('div', { class: 'bulk-edit-row' }, h('label', {}, 'Field', h('select', { value: S.bulkField, onchange: (e) => { S.bulkField = e.target.value; S.bulkValue = ''; render(); } }, BULK_FIELDS.map(([v, label]) => h('option', { value: v, selected: S.bulkField === v }, label)))),
+        h('label', {}, 'Value', valueInput), h('button', { class: 'btn pri', type: 'submit', disabled: selectedVisible === 0 }, 'Apply to selected'),
+        h('button', { class: 'btn', type: 'button', onclick: () => { S.bulkSelected.clear(); render(); } }, 'Clear selection')),
+      h('div', { class: 'card-b muted small' }, 'Each selected asset is saved through the existing asset endpoint and logged under your session name. Validation is not part of bulk edit.')),
+    h('div', { class: 'card inventory-table-wrap' },
+      rows.length ? h('table', { class: 'inventory-table' },
+        h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, checkAll), ...['Asset', 'MAC', 'Vendor', 'Role', 'Purdue', 'Match', 'Completeness', 'Seen in'].map((label) => h('th', { scope: 'col' }, label)))),
+        h('tbody', {}, bodyRows))
+        : h('div', { class: 'empty' }, filterActive() ? 'No assets match the current search or filters.' : 'No assets yet. Queue a capture to start the inventory.',
+          h('div', { class: 'row', style: { justifyContent: 'center', marginTop: '10px' } }, h('a', { class: 'btn pri', href: '#/captures' }, 'Queue PCAPs')))),
+  ];
+}
+
+async function applyBulkEdit(visibleRows) {
+  const targets = visibleRows.filter((a) => S.bulkSelected.has(a.id));
+  if (!targets.length) return toast('Select at least one visible asset');
+  let saved = 0, failed = null;
+  for (const a of targets) {
+    try {
+      const result = await api('PATCH', 'assets/' + encodeURIComponent(a.id), JSON.stringify({ [S.bulkField]: S.bulkValue }), 'application/json');
+      saved += result.changes.length > 0 ? 1 : 0;
+    } catch (e) { failed = failed || (a.id + ': ' + e.message); }
+  }
+  S.bulkSelected.clear();
+  toast(failed ? saved + ' assets updated; ' + failed : saved + ' assets updated and logged');
+  await refresh();
 }
 
 function captures() {
@@ -1262,7 +1345,7 @@ function render() {
   if (!S.inv) return;
   if (r.name + r.arg !== lastRoute) { S.tab = 'attrs'; S.editing = false; lastRoute = r.name + r.arg; }
   chrome(r.name);
-  const screens = { overview, engines, captures, review, advisories, index: indexScreen, log, ethernet, asset: () => asset(r.arg), edge: () => edgePanel(r.arg), group: () => groupPanel(r.arg) };
+  const screens = { overview, inventory, engines, captures, review, advisories, index: indexScreen, log, ethernet, asset: () => asset(r.arg), edge: () => edgePanel(r.arg), group: () => groupPanel(r.arg) };
   const main = $('main'), open = r.name !== 'graph', side = r.name === 'asset' || r.name === 'edge' || r.name === 'group';
   main.hidden = !open;
   main.className = side ? 'panel' : 'sheet';
