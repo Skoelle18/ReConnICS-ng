@@ -391,3 +391,35 @@ test('asset history', async (t) => {
     } finally { app.close(); }
   });
 });
+
+test('Data mode groups the live data screens and filters the audit log', async () => {
+  const changes = [
+    { at: '2026-10-19T10:00:00Z', actor: 'R. Analyst', asset: '10.0.1.40', field: 'firmware', from: '20.011', to: '24.011', source: 'capture c0002' },
+    { at: '2026-10-19T09:00:00Z', actor: 'S. Owner', asset: '10.0.1.10', field: 'criticality', from: '', to: 'high', source: 'human' }];
+  const app = await loadApp({ routes: defaultRoutes({ changes }), hash: '#/data' });
+  try {
+    assert.equal(app.$('#modes [data-mode="data"]').classList.contains('on'), true);
+    assert.ok(app.$('#main .screen-tabs[aria-label="Data sections"]'));
+    assert.match(app.text(), /Capture queue/);
+    app.$('#main .screen-tabs a[href="#/log"]').click(); await app.go('#/log');
+    assert.match(app.text(), /capture c0002/);
+    assert.match(app.text(), /Source capture/);
+    const input = app.$('#main .screen-search input'); input.value = 'S. Owner'; input.dispatchEvent(new app.window.Event('input', { bubbles: true }));
+    assert.match(app.text(), /S. Owner/);
+    assert.doesNotMatch(app.text(), /R. Analyst/);
+    app.$('#main .screen-tabs a[href="#/export"]').click(); await app.go('#/export');
+    assert.equal(app.$$('#main a[download]').length, 3, 'only export endpoints documented by the server are offered');
+  } finally { app.close(); }
+});
+
+test('index staleness threshold is a local display preference', async () => {
+  const routes = defaultRoutes({ index: { verified: true, generated: '2025-01-01T00:00:00Z', warning: null } });
+  const app = await loadApp({ routes, hash: '#/index' });
+  try {
+    assert.match(app.text(), /Mark index stale after days/);
+    const input = app.$('#main #index-stale-days'); input.value = '3650'; input.dispatchEvent(new app.window.Event('change', { bubbles: true }));
+    assert.equal(app.window.localStorage.getItem('index-stale-days'), '3650');
+    assert.ok(app.$('#main .badge.ok'));
+    assert.equal(app.calls.some((c) => c.method !== 'GET'), false, 'the threshold does not invent a server write route');
+  } finally { app.close(); }
+});

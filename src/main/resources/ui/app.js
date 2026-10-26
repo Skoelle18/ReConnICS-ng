@@ -35,7 +35,7 @@ const S = { engines: null, inv: null, rank: [], site: {}, flows: [], caps: [], c
   color: 'role', showAdv: true, layout: 'force', path: null, pathPick: false, pathStart: null,
   hideUnknown: false, hideScans: true, hideSeenOnly: false, hideDecommissioned: true, showGroups: false, groups: [], macs: [], images: [], imageSummary: {}, protoOff: new Set(),
   capAssets: {}, assetCaps: new Map(), capOff: new Set(), inventoryGroupMac: false, bulkSelected: new Set(), macExpanded: new Set(),
-  findingsTab: 'advisories', advisorySearch: '', reviewSearch: '' };
+  findingsTab: 'advisories', advisorySearch: '', reviewSearch: '', logSearch: '', dataTab: 'captures' };
 
 // ------------------------------------------------------------------ helpers
 
@@ -223,7 +223,7 @@ async function loadAll() {
 
 function chrome(route) {
   const mode = route === 'overview' || route === 'inventory' || route === 'ethernet' ? 'inventory' : ['advisories', 'review', 'findings'].includes(route) ? 'findings'
-    : ['captures', 'index', 'engines', 'log'].includes(route) ? 'data' : 'graph';
+    : ['captures', 'index', 'engines', 'log', 'data', 'export'].includes(route) ? 'data' : 'graph';
   document.querySelectorAll('#modes [data-mode]').forEach((n) => n.classList.toggle('on', n.dataset.mode === mode));
   const active = S.caps.filter((c) => c.state === 'queued' || c.state === 'running').length;
   $('mode-review-count').textContent = reviewCount() || '';
@@ -241,7 +241,9 @@ function chrome(route) {
   graphControls();
   const ix = S.index || {};
   const badge = $('idx-badge');
-  badge.className = 'badge ' + (!ix.verified ? 'bad' : ix.warning ? 'warn' : 'ok');
+  const indexAge = ix.generated ? Math.floor((Date.now() - Date.parse(ix.generated)) / 86400000) : null;
+  const indexStaleDays = Math.max(1, Number(store.get('index-stale-days')) || 30);
+  badge.className = 'badge ' + (!ix.verified ? 'bad' : ix.warning || indexAge != null && indexAge > indexStaleDays ? 'warn' : 'ok');
   badge.textContent = (ix.verified ? 'Index verified' : 'Index UNVERIFIED') + ' · ' + String(ix.generated || '?').slice(0, 10);
   const banner = $('banner');
   banner.replaceChildren();
@@ -938,6 +940,9 @@ function advisories() {
 
 function indexScreen() {
   const ix = S.index || {};
+  const staleDays = Math.max(1, Math.min(3650, Number(store.get('index-stale-days')) || 30));
+  const ageDays = ix.generated ? Math.floor((Date.now() - Date.parse(ix.generated)) / 86400000) : null;
+  const isStale = Boolean(ix.warning) || ageDays != null && ageDays > staleDays;
   const idxFile = h('input', { type: 'file', accept: '.json', id: 'idx-file' }), sigFile = h('input', { type: 'file', accept: '.sig', id: 'sig-file' });
   const check = async () => {
     const f = idxFile.files[0], s = sigFile.files[0];
@@ -952,10 +957,12 @@ function indexScreen() {
   return [
     h('div', {}, h('h1', {}, 'Advisory index'), h('div', { class: 'muted' }, 'Built on the online side from CISA CSAF OT + KEV, signed, and carried across the air gap.')),
     h('div', { class: 'facts' },
-      h('div', { class: 'card card-b' }, fact('Generated', fmtTime(ix.generated)), ix.warning ? h('span', { class: 'badge warn' }, 'stale') : h('span', { class: 'badge ok' }, 'current')),
+      h('div', { class: 'card card-b' }, fact('Generated', fmtTime(ix.generated)), isStale ? h('span', { class: 'badge warn' }, 'stale') : h('span', { class: 'badge ok' }, 'current')),
       h('div', { class: 'card card-b' }, fact('KEV catalog', ix.kevCatalogVersion || '?')),
       h('div', { class: 'card card-b' }, fact('Advisories / rows', (ix.advisories || 0).toLocaleString() + ' / ' + (ix.rows || 0).toLocaleString())),
       h('div', { class: 'card card-b' }, fact('Signature', ix.verified ? 'Ed25519 verified' : 'UNVERIFIED'))),
+    h('div', { class: 'card card-b stale-setting' }, h('label', { for: 'index-stale-days' }, 'Mark index stale after days'), h('input', { id: 'index-stale-days', type: 'number', min: '1', max: '3650', value: staleDays, onchange: (e) => { store.set('index-stale-days', String(Math.max(1, Math.min(3650, Number(e.target.value) || 30)))); render(); } }),
+      h('span', { class: 'muted small' }, 'Saved in this browser. The server warning remains authoritative.')),
     h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Import a new index'),
       h('div', { class: 'form' }, h('label', { for: 'idx-file' }, 'index.json', idxFile), h('label', { for: 'sig-file' }, 'index.json.sig', sigFile)),
       h('div', { class: 'card-b row' }, h('button', { class: 'btn pri', onclick: check }, 'Verify'),
@@ -973,12 +980,31 @@ function indexScreen() {
   ];
 }
 
+function exportScreen() {
+  return [h('div', {}, h('h1', {}, 'Export'), h('div', { class: 'muted' }, 'Download the current site inventory and report.')),
+    h('div', { class: 'card export-list' },
+      h('a', { class: 'btn', href: '/api/v1/export/inventory.csv', download: 'inventory.csv' }, 'inventory.csv'),
+      h('a', { class: 'btn', href: '/api/v1/export/inventory.json', download: 'inventory.json' }, 'inventory.json'),
+      h('a', { class: 'btn', href: '/api/v1/export/report.html', download: 'report.html' }, 'report.html'))];
+}
+
+function dataScreen() {
+  const selected = ({ captures: 'captures', index: 'index', engines: 'engines', log: 'log', export: 'export' })[route().name] || S.dataTab;
+  S.dataTab = selected;
+  const sections = [['captures', 'Captures'], ['index', 'Advisory index'], ['engines', 'Engines'], ['log', 'Change log'], ['export', 'Export']];
+  const screen = { captures, index: indexScreen, engines, log, export: exportScreen }[selected] || captures;
+  return [h('nav', { class: 'screen-tabs', 'aria-label': 'Data sections' }, ...sections.map(([key, label]) => h('a', { href: '#/' + key, class: selected === key ? 'selected' : '' }, label))), ...screen()];
+}
+
 function log() {
+  const q = S.logSearch.trim().toLowerCase();
+  const rows = S.changes.filter((x) => [x.at, x.actor, x.asset, x.field, x.from, x.to, x.source].join(' ').toLowerCase().includes(q));
   return [
     h('div', {}, h('h1', {}, 'Change log'), h('div', { class: 'muted' }, 'Append-only. Every capture merge, human edit and index swap, newest first.')),
+    h('label', { class: 'screen-search' }, h('span', { class: 'sr' }, 'Filter change log'), h('input', { type: 'search', value: S.logSearch, placeholder: 'Filter by asset, actor, field or source capture', oninput: (e) => { S.logSearch = e.target.value; render(); $('main .screen-search input')?.focus(); } })),
     h('div', { class: 'card' }, h('div', { class: 'scroll' },
-      h('div', { class: 'trow thead g-log' }, ['When', 'Who', 'Asset', 'Field', 'Change', 'Source'].map((t) => h('span', {}, t))),
-      S.changes.length === 0 ? h('div', { class: 'empty' }, 'No changes yet.') : S.changes.map((x) => h('div', { class: 'trow g-log' },
+      h('div', { class: 'trow thead g-log' }, ['When', 'Actor', 'Asset', 'Field', 'Change', 'Source capture'].map((t) => h('span', {}, t))),
+      rows.length === 0 ? h('div', { class: 'empty' }, S.changes.length ? 'No changes match this filter.' : 'No changes yet.') : rows.map((x) => h('div', { class: 'trow g-log' },
         h('span', { class: 'mono small' }, fmtTime(x.at)), h('span', { class: 'strong' }, x.actor),
         x.asset.startsWith('(') ? h('span', { class: 'muted' }, x.asset) : h('a', { class: 'mono small', href: '#/asset/' + encodeURIComponent(x.asset) }, x.asset),
         h('span', {}, x.field), h('span', { class: 'wrap' }, h('span', { class: 'muted' }, x.from || '∅'), ' → ', x.to || '∅'), h('span', { class: 'small muted' }, x.source))))),
@@ -1376,7 +1402,7 @@ function render() {
   if (!S.inv) return;
   if (r.name + r.arg !== lastRoute) { S.tab = 'attrs'; S.editing = false; lastRoute = r.name + r.arg; }
   chrome(r.name);
-  const screens = { overview, inventory, engines, captures, review: findings, advisories: findings, findings, index: indexScreen, log, ethernet, asset: () => asset(r.arg), edge: () => edgePanel(r.arg), group: () => groupPanel(r.arg) };
+  const screens = { overview, inventory, data: dataScreen, export: dataScreen, engines: dataScreen, captures: dataScreen, index: dataScreen, log: dataScreen, review: findings, advisories: findings, findings, ethernet, asset: () => asset(r.arg), edge: () => edgePanel(r.arg), group: () => groupPanel(r.arg) };
   const main = $('main'), open = r.name !== 'graph', side = r.name === 'asset' || r.name === 'edge' || r.name === 'group';
   main.hidden = !open;
   main.className = side ? 'panel' : 'sheet';

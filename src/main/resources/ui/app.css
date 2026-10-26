@@ -333,6 +333,10 @@ input, select { border-radius:4px; }
 .screen-tabs a.selected { border-color:var(--accent); }
 .screen-search { display:block; width:min(520px,100%); margin:14px 0; }
 .screen-search input { width:100%; }
+.stale-setting { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.stale-setting label { font-weight:600; }
+.stale-setting input { width:90px; }
+.export-list { display:flex; gap:10px; flex-wrap:wrap; padding:16px; }
 .findings-actions { justify-content:space-between; align-items:center; }
 .findings-actions .screen-search { flex:1; margin-right:12px; }
 .review-meta { display:flex; flex-direction:column; align-items:flex-end; gap:5px; white-space:nowrap; }
