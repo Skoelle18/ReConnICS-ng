@@ -337,6 +337,9 @@ input, select { border-radius:4px; }
 .stale-setting label { font-weight:600; }
 .stale-setting input { width:90px; }
 .export-list { display:flex; gap:10px; flex-wrap:wrap; padding:16px; }
+.settings-form { max-width:760px; }
+.settings-form .card-b { align-items:flex-start; }
+.settings-form .btn { align-self:flex-start; }
 .findings-actions { justify-content:space-between; align-items:center; }
 .findings-actions .screen-search { flex:1; margin-right:12px; }
 .review-meta { display:flex; flex-direction:column; align-items:flex-end; gap:5px; white-space:nowrap; }

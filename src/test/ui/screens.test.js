@@ -423,3 +423,19 @@ test('index staleness threshold is a local display preference', async () => {
     assert.equal(app.calls.some((c) => c.method !== 'GET'), false, 'the threshold does not invent a server write route');
   } finally { app.close(); }
 });
+
+test('Settings updates the actor and role used by later API writes', async () => {
+  const app = await loadApp({ routes: defaultRoutes(), hash: '#/settings', storage: { actor: 'Old name', role: 'collector' } });
+  try {
+    assert.equal(app.$('#modes [data-mode="data"]').classList.contains('on'), true);
+    app.$('#setting-actor').value = 'New Validator';
+    app.$('#setting-role').value = 'validator';
+    app.$('#setting-stale-days').value = '45';
+    app.$('#main form').dispatchEvent(new app.window.Event('submit', { bubbles: true, cancelable: true }));
+    assert.equal(app.window.localStorage.getItem('actor'), 'New Validator');
+    assert.equal(app.window.localStorage.getItem('role'), 'validator');
+    assert.equal(app.window.localStorage.getItem('index-stale-days'), '45');
+    assert.match(app.text('#toast'), /New Validator \(validator\)/);
+    assert.equal(app.calls.some((c) => c.method !== 'GET'), false, 'preferences are browser-local; writes follow on later actions');
+  } finally { app.close(); }
+});

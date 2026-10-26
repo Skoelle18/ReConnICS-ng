@@ -223,7 +223,7 @@ async function loadAll() {
 
 function chrome(route) {
   const mode = route === 'overview' || route === 'inventory' || route === 'ethernet' ? 'inventory' : ['advisories', 'review', 'findings'].includes(route) ? 'findings'
-    : ['captures', 'index', 'engines', 'log', 'data', 'export'].includes(route) ? 'data' : 'graph';
+    : ['captures', 'index', 'engines', 'log', 'data', 'export', 'settings'].includes(route) ? 'data' : 'graph';
   document.querySelectorAll('#modes [data-mode]').forEach((n) => n.classList.toggle('on', n.dataset.mode === mode));
   const active = S.caps.filter((c) => c.state === 'queued' || c.state === 'running').length;
   $('mode-review-count').textContent = reviewCount() || '';
@@ -988,6 +988,25 @@ function exportScreen() {
       h('a', { class: 'btn', href: '/api/v1/export/report.html', download: 'report.html' }, 'report.html'))];
 }
 
+function settingsScreen() {
+  const actor = h('input', { id: 'setting-actor', name: 'actor', autocomplete: 'name', value: store.get('actor'), placeholder: 'e.g. R. Analyst', required: true });
+  const role = h('select', { id: 'setting-role', name: 'role' },
+    h('option', { value: 'collector' }, 'Collector'), h('option', { value: 'validator' }, 'Validator'));
+  role.value = store.get('role') || 'collector';
+  const stale = h('input', { id: 'setting-stale-days', name: 'stale-days', type: 'number', min: '1', max: '3650', value: Math.max(1, Number(store.get('index-stale-days')) || 30) });
+  return [h('div', {}, h('h1', {}, 'Settings'), h('div', { class: 'muted' }, 'Choose the name recorded on future changes and the local console role.')),
+    h('form', { class: 'card settings-form', onsubmit: (e) => {
+      e.preventDefault();
+      store.set('actor', actor.value.trim()); store.set('role', role.value);
+      store.set('index-stale-days', String(Math.max(1, Math.min(3650, Number(stale.value) || 30))));
+      toast('Settings saved on this browser. Future writes use ' + actor.value.trim() + ' (' + role.value + ').'); render();
+    } },
+      h('div', { class: 'form' }, h('label', { for: 'setting-actor' }, 'Your name', actor), h('label', { for: 'setting-role' }, 'Role', role),
+        h('label', { for: 'setting-stale-days' }, 'Mark index stale after days', stale)),
+      h('div', { class: 'card-b stack' }, h('div', { class: 'muted small' }, 'Changes are sent with your session name and appear in the append-only change log. Only a Validator can validate assets or confirm review items. The role is enforced by the server; the console listens on 127.0.0.1.'),
+        h('button', { class: 'btn pri', type: 'submit' }, 'Save settings')) )];
+}
+
 function dataScreen() {
   const selected = ({ captures: 'captures', index: 'index', engines: 'engines', log: 'log', export: 'export' })[route().name] || S.dataTab;
   S.dataTab = selected;
@@ -1402,7 +1421,7 @@ function render() {
   if (!S.inv) return;
   if (r.name + r.arg !== lastRoute) { S.tab = 'attrs'; S.editing = false; lastRoute = r.name + r.arg; }
   chrome(r.name);
-  const screens = { overview, inventory, data: dataScreen, export: dataScreen, engines: dataScreen, captures: dataScreen, index: dataScreen, log: dataScreen, review: findings, advisories: findings, findings, ethernet, asset: () => asset(r.arg), edge: () => edgePanel(r.arg), group: () => groupPanel(r.arg) };
+  const screens = { overview, inventory, data: dataScreen, export: dataScreen, engines: dataScreen, captures: dataScreen, index: dataScreen, log: dataScreen, settings: settingsScreen, review: findings, advisories: findings, findings, ethernet, asset: () => asset(r.arg), edge: () => edgePanel(r.arg), group: () => groupPanel(r.arg) };
   const main = $('main'), open = r.name !== 'graph', side = r.name === 'asset' || r.name === 'edge' || r.name === 'group';
   main.hidden = !open;
   main.className = side ? 'panel' : 'sheet';
@@ -1474,13 +1493,6 @@ function initChrome() {
     if (e.target.closest('a[href]') && $('tree').classList.contains('mobile-open')) {
       $('tree').classList.remove('mobile-open'); $('mobile-menu').setAttribute('aria-expanded', 'false');
     }
-  });
-  $('tree-settings').addEventListener('click', () => {
-    const open = $('pop-settings').hidden;
-    closeAll(open ? 'pop-settings' : null);
-    $('pop-settings').hidden = !open;
-    $('tree-settings').setAttribute('aria-expanded', String(open));
-    if (open) $('actor').focus();
   });
   $('search-hints').addEventListener('click', (e) => {
     const term = e.target.closest('[data-query]')?.dataset.query;
