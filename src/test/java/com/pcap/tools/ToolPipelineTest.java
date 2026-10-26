@@ -156,6 +156,18 @@ class ToolPipelineTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void aTsharkLabelWhoseDissectorThrewIsLowConfidence() {
+        var t = new FlowTable();
+        Findings f = Findings.empty();
+        f.conversations().add(new Findings.Conversation("10.0.0.5", "10.0.0.20", "4840/tcp", 10, 900, 1_000_000, 2_000_000, "opc-ua", true, 3));
+        f.conversations().add(new Findings.Conversation("10.0.0.5", "10.0.0.21", "4840/tcp", 10, 900, 1_000_000, 2_000_000, "opc-ua", true, 0));
+        ToolPipeline.mergeFlows(t, List.of(ran("tshark", "4.4.19", f)), false);
+        assertEquals("LOW", ((List<Map<String, Object>>) m(t, "10.0.0.5", "10.0.0.20", "4840/tcp").get("classifiedBy")).get(0).get("confidence"));
+        assertEquals("MEDIUM", ((List<Map<String, Object>>) m(t, "10.0.0.5", "10.0.0.21", "4840/tcp").get("classifiedBy")).get(0).get("confidence"));
+    }
+
+    @Test
     void icsOnlyKeepsTsharkFromAddingConversations() {
         var t = new FlowTable();
         Findings f = Findings.empty();

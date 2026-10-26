@@ -166,7 +166,7 @@ public final class ToolPipeline {
                             obs.addAll(hostObservations(c));
                         }
                         if ("unknown".equals(f.protocolName()) && c.label() != null && !f.hasClassifier("tshark")) {
-                            f.classifiedBy("tshark", ver, c.label(), "MEDIUM", "dissector");
+                            f.classifiedBy("tshark", ver, c.label(), c.malformed() > 0 ? "LOW" : "MEDIUM", "dissector");   // a dissector that threw on the payload only matched by port
                             labelled++;
                         }
                     }

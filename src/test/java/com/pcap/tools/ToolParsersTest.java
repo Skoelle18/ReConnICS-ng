@@ -90,6 +90,31 @@ class ToolParsersTest {
     }
 
     @Test
+    void aDissectorThatThrewOnThePayloadIsCountedAndNeverBecomesTheLabel() {
+        var p = fields(
+                tcp("1.0", "10.0.0.1", "10.0.0.2", 40000, 4840, "0x0018", 80, "eth:ethertype:ip:tcp:opcua"),
+                tcp("2.0", "10.0.0.1", "10.0.0.2", 40000, 4840, "0x0018", 80, "eth:ethertype:ip:tcp:opcua:_ws.malformed"),
+                tcp("1.0", "10.0.0.1", "10.0.0.3", 40001, 502, "0x0018", 80, "eth:ethertype:ip:tcp:_ws.malformed"));
+        var opc = p.conversations().stream().filter(c -> c.server().equals("10.0.0.2")).findFirst().orElseThrow();
+        assertEquals("opc-ua", opc.label());
+        assertEquals(1, opc.malformed());
+        var none = p.conversations().stream().filter(c -> c.server().equals("10.0.0.3")).findFirst().orElseThrow();
+        assertNull(none.label(), "_ws.malformed is not a protocol");
+        assertEquals(1, none.malformed());
+    }
+
+    @Test
+    void conversationsOverTheCapAreCountedNotSilentlyDropped() {
+        var lines = new java.util.ArrayList<String>();
+        for (int i = 0; i < TsharkAdapter.MAX_CONVERSATIONS + 3; i++) {
+            lines.add(tcp("1.0", "10.0." + (i / 250) + "." + (i % 250 + 1), "10.9.9.9", 40000 + (i % 1000), 80, "0x0002", 60, "eth:ethertype:ip:tcp"));
+        }
+        var p = TsharkAdapter.parseFields(new BufferedReader(new StringReader(String.join("\n", lines) + "\n")), Integer.MAX_VALUE);
+        assertEquals(TsharkAdapter.MAX_CONVERSATIONS, p.conversations().size());
+        assertEquals(3, p.conversationsDropped());
+    }
+
+    @Test
     void tsharkLeafIsTheLastApplicationLayer() {
         assertEquals("mbtcp", TsharkAdapter.leaf("eth:ethertype:ip:tcp:mbtcp"));
         assertEquals("enip", TsharkAdapter.leaf("eth:ethertype:vlan:ethertype:ip:tcp:enip"));

@@ -94,6 +94,10 @@ public final class TsharkAdapter implements Adapter {
         f.facts().mergeMissing(p.facts);
         f.stats().put("packetsRead", p.lines);
         f.stats().put("conversations", p.conversations.size());
+        if (p.conversationsDropped > 0) {
+            f.stats().put("conversationsDropped", p.conversationsDropped);          // over MAX_CONVERSATIONS: counted, not silent
+            detail.append(p.conversationsDropped).append(" conversations over the ").append(MAX_CONVERSATIONS).append(" cap were not tracked. ");
+        }
         if (p.truncated) {
             f.stats().put("truncated", true);
             detail.append("stopped after ").append(MAX_LINES).append(" packets. ");
@@ -169,14 +173,14 @@ public final class TsharkAdapter implements Adapter {
 
     // ------------------------------------------------------------------ -T fields
 
-    record Parsed(List<Findings.Conversation> conversations, long lines, boolean truncated, com.pcap.inventory.HostFacts facts) {
+    record Parsed(List<Findings.Conversation> conversations, long lines, boolean truncated, com.pcap.inventory.HostFacts facts, long conversationsDropped) {
     }
 
     private static final class Conv {
         final String a, b;                         // a < b
         final String transport;
         final int aPort, bPort;
-        long pkts, bytes, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
+        long pkts, bytes, malformed, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
         String synFrom, synAckFrom, firstFrom;
         boolean fromA, fromB;
         final Map<String, Integer> labels = new HashMap<>();
@@ -194,7 +198,7 @@ public final class TsharkAdapter implements Adapter {
     static Parsed parseFields(BufferedReader r, int maxLines) {
         Map<String, Conv> convs = new LinkedHashMap<>();
         com.pcap.inventory.HostFacts facts = new com.pcap.inventory.HostFacts();
-        long lines = 0;
+        long lines = 0, conversationsDropped = 0;
         boolean truncated = false;
         try {
             String line;
@@ -229,6 +233,7 @@ public final class TsharkAdapter implements Adapter {
                 Conv v = convs.get(key);
                 if (v == null) {
                     if (convs.size() >= MAX_CONVERSATIONS) {
+                        conversationsDropped++;
                         continue;
                     }
                     convs.put(key, v = new Conv(a, ap, b, bp, transport));
@@ -254,6 +259,9 @@ public final class TsharkAdapter implements Adapter {
                         v.synAckFrom = src;
                     }
                 }
+                if (c[11].contains("_ws.malformed")) {
+                    v.malformed++;                                     // the dissector raised an exception: whatever it named is a guess
+                }
                 String label = leaf(c[11]);
                 if (label != null && (v.labels.size() < 8 || v.labels.containsKey(label))) {
                     v.labels.merge(label, 1, Integer::sum);
@@ -270,9 +278,9 @@ public final class TsharkAdapter implements Adapter {
             String label = v.labels.entrySet().stream().max(Map.Entry.comparingByValue()).map(e -> NAMES.getOrDefault(e.getKey(), e.getKey())).orElse(null);
             out.add(new Findings.Conversation(client, server, serverPort + "/" + v.transport, v.pkts, v.bytes,
                     v.first == Long.MAX_VALUE ? 0 : v.first, v.last == Long.MIN_VALUE ? 0 : v.last, label,
-                    v.fromA && v.fromB && (v.transport.equals("udp") || v.synAckFrom != null || v.pkts >= 4)));
+                    v.fromA && v.fromB && (v.transport.equals("udp") || v.synAckFrom != null || v.pkts >= 4), v.malformed));
         }
-        return new Parsed(out, lines, truncated, facts);
+        return new Parsed(out, lines, truncated, facts, conversationsDropped);
     }
 
     private static final Map<String, String> DHCP_TYPES = Map.of("1", "discover", "2", "offer", "3", "request", "4", "decline", "5", "ack", "6", "nak", "7", "release", "8", "inform");
@@ -339,7 +347,7 @@ public final class TsharkAdapter implements Adapter {
         }
         String[] p = protocols.split(":");
         for (int i = p.length - 1; i >= 0; i--) {
-            if (!GENERIC.contains(p[i]) && p[i].matches("[a-z0-9_.-]{1,32}")) {
+            if (!GENERIC.contains(p[i]) && p[i].matches("[a-z0-9][a-z0-9_.-]{0,31}")) {      // "_ws.malformed" and the like are not protocols
                 return p[i];
             }
         }
