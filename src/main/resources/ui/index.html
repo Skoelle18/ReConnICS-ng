@@ -8,15 +8,58 @@
 <script src="app.js" defer></script>
 </head>
 <body>
-<!-- Full-bleed asset graph; the other screens open as a sheet or side panel over it (#main). -->
-<div id="stage">
-  <svg id="graph" tabindex="0" role="group" aria-label="Asset conversation graph. Each asset is a focusable node; Enter opens its details. Plus and minus zoom, zero fits the graph. The Inventory table lists the same assets and conversations."></svg>
-  <div id="graph-empty" hidden>No assets yet. Use the upload button on the right, or drop a PCAP here, to start the inventory.</div>
-</div>
+<header id="top">
+  <button class="mobile-menu" id="mobile-menu" type="button" aria-label="Open site navigation" aria-expanded="false" aria-controls="tree">☰</button>
+  <a class="brand" href="#/graph" aria-label="ReConnICS home">ReConnICS</a>
+  <nav id="modes" aria-label="Console mode">
+    <a href="#/graph" data-mode="graph">Graph</a>
+    <a href="#/overview" data-mode="inventory">Inventory</a>
+    <a href="#/advisories" data-mode="findings">Findings <b id="mode-review-count"></b></a>
+    <a href="#/captures" data-mode="data">Data</a>
+  </nav>
+  <div id="top-search" role="search">
+    <label class="sr" for="q">Search hosts and conversations</label>
+    <input id="q" type="search" placeholder="Search hosts, or level:exact proto:modbus kev" autocomplete="off">
+    <div id="search-hints" aria-label="Search suggestions">
+      <button type="button" data-query="level:exact">level:exact</button><button type="button" data-query="proto:modbus">proto:modbus</button>
+      <button type="button" data-query="role:plc">role:plc</button><button type="button" data-query="kev">kev</button>
+      <button type="button" data-query="unvalidated">unvalidated</button>
+    </div>
+  </div>
+  <span class="top-spacer"></span>
+  <a class="badge" id="idx-badge" href="#/index">Index</a>
+  <span class="badge local-pill">127.0.0.1 only</span>
+  <button class="btn pri" id="top-upload" type="button">Upload PCAP</button>
+</header>
 
-<section class="panel search" aria-label="Find assets">
+<div id="workspace">
+<aside id="tree" aria-label="Site navigation">
+  <a class="tree-row selected" href="#/overview"><span class="tree-icon">⌂</span><span>Site</span></a>
+  <div class="tree-heading">CAPTURES</div>
+  <a class="tree-row" href="#/captures"><span class="tree-icon">▤</span><span>Captures</span><span class="tree-count" id="tree-capture-count"></span></a>
+  <div class="tree-heading">ASSETS</div>
+  <a class="tree-row" href="#/graph"><span class="tree-icon">◉</span><span>Level 4 · External</span></a>
+  <a class="tree-row" href="#/graph" data-level="3"><span class="tree-icon">◉</span><span>Level 3 · Operations</span></a>
+  <a class="tree-row" href="#/graph" data-level="2"><span class="tree-icon">◉</span><span>Level 2 · Supervisory</span></a>
+  <a class="tree-row" href="#/graph" data-level="1"><span class="tree-icon">◉</span><span>Level 1 · Control</span></a>
+  <a class="tree-row" href="#/graph" data-level="0"><span class="tree-icon">◉</span><span>Level 0 · Process</span></a>
+  <div class="tree-heading">FINDINGS</div>
+  <a class="tree-row" href="#/advisories"><span class="tree-icon">△</span><span>Advisories</span><span class="tree-count" id="tree-advisory-count"></span></a>
+  <a class="tree-row" href="#/review"><span class="tree-icon">✓</span><span>Review queue</span><span class="tree-count" id="tree-review-count"></span></a>
+  <div class="tree-heading">SYSTEM</div>
+  <a class="tree-row" href="#/index"><span class="tree-icon">◫</span><span>Advisory index</span></a>
+  <a class="tree-row" href="#/engines"><span class="tree-icon">▦</span><span>Engines</span></a>
+  <a class="tree-row" href="#/log"><span class="tree-icon">◷</span><span>Change log</span></a>
+  <a class="tree-row" href="/api/v1/export/inventory.csv" download><span class="tree-icon">⇩</span><span>Export</span></a>
+  <button class="tree-row tree-button" id="tree-settings" type="button" aria-expanded="false" aria-controls="pop-settings"><span class="tree-icon">⚙</span><span>Settings</span></button>
+</aside>
+<div id="stage">
+  <svg id="graph" tabindex="0" role="group" aria-label="Asset conversation graph. Each asset is a focusable node; Enter opens its details. Plus and minus zoom, zero fits the graph."></svg>
+  <div id="graph-chips" aria-label="Protocol filters"></div>
+  <div id="graph-layout" aria-label="Graph display options"></div>
+  <div id="graph-empty" hidden>No assets yet. Upload a PCAP or drop one here to start the inventory.</div>
+  <section class="panel search" aria-label="Pathfinding">
   <div class="row-s">
-    <button class="ib" id="menu-btn" aria-label="Menu: all screens" title="Menu" aria-expanded="false" aria-controls="nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
     <input id="start" list="asset-list" placeholder="Start Node" aria-label="Start node: IP, name, vendor or model" autocomplete="off">
     <button class="ib" id="btn-route" aria-label="Pathfinding row" title="Pathfinding" aria-expanded="true" aria-controls="row-target"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h6a3 3 0 0 0 0-6h-4a3 3 0 0 1 0-6h6"/></svg></button>
     <button class="ib" id="btn-back" aria-label="Back: clear selection and path" title="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5l-9 7 9 7zM6 5v14"/></svg></button>
@@ -40,6 +83,7 @@
   </nav>
   <div id="pop-filter" class="pop" hidden></div>
 </section>
+</div>
 <datalist id="asset-list"></datalist>
 <div id="banner"></div>
 
@@ -54,6 +98,9 @@
   <button class="ib" id="tb-settings" aria-label="Settings: your name and role" title="Settings" aria-expanded="false" aria-controls="pop-settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg></button>
   <button class="ib" id="tb-info" aria-label="Legend and index status" title="Info" aria-expanded="false" aria-controls="pop-info"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg></button>
 </div>
+<button id="menu-btn" hidden aria-expanded="false" aria-controls="nav">Menu</button>
+<button id="rawq-btn" hidden aria-expanded="false" aria-controls="rawq-body">Raw Query</button>
+<div id="rawq-body" hidden></div>
 <div id="pop-export" class="pop side-pop" hidden>
   <a class="btn sm" href="/api/v1/export/inventory.csv" download="inventory.csv">inventory.csv</a>
   <a class="btn sm" href="/api/v1/export/inventory.json" download="inventory.json">inventory.json</a>
@@ -74,21 +121,8 @@
   <button class="ib" id="z-out" aria-label="Zoom out" title="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
 </div>
 
-<div class="rawq" id="rawq">
-  <div id="rawq-body" class="panel" hidden>
-    <label for="q" class="sr">Filter assets</label>
-    <input id="q" type="search" placeholder="Search IP, MAC, hostname, vendor, model" autocomplete="off">
-    <div class="muted small">Words must all match. Filters: <span class="mono">level:exact</span> <span class="mono">proto:modbus</span> <span class="mono">role:plc</span> <span class="mono">pcap:cell1</span> <span class="mono">capture:c0001</span> <span class="mono">kev</span> <span class="mono">unvalidated</span>. <span class="mono">pcap:</span> matches the uploaded file name. Non-matching assets are dimmed on the graph.</div>
-  </div>
-  <button id="rawq-btn" aria-expanded="false" aria-controls="rawq-body">Raw Query</button>
-</div>
-
-<div class="status" aria-label="Status">
-  <a class="badge" id="idx-badge" href="#/index">Index</a>
-  <span class="badge lv-NONE">127.0.0.1 only</span>
-</div>
-
 <main id="main" class="sheet" tabindex="-1" hidden></main>
 <div id="toast" role="status" aria-live="polite"></div>
+</div>
 </body>
 </html>

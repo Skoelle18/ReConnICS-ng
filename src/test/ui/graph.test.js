@@ -228,6 +228,21 @@ test('graph', async (t) => {
     } finally { app.close(); }
   });
 
+  await t.test('path selection can use two clicked graph nodes', async () => {
+    const app = await richApp();
+    try {
+      app.$('#btn-route').click();
+      assert.equal(app.$('#btn-route').getAttribute('aria-pressed'), 'true');
+      node(app, '10.0.1.50').dispatchEvent(new app.window.MouseEvent('click', { bubbles: true }));
+      assert.equal(app.get('S.pathStart'), '10.0.1.50');
+      node(app, '10.0.1.40').dispatchEvent(new app.window.MouseEvent('click', { bubbles: true }));
+      assert.ok(app.get('S.path'), 'a path selection is stored');
+      assert.deepEqual([...app.get('S.path.nodes')], ['10.0.1.50', '10.0.1.40']);
+      assert.equal(app.get('S.pathPick'), false);
+      assert.equal(app.$('#btn-route').getAttribute('aria-pressed'), 'false');
+    } finally { app.close(); }
+  });
+
   await t.test('colour by advisory risk recolours the nodes', async () => {
     const app = await loadApp({ routes: defaultRoutes(), hash: '#/graph' });
     try {

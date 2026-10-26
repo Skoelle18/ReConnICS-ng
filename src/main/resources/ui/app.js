@@ -32,8 +32,8 @@ const SITE_DEFAULTS = { lifecycle: 'In service' };
 
 const S = { engines: null, inv: null, rank: [], site: {}, flows: [], caps: [], changes: [], index: null, search: '', level: 'ALL', kevOnly: false, unvalOnly: false,
   openCap: null, openAdv: null, tab: 'attrs', editing: false, staged: null,
-  color: 'role', showAdv: true, layout: 'force', path: null,
-  hideUnknown: false, hideScans: true, hideSeenOnly: false, showGroups: false, groups: [], macs: [], images: [], imageSummary: {}, protoOff: new Set(),
+  color: 'role', showAdv: true, layout: 'force', path: null, pathPick: false, pathStart: null,
+  hideUnknown: false, hideScans: true, hideSeenOnly: false, hideDecommissioned: true, showGroups: false, groups: [], macs: [], images: [], imageSummary: {}, protoOff: new Set(),
   capAssets: {}, assetCaps: new Map(), capOff: new Set() };
 
 // ------------------------------------------------------------------ helpers
@@ -221,15 +221,25 @@ async function loadAll() {
 
 function chrome(route) {
   document.querySelectorAll('[data-nav]').forEach((n) => n.classList.toggle('on', n.dataset.nav === route || ((route === 'asset' || route === 'edge' || route === 'group') && n.dataset.nav === 'graph')));
+  const mode = route === 'overview' || route === 'ethernet' ? 'inventory' : route === 'advisories' || route === 'review' ? 'findings'
+    : ['captures', 'index', 'engines', 'log'].includes(route) ? 'data' : 'graph';
+  document.querySelectorAll('#modes [data-mode]').forEach((n) => n.classList.toggle('on', n.dataset.mode === mode));
   const active = S.caps.filter((c) => c.state === 'queued' || c.state === 'running').length;
   $('n-queue').textContent = active || '';
   $('n-review').textContent = reviewCount() || '';
   $('n-adv').textContent = advisoryRows().length || '';
+  $('mode-review-count').textContent = reviewCount() || '';
+  $('tree-capture-count').textContent = S.caps.length || '';
+  $('tree-advisory-count').textContent = advisoryRows().length || '';
+  $('tree-review-count').textContent = reviewCount() || '';
+  document.querySelectorAll('#tree .tree-row[href]').forEach((n) => n.classList.toggle('selected', n.getAttribute('href') === location.hash ||
+    (route === 'asset' || route === 'edge' || route === 'group') && n.getAttribute('href') === '#/graph'));
   $('tb-queue').textContent = active || '';
   $('tb-review-n').textContent = reviewCount() || '';
   $('asset-list').replaceChildren(...S.rank.map(byId).filter(Boolean).slice(0, 500).map((a) => h('option', { value: a.id }, nameOf(a))));
   filterPanel();
   legendPanel();
+  graphControls();
   const ix = S.index || {};
   const badge = $('idx-badge');
   badge.className = 'badge ' + (!ix.verified ? 'bad' : ix.warning ? 'warn' : 'ok');
@@ -245,11 +255,13 @@ function chrome(route) {
  * it holds, whether it is hidden now, and a button to flip it (docs/data-contract.md, "Hidden by default").
  */
 const isSeenOnly = (a) => !!a.seenOnly;
+const isDecommissioned = (a) => String(siteOf(a).lifecycle || '').toLowerCase() === 'decommissioned';
 function hiddenClasses() {
   return [
     { label: 'Broadcast / multicast addresses', n: S.groups.length, hidden: !S.showGroups, flip: () => { S.showGroups = !S.showGroups; relayoutSoon(); } },
     { label: 'Scan-only conversations', n: S.flows.filter(isScan).length, hidden: S.hideScans, flip: () => { S.hideScans = !S.hideScans; } },
     { label: 'Seen-only hosts (low confidence)', n: assets().filter(isSeenOnly).length, hidden: S.hideSeenOnly, flip: () => { S.hideSeenOnly = !S.hideSeenOnly; } },
+    { label: 'Decommissioned hosts', n: assets().filter(isDecommissioned).length, hidden: S.hideDecommissioned, flip: () => { S.hideDecommissioned = !S.hideDecommissioned; } },
     { label: 'Unknown-protocol conversations', n: S.flows.filter((f) => protoKey(f.protocol) === 'unknown' && !isScan(f)).length, hidden: S.hideUnknown, flip: () => { S.hideUnknown = !S.hideUnknown; } },
   ];
 }
@@ -278,6 +290,18 @@ function filterPanel() {
     h('div', { class: 'muted small' }, 'Filters dim the non-matching assets and conversations on the graph. Capture buttons hide or show everything that capture contributed.'));
   if (had >= 0) p.querySelectorAll('button')[had].focus();
 }
+/** Compact always-visible graph chips from the console reference; detailed facets stay in the filter popover. */
+function graphControls() {
+  const chips = $('graph-chips'), layout = $('graph-layout');
+  const toggle = (label, on, fn, color) => h('button', { class: 'chip graph-chip' + (on ? ' on' : ''), 'aria-pressed': String(on),
+    style: color ? { '--chip-color': color } : null, onclick: () => { fn(); render(); } }, label);
+  chips.replaceChildren(...Object.keys(PROTO_COLOR).map((p) => toggle(protoName(p), !S.protoOff.has(p), () => {
+    if (S.protoOff.has(p)) S.protoOff.delete(p); else S.protoOff.add(p);
+  }, PROTO_COLOR[p])));
+  layout.replaceChildren(toggle('KEV only', S.kevOnly, () => { S.kevOnly = !S.kevOnly; }),
+    toggle('Force', S.layout === 'force', () => { S.layout = 'force'; relayoutSoon(); }),
+    toggle('Purdue', S.layout === 'purdue', () => { S.layout = 'purdue'; relayoutSoon(); }));
+}
 const relayoutSoon = () => { GR.pos.clear(); GR.sig = ''; GR.fitted = false; };
 const doneCaps = () => S.caps.filter((c) => c.state === 'done');
 function toggleCapture(id) { if (S.capOff.has(id)) S.capOff.delete(id); else S.capOff.add(id); }
@@ -292,8 +316,8 @@ function focusCapture(id) {
 /** Clear every view filter and selection; captures, edits and the change log stay untouched. */
 function resetView() {
   S.search = ''; S.level = 'ALL'; S.kevOnly = false; S.unvalOnly = false;
-  S.hideUnknown = false; S.hideScans = true; S.hideSeenOnly = false; S.showGroups = false; S.protoOff = new Set(); S.capOff = new Set();
-  S.color = 'role'; S.showAdv = true; S.layout = 'force'; S.path = null; S.openCap = null; S.openAdv = null;
+  S.hideUnknown = false; S.hideScans = true; S.hideSeenOnly = false; S.hideDecommissioned = true; S.showGroups = false; S.protoOff = new Set(); S.capOff = new Set();
+  S.color = 'role'; S.showAdv = true; S.layout = 'force'; S.path = null; S.pathPick = false; S.pathStart = null; S.openCap = null; S.openAdv = null;
   $('q').value = ''; $('start').value = ''; $('target').value = '';
   lastRoute = '';
   if (location.hash && location.hash !== '#/graph') location.hash = '#/graph';
@@ -875,7 +899,7 @@ function flowLabel(f) {
 }
 
 function graphModel() {
-  const all = assets().filter((a) => assetVisible(a) && !(S.hideSeenOnly && isSeenOnly(a))), nodes = all.map((a) => ({ id: a.id, a })), edges = [];
+  const all = assets().filter((a) => assetVisible(a) && !(S.hideSeenOnly && isSeenOnly(a)) && !(S.hideDecommissioned && isDecommissioned(a))), nodes = all.map((a) => ({ id: a.id, a })), edges = [];
   const groupAt = new Map(S.groups.map((g) => [g.address, g]));       // broadcast / multicast destinations: drawn as grey nodes only when asked for
   const ipOf = (a) => str(val(a, 'ip')) || a.id.split('/')[0];
   const owner = new Map();                                              // IP -> the asset that owns it (a unit/slot only when nothing else does)
@@ -1074,6 +1098,21 @@ function pickNode(id) {
   if (id.startsWith('grp:')) location.hash = '#/group/' + encodeURIComponent(id.slice(4));
   else if (id.startsWith('adv:')) { S.openAdv = id.slice(4); location.hash = '#/advisories'; } else location.hash = '#/asset/' + encodeURIComponent(id);
 }
+function clickPathNode(id) {
+  if (!S.pathPick) { pickNode(id); return; }
+  if (id.startsWith('grp:') || id.startsWith('adv:')) { toast('Choose two asset nodes for a path'); return; }
+  if (!S.pathStart) {
+    S.pathStart = id; $('start').value = id; $('target').value = '';
+    toast('Start selected: ' + id + '. Choose a target asset.'); return;
+  }
+  const start = S.pathStart; S.pathStart = null; S.pathPick = false;
+  $('btn-route').setAttribute('aria-pressed', 'false');
+  $('start').value = start; $('target').value = id;
+  S.path = findPath(start, id);
+  if (!S.path) toast('No observed conversation path from ' + start + ' to ' + id);
+  else toast('Path of ' + S.path.edges.length + (S.path.edges.length === 1 ? ' hop' : ' hops') + ' highlighted');
+  if (location.hash !== '#/graph') location.hash = '#/graph'; else render();
+}
 
 function drawGraph() {
   const svg = $('graph'), model = graphModel(), { nodes, edges } = model;
@@ -1118,8 +1157,8 @@ function drawGraph() {
     const a = n.a, dim = !on.has(n.id), kev = a ? !!(a.match && a.match.kevAtModel) : !!(n.adv && n.adv.kev);
     const name = n.adv ? n.adv.id : n.g ? n.g.address : nameOf(a), short = name.length > 22 ? name.slice(0, 21) + '…' : name;
     const g = sv('g', { class: 'node' + (dim ? ' dim' : '') + (n.id === sel ? ' sel' : '') + (n.adv ? ' adv' : '') + (n.g ? ' grp' : '') + (a && isSeenOnly(a) ? ' seen' : ''), tabindex: '0', role: 'button', 'data-id': n.id, 'aria-label': nodeLabel(n),
-      onclick: () => { if (GR.moved) { GR.moved = false; return; } pickNode(n.id); },
-      onkeydown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); pickNode(n.id); } },
+      onclick: () => { if (GR.moved) { GR.moved = false; return; } clickPathNode(n.id); },
+      onkeydown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); clickPathNode(n.id); } },
       onpointerdown: (ev) => { if (ev.button) return; GR.moved = false; GR.drag = { id: n.id, x: ev.clientX, y: ev.clientY }; ev.stopPropagation(); } },
     sv('title', {}, nodeLabel(n)),
     kev && !n.adv ? sv('circle', { class: 'ring-kev', r: NODE_R + 5 }) : null,
@@ -1221,7 +1260,7 @@ function render() {
   main.hidden = !open;
   main.className = side ? 'panel' : 'sheet';
   $('stage').toggleAttribute('inert', open && !side);                         // a sheet covers the graph; the side panel does not
-  main.replaceChildren(...(open ? [side ? null : h('a', { class: 'close', href: '#/graph', 'aria-label': 'Close and return to the graph', title: 'Close' }, '×'),
+  main.replaceChildren(...(open ? [h('a', { class: 'close', href: '#/graph', 'aria-label': 'Close and return to the graph', title: 'Close' }, '×'),
     ...[].concat((screens[r.name] || overview)()).flat(Infinity)] : []).filter(Boolean));
   drawGraph();
 }
@@ -1252,16 +1291,51 @@ async function refresh(background) {
 
 /** Search panel, toolbar and popovers: one popover open at a time, Escape closes it (or the sheet). */
 function initChrome() {
-  const pops = [['menu-btn', 'nav'], ['btn-filter', 'pop-filter'], ['tb-export', 'pop-export'], ['tb-settings', 'pop-settings'], ['tb-info', 'pop-info']];
+  const pops = [['btn-filter', 'pop-filter'], ['tb-export', 'pop-export'], ['tb-settings', 'pop-settings'], ['tb-info', 'pop-info']];
   const closeAll = (except) => pops.forEach(([b, p]) => { if (p !== except) { $(p).hidden = true; $(b).setAttribute('aria-expanded', 'false'); } });
   pops.forEach(([b, p]) => $(b).addEventListener('click', () => { const open = $(p).hidden; closeAll(p); $(p).hidden = !open; $(b).setAttribute('aria-expanded', String(open)); }));
-  $('nav').addEventListener('click', () => closeAll());
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    if (pops.some(([, p]) => !$(p).hidden)) closeAll(); else if (route().name !== 'graph') location.hash = '#/graph';
+    if ($('tree').classList.contains('mobile-open')) { $('tree').classList.remove('mobile-open'); $('mobile-menu').setAttribute('aria-expanded', 'false'); return; }
+    if (pops.some(([, p]) => !$(p).hidden)) closeAll();
+    else if (S.pathPick) { S.pathPick = false; S.pathStart = null; $('btn-route').setAttribute('aria-pressed', 'false'); toast('Graph path selection cancelled'); }
+    else if (route().name !== 'graph') location.hash = '#/graph';
   });
-  $('rawq-btn').addEventListener('click', () => { const open = $('rawq-body').hidden; $('rawq-body').hidden = !open; $('rawq-btn').setAttribute('aria-expanded', String(open)); if (open) $('q').focus(); });
-  $('btn-route').addEventListener('click', () => { const open = $('row-target').hidden; $('row-target').hidden = !open; $('btn-route').setAttribute('aria-expanded', String(open)); });
+  $('btn-route').addEventListener('click', () => {
+    S.pathPick = !S.pathPick; S.pathStart = null;
+    $('btn-route').setAttribute('aria-pressed', String(S.pathPick));
+    toast(S.pathPick ? 'Choose a start and target asset on the graph' : 'Graph path selection cancelled');
+  });
+  $('btn-route').title = 'Click two graph assets to find their shortest path';
+  $('btn-route').setAttribute('aria-label', 'Click two graph assets to find their shortest path');
+  $('btn-route').setAttribute('aria-pressed', 'false');
+  $('top-upload').addEventListener('click', () => $('import-pick').click());
+  $('mobile-menu').addEventListener('click', () => {
+    const open = !$('tree').classList.contains('mobile-open');
+    $('tree').classList.toggle('mobile-open', open);
+    $('mobile-menu').setAttribute('aria-expanded', String(open));
+  });
+  $('tree').addEventListener('click', (e) => {
+    if (e.target.closest('a[href]') && $('tree').classList.contains('mobile-open')) {
+      $('tree').classList.remove('mobile-open'); $('mobile-menu').setAttribute('aria-expanded', 'false');
+    }
+  });
+  $('tree-settings').addEventListener('click', () => {
+    const open = $('pop-settings').hidden;
+    closeAll(open ? 'pop-settings' : null);
+    $('pop-settings').hidden = !open;
+    $('tree-settings').setAttribute('aria-expanded', String(open));
+    if (open) $('actor').focus();
+  });
+  $('search-hints').addEventListener('click', (e) => {
+    const term = e.target.closest('[data-query]')?.dataset.query;
+    if (!term) return;
+    $('q').value = S.search = (S.search.trim() + ' ' + term).trim() + ' ';
+    $('q').focus(); render();
+  });
+  document.querySelectorAll('#tree [data-level]').forEach((n) => n.addEventListener('click', (e) => {
+    e.preventDefault(); S.level = n.dataset.level; if (location.hash !== '#/graph') location.hash = '#/graph'; else render();
+  }));
   $('tb-refresh').addEventListener('click', () => refresh());
   $('tb-import').addEventListener('click', () => $('import-pick').click());
   $('import-pick').addEventListener('change', (e) => { upload([...e.target.files]); e.target.value = ''; });
@@ -1283,6 +1357,7 @@ function initChrome() {
   const go = () => {
     const a = pick($('start').value), b = pick($('target').value);
     if (!a || !b) { toast('Pick a start and a target asset first'); return; }
+    S.pathPick = false; S.pathStart = null; $('btn-route').setAttribute('aria-pressed', 'false');
     S.path = findPath(a.id, b.id);
     if (!S.path) toast('No observed conversation path from ' + nameOf(a) + ' to ' + nameOf(b));
     else toast('Path of ' + S.path.edges.length + (S.path.edges.length === 1 ? ' hop' : ' hops') + ' highlighted');
@@ -1290,7 +1365,7 @@ function initChrome() {
   };
   $('btn-go').addEventListener('click', go);
   $('target').addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
-  $('btn-back').addEventListener('click', () => { S.path = null; $('start').value = ''; $('target').value = ''; if (location.hash !== '#/graph') location.hash = '#/graph'; else render(); });
+  $('btn-back').addEventListener('click', () => { S.path = null; S.pathStart = null; S.pathPick = false; $('btn-route').setAttribute('aria-pressed', 'false'); $('start').value = ''; $('target').value = ''; if (location.hash !== '#/graph') location.hash = '#/graph'; else render(); });
 }
 
 function init() {

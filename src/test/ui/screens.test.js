@@ -6,17 +6,26 @@ const assert = require('node:assert/strict');
 const { loadApp, settle } = require('./support/load-app');
 const { defaultRoutes, exampleInventory, field } = require('./support/fixtures');
 
-test('the graph replaces the row-based asset inventory', async (t) => {
-  await t.test('there is no inventory table: #/inventory opens the graph, and nothing offers a table view', async () => {
+test('reference console shell and navigation', async (t) => {
+  await t.test('the graph opens inside the persistent three-pane console shell', async () => {
     const app = await loadApp({ routes: defaultRoutes(), hash: '#/inventory' });
     try {
       assert.equal(app.get('route()').name, 'graph', 'an old bookmark lands on the graph');
       assert.equal(app.$('#main').hidden, true);
-      assert.equal(app.$$('.trow.g-inv, .trow.g-flow').length, 0);
-      assert.equal(app.$('[data-nav="inventory"]'), null, 'no menu entry');
-      assert.equal(app.$('#tb-table'), null, 'no toolbar button');
+      assert.ok(app.$('#top'), 'top bar');
+      assert.ok(app.$('#tree'), 'persistent site tree');
+      assert.ok(app.$('#stage'), 'graph stage');
+      assert.ok(app.$('#modes [data-mode="inventory"]'), 'inventory mode is available');
+      assert.ok(app.$('#modes [data-mode="findings"]'), 'findings mode is available');
+      assert.ok(app.$('#modes [data-mode="data"]'), 'data mode is available');
+      assert.equal(app.$('#modes [data-mode="graph"]').classList.contains('on'), true);
       assert.equal(app.$$('#graph .node').filter((n) => !n.classList.contains('adv')).length, 10, 'every asset is a node');
-      assert.doesNotMatch(app.document.body.innerHTML, /href="#\/inventory"/, 'no link anywhere points at the removed screen');
+      assert.ok(app.$('#top-search input#q'));
+      assert.ok(app.$('#top-upload'));
+      app.$('#mobile-menu').click();
+      assert.ok(app.$('#tree').classList.contains('mobile-open'));
+      app.document.dispatchEvent(new app.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      assert.equal(app.$('#tree').classList.contains('mobile-open'), false);
     } finally { app.close(); }
   });
 
@@ -48,6 +57,41 @@ test('the graph replaces the row-based asset inventory', async (t) => {
     const app = await loadApp({ routes, hash: '#/overview' });
     try {
       assert.match(app.text(), /No assets yet\. Queue a capture/);
+    } finally { app.close(); }
+  });
+});
+
+test('graph controls and inspector', async (t) => {
+  await t.test('always-visible protocol and layout chips complement the counted filter panel', async () => {
+    const inv = exampleInventory();
+    const id = inv.assets[0].id;
+    const app = await loadApp({ routes: defaultRoutes({ inventory: inv, site: { [id]: { lifecycle: 'Decommissioned' } } }) });
+    try {
+      assert.deepEqual(app.$$('#graph-chips button').map((b) => b.textContent), ['Modbus', 'DNP3', 'ENIP', 'S7', 'SNMP', 'ICMP', 'Unknown']);
+      assert.deepEqual(app.$$('#graph-layout button').map((b) => b.textContent), ['KEV only', 'Force', 'Purdue']);
+      app.$('#btn-filter').click();
+      await settle();
+      assert.match(app.text('#hidden-facet'), /Decommissioned hosts: 1.*hidden, kept in the inventory/);
+      const show = app.$$('#hidden-facet .row').find((r) => /Decommissioned hosts/.test(r.textContent)).querySelector('button');
+      assert.ok(show);
+      show.click(); await settle();
+      assert.equal(app.get('S.hideDecommissioned'), false);
+      assert.ok(app.$$('#graph .node').some((n) => n.dataset.id === id));
+    } finally { app.close(); }
+  });
+
+  await t.test('asset details open as a docked, accessible inspector', async () => {
+    const app = await loadApp({ routes: defaultRoutes(), hash: '#/asset/10.0.1.40' });
+    try {
+      assert.equal(app.$('#main').className, 'panel');
+      assert.equal(app.$('#main').parentElement.id, 'workspace');
+      assert.equal(app.$('#main .close').getAttribute('aria-label'), 'Close and return to the graph');
+      assert.match(app.text('#main'), /CISA high-priority attributes/);
+      assert.match(app.text('#main'), /Confidence/);
+      assert.match(app.text('#main'), /Site fields/);
+      assert.ok(app.$$('#main button.tab').some((b) => /^Conversations/.test(b.textContent)));
+      const validate = app.$$('#main button').find((b) => /Mark validated/.test(b.textContent));
+      assert.equal(validate.disabled, true, 'a collector cannot validate');
     } finally { app.close(); }
   });
 });
