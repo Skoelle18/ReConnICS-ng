@@ -14,7 +14,7 @@ const UI_DIR = path.resolve(__dirname, '../../../main/resources/ui');
  *   hash     - starting page, e.g. '#/inventory'
  *   storage  - localStorage values, e.g. { actor: 'Vineeth', role: 'validator' }
  */
-async function loadApp({ routes = {}, hash = '#/overview', storage = {} } = {}) {
+async function loadApp({ routes = {}, hash = '#/overview', storage = {}, allowLoadError = false } = {}) {
   const html = fs.readFileSync(path.join(UI_DIR, 'index.html'), 'utf8');
   const appJs = fs.readFileSync(path.join(UI_DIR, 'app.js'), 'utf8');
 
@@ -61,7 +61,7 @@ async function loadApp({ routes = {}, hash = '#/overview', storage = {} } = {}) 
     close: () => dom.window.close(),
   };
 
-  await waitFor(() => app.get('S').inv !== null, 'the console never loaded its data');
+  await waitFor(() => app.get('S').inv !== null || allowLoadError && !app.$('#load-error').hidden, 'the console never loaded its data');
   await settle();
   return app;
 }

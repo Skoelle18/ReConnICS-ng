@@ -57,7 +57,7 @@
   <svg id="graph" tabindex="0" role="group" aria-label="Asset conversation graph. Each asset is a focusable node; Enter opens its details. Plus and minus zoom, zero fits the graph."></svg>
   <div id="graph-chips" aria-label="Protocol filters"></div>
   <div id="graph-layout" aria-label="Graph display options"></div>
-  <div id="graph-empty" hidden>No assets yet. Upload a PCAP or drop one here to start the inventory.</div>
+  <div id="graph-empty" role="status" aria-live="polite" hidden><span id="graph-empty-text"></span><button class="btn sm" id="graph-reset" type="button">Reset filters</button></div>
   <section class="panel search" aria-label="Pathfinding">
   <div class="row-s">
     <input id="start" list="asset-list" placeholder="Start Node" aria-label="Start node: IP, name, vendor or model" autocomplete="off">
@@ -75,6 +75,7 @@
 </div>
 <datalist id="asset-list"></datalist>
 <div id="banner"></div>
+<div id="load-error" role="alert" aria-live="assertive" hidden><div class="strong">Console data could not be loaded</div><div id="load-error-text"></div><button class="btn pri" id="retry-load" type="button">Retry</button></div>
 
 <div class="toolbar" role="toolbar" aria-label="Tools" aria-orientation="vertical">
   <button class="ib" id="tb-refresh" aria-label="Refresh now" title="Refresh"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>

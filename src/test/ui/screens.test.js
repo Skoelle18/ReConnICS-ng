@@ -34,6 +34,24 @@ test('reference console shell and navigation', async (t) => {
     } finally { app.close(); }
   });
 
+  await t.test('slash search, tree arrows, escape, and filter state have keyboard and ARIA feedback', async () => {
+    const app = await loadApp({ routes: defaultRoutes() });
+    try {
+      app.document.body.dispatchEvent(new app.window.KeyboardEvent('keydown', { key: '/', bubbles: true }));
+      assert.equal(app.document.activeElement, app.$('#q'));
+      const rows = app.$$('#tree .tree-row'); rows[0].focus();
+      rows[0].dispatchEvent(new app.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      assert.equal(app.document.activeElement, rows[1]);
+      app.$('#btn-filter').click();
+      assert.equal(app.$('#btn-filter').getAttribute('aria-expanded'), 'true');
+      app.document.dispatchEvent(new app.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      assert.equal(app.$('#pop-filter').hidden, true);
+      assert.equal(app.$('#btn-filter').getAttribute('aria-expanded'), 'false');
+      const level = app.$('#tree [data-level="2"]'); level.click(); await settle();
+      assert.equal(level.getAttribute('aria-current'), 'page');
+    } finally { app.close(); }
+  });
+
   await t.test('Purdue tree filters are independent of advisory match levels', async () => {
     const app = await loadApp({ routes: defaultRoutes() });
     try {
@@ -438,4 +456,39 @@ test('Settings updates the actor and role used by later API writes', async () =>
     assert.match(app.text('#toast'), /New Validator \(validator\)/);
     assert.equal(app.calls.some((c) => c.method !== 'GET'), false, 'preferences are browser-local; writes follow on later actions');
   } finally { app.close(); }
+});
+
+test('graph empty and first-load error states offer the right recovery action', async (t) => {
+  await t.test('an empty graph offers capture upload; an active filter offers Reset filters', async () => {
+    const routes = defaultRoutes();
+    routes['GET inventory'].inventory.assets = [];
+    routes['GET inventory'].rank = [];
+    const app = await loadApp({ routes, hash: '#/graph' });
+    try {
+      assert.match(app.text('#graph-empty-text'), /No assets yet/);
+      assert.equal(app.$('#graph-reset').hidden, true);
+    } finally { app.close(); }
+    const filtered = await loadApp({ routes: defaultRoutes(), hash: '#/graph' });
+    try {
+      filtered.$('#q').value = 'zz-no-match';
+      filtered.$('#q').dispatchEvent(new filtered.window.Event('input', { bubbles: true }));
+      assert.match(filtered.text('#graph-empty-text'), /No assets match/);
+      assert.equal(filtered.$('#graph-reset').hidden, false);
+    } finally { filtered.close(); }
+  });
+
+  await t.test('a failed first load shows an error and retries into the console', async () => {
+    const routes = {};
+    const app = await loadApp({ routes, hash: '#/graph', allowLoadError: true });
+    try {
+      assert.equal(app.$('#load-error').hidden, false);
+      assert.match(app.text('#load-error'), /no fake route/);
+      Object.assign(routes, defaultRoutes());
+      app.$('#retry-load').click();
+      await waitFor(() => app.get('S').inv !== null);
+      await settle();
+      assert.equal(app.$('#load-error').hidden, true);
+      assert.equal(app.$('#main').hidden, true);
+    } finally { app.close(); }
+  });
 });

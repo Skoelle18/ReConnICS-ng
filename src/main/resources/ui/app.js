@@ -224,15 +224,26 @@ async function loadAll() {
 function chrome(route) {
   const mode = route === 'overview' || route === 'inventory' || route === 'ethernet' ? 'inventory' : ['advisories', 'review', 'findings'].includes(route) ? 'findings'
     : ['captures', 'index', 'engines', 'log', 'data', 'export', 'settings'].includes(route) ? 'data' : 'graph';
-  document.querySelectorAll('#modes [data-mode]').forEach((n) => n.classList.toggle('on', n.dataset.mode === mode));
+  document.querySelectorAll('#modes [data-mode]').forEach((n) => {
+    const active = n.dataset.mode === mode;
+    n.classList.toggle('on', active);
+    if (active) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current');
+  });
   const active = S.caps.filter((c) => c.state === 'queued' || c.state === 'running').length;
   $('mode-review-count').textContent = reviewCount() || '';
   $('tree-capture-count').textContent = S.caps.length || '';
   $('tree-advisory-count').textContent = advisoryRows().length || '';
   $('tree-review-count').textContent = reviewCount() || '';
-  document.querySelectorAll('#tree .tree-row[href]:not([data-level])').forEach((n) => n.classList.toggle('selected', n.getAttribute('href') === location.hash ||
-    (route === 'asset' || route === 'edge' || route === 'group') && n.getAttribute('href') === '#/graph'));
-  document.querySelectorAll('#tree .tree-row[data-level]').forEach((n) => n.classList.toggle('selected', S.purdueFilter === n.dataset.level));
+  document.querySelectorAll('#tree .tree-row[href]:not([data-level])').forEach((n) => {
+    const selected = n.getAttribute('href') === location.hash || (route === 'asset' || route === 'edge' || route === 'group') && n.getAttribute('href') === '#/graph';
+    n.classList.toggle('selected', selected);
+    if (selected) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current');
+  });
+  document.querySelectorAll('#tree .tree-row[data-level]').forEach((n) => {
+    const selected = S.purdueFilter === n.dataset.level;
+    n.classList.toggle('selected', selected);
+    if (selected) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current');
+  });
   $('tb-queue').textContent = active || '';
   $('tb-review-n').textContent = reviewCount() || '';
   $('asset-list').replaceChildren(...S.rank.map(byId).filter(Boolean).slice(0, 500).map((a) => h('option', { value: a.id }, nameOf(a))));
@@ -817,7 +828,7 @@ function attrsCard(a, site, role) {
       onclick: () => save(a, { validated: !isValidated(a) }) }, isValidated(a) ? 'Remove validation' : 'Mark validated')));
   if (S.editing) return h('div', { class: 'card' }, head, editForm(a, site));
   return h('div', { class: 'card' }, head,
-    role !== 'validator' ? h('div', { class: 'small muted strip-note' }, 'Only a validator can mark an asset validated. Change Role in Settings (the sliders button).') : null,
+    role !== 'validator' ? h('div', { class: 'small muted strip-note' }, 'Only a validator can mark an asset validated. Change your role in Settings.') : null,
     h('div', { class: 'scroll' },
       h('div', { class: 'g-attr thead' }, ['Attribute', 'Value', 'Confidence', 'Evidence / how to fill'].map((t) => h('span', {}, t))),
       ATTRS.concat(ATTRS_EXTRA).filter(([k]) => k !== 'alerts' || a.alerts).map(([k, label, by]) => {
@@ -914,8 +925,8 @@ function findings() {
   const tab = route().name === 'review' ? 'review' : route().name === 'advisories' ? 'advisories' : S.findingsTab;
   S.findingsTab = tab;
   return [h('nav', { class: 'screen-tabs', 'aria-label': 'Findings sections' },
-      h('a', { href: '#/findings', class: tab === 'advisories' ? 'selected' : '', onclick: (e) => { e.preventDefault(); S.findingsTab = 'advisories'; render(); } }, 'Advisories'),
-      h('a', { href: '#/findings', class: tab === 'review' ? 'selected' : '', onclick: (e) => { e.preventDefault(); S.findingsTab = 'review'; render(); } }, 'Review queue')),
+      h('a', { href: '#/findings', class: tab === 'advisories' ? 'selected' : '', 'aria-current': tab === 'advisories' ? 'page' : null, onclick: (e) => { e.preventDefault(); S.findingsTab = 'advisories'; render(); } }, 'Advisories'),
+      h('a', { href: '#/findings', class: tab === 'review' ? 'selected' : '', 'aria-current': tab === 'review' ? 'page' : null, onclick: (e) => { e.preventDefault(); S.findingsTab = 'review'; render(); } }, 'Review queue')),
     ...(tab === 'review' ? review() : advisories())];
 }
 
@@ -1012,7 +1023,7 @@ function dataScreen() {
   S.dataTab = selected;
   const sections = [['captures', 'Captures'], ['index', 'Advisory index'], ['engines', 'Engines'], ['log', 'Change log'], ['export', 'Export']];
   const screen = { captures, index: indexScreen, engines, log, export: exportScreen }[selected] || captures;
-  return [h('nav', { class: 'screen-tabs', 'aria-label': 'Data sections' }, ...sections.map(([key, label]) => h('a', { href: '#/' + key, class: selected === key ? 'selected' : '' }, label))), ...screen()];
+  return [h('nav', { class: 'screen-tabs', 'aria-label': 'Data sections' }, ...sections.map(([key, label]) => h('a', { href: '#/' + key, class: selected === key ? 'selected' : '', 'aria-current': selected === key ? 'page' : null }, label))), ...screen()];
 }
 
 function log() {
@@ -1277,7 +1288,14 @@ function drawGraph() {
   const sig = nodes.map((n) => n.id).join(',') + '|' + edges.map((e) => e.id).join(',');
   if (sig !== GR.sig) { const first = GR.sig === ''; GR.sig = sig; layoutGraph(model, !first && GR.pos.size > 0); }
   if (!GR.fitted) fitView();
-  $('graph-empty').hidden = nodes.length > 0;
+  const empty = $('graph-empty'), count = assets().length, matching = assets().filter(matches).length;
+  const noMatch = count > 0 && matching === 0;
+  empty.hidden = nodes.length > 0 && !noMatch;
+  if (!empty.hidden) {
+    $('graph-empty-text').textContent = !count ? 'No assets yet. Upload a PCAP or drop one here to start the inventory.'
+      : noMatch ? 'No assets match the current search or filters.' : 'All assets are hidden by graph display filters.';
+    $('graph-reset').hidden = count === 0;
+  }
 
   const r = route(), sel = r.name === 'asset' ? r.arg : null, selEdge = r.name === 'edge' ? r.arg : null, byNode = (id) => (id.startsWith('adv:') || id.startsWith('grp:') ? id.slice(4) : nameOf(byId(id)) === id ? id : nameOf(byId(id)) + ' (' + id + ')');
   const near = new Set(sel ? [sel] : []);
@@ -1448,9 +1466,14 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) { cle
 async function refresh(background) {
   try {
     await loadAll();
+    $('load-error').hidden = true;
     if (['log', 'asset', 'review', 'findings'].includes(route().name)) S.changes = await api('GET', 'changes');
     if (route().name === 'engines') S.engines = await api('GET', 'engines').catch(() => S.engines || []);
-  } catch (e) { if (background) { schedulePoll(); return; } toast('Cannot reach the console: ' + e.message); }
+  } catch (e) {
+    if (background) { schedulePoll(); return; }
+    if (!S.inv) { $('load-error-text').textContent = e.message; $('load-error').hidden = false; }
+    else toast('Cannot reach the console: ' + e.message);
+  }
   const sig = JSON.stringify([S.inv, S.rank, S.site, S.flows, S.groups, S.macs, S.images, S.imageSummary, S.caps, S.index, S.changes, S.engines]);
   if (!background || sig !== lastSig) { lastSig = sig; if (!S.editing) render(); else chrome(route().name); }
   schedulePoll();
@@ -1488,10 +1511,12 @@ function initChrome() {
     const open = !$('tree').classList.contains('mobile-open');
     $('tree').classList.toggle('mobile-open', open);
     $('mobile-menu').setAttribute('aria-expanded', String(open));
+    $('mobile-menu').setAttribute('aria-label', open ? 'Close site navigation' : 'Open site navigation');
   });
   $('tree').addEventListener('click', (e) => {
     if (e.target.closest('a[href]') && $('tree').classList.contains('mobile-open')) {
       $('tree').classList.remove('mobile-open'); $('mobile-menu').setAttribute('aria-expanded', 'false');
+      $('mobile-menu').setAttribute('aria-label', 'Open site navigation');
     }
   });
   $('search-hints').addEventListener('click', (e) => {
@@ -1507,6 +1532,23 @@ function initChrome() {
   $('tb-import').addEventListener('click', () => $('import-pick').click());
   $('import-pick').addEventListener('change', (e) => { upload([...e.target.files]); e.target.value = ''; });
   $('tb-layout').addEventListener('click', relayout);
+  $('graph-reset').addEventListener('click', resetView);
+  $('retry-load').addEventListener('click', () => refresh());
+  $('tree').addEventListener('keydown', (e) => {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+    const rows = [...$('tree').querySelectorAll('.tree-row')].filter((n) => n.getClientRects().length || window.innerWidth > 760);
+    const at = rows.indexOf(document.activeElement);
+    if (at < 0) return;
+    e.preventDefault();
+    const next = e.key === 'Home' ? 0 : e.key === 'End' ? rows.length - 1 : Math.max(0, Math.min(rows.length - 1, at + (e.key === 'ArrowDown' ? 1 : -1)));
+    rows[next]?.focus();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+    const target = e.target;
+    if (target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(target.tagName))) return;
+    e.preventDefault(); $('q').focus();
+  });
   const pick = (txt) => {                                                  // id, then name, then any substring, in fix-first order
     const t = txt.trim().toLowerCase(), all = S.rank.map(byId).filter(Boolean);
     if (!t) return null;
@@ -1545,7 +1587,7 @@ function init() {
   initGraph();
   initChrome();
   window.addEventListener('hashchange', () => { refresh(); if (route().name === 'graph') $('graph').focus(); else $('main').focus(); });
-  if (!store.get('actor')) toast('Enter your name in Settings (the sliders button): every edit is logged under it.');
+  if (!store.get('actor')) toast('Enter your name in Settings: every edit is logged under it.');
   refresh();
 }
 document.addEventListener('DOMContentLoaded', init);
