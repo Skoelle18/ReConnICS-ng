@@ -169,7 +169,7 @@ test('graph controls and inspector', async (t) => {
       assert.deepEqual(app.$$('#graph-layout button').map((b) => b.textContent), ['KEV only', 'Force', 'Purdue']);
       app.$('#btn-filter').click();
       await settle();
-      assert.match(app.text('#hidden-facet'), /Decommissioned hosts: 1.*hidden, kept in the inventory/);
+      assert.match(app.text('#hidden-facet'), /Decommissioned hosts: 1/);
       const show = app.$$('#hidden-facet .row').find((r) => /Decommissioned hosts/.test(r.textContent)).querySelector('button');
       assert.ok(show);
       show.click(); await settle();

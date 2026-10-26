@@ -296,8 +296,7 @@ function filterPanel() {
     group('Assets by advisory match', ['ALL', ...LEVELS].map((l) => on(l === 'ALL' ? 'All levels' : l, S.level === l, () => { S.level = l; }))),
     group('Only assets that are', on('Not validated', S.unvalOnly, () => { S.unvalOnly = !S.unvalOnly; })),
     h('div', { class: 'stack', style: { gap: '6px' }, id: 'hidden-facet' }, h('div', { class: 'small strong' }, 'Show on the graph'),
-      hiddenClasses().map((c) => h('div', { class: 'row small' }, on(c.label + ': ' + c.n, !c.hidden, c.flip),
-        c.hidden ? h('span', { class: 'muted' }, c.n === 0 ? 'none' : 'hidden, kept in the inventory') : null))),
+      hiddenClasses().map((c) => h('div', { class: 'row small' }, on(c.label + ': ' + c.n, !c.hidden, c.flip)))),
     group('Colour nodes by', on('Role', S.color === 'role', () => { S.color = 'role'; }), on('Advisory risk', S.color === 'risk', () => { S.color = 'risk'; })),
     group('Advisory nodes on the graph (EXACT, PROBABLE)', on(S.showAdv ? 'Shown' : 'Hidden', S.showAdv, () => { S.showAdv = !S.showAdv; })),
     doneCaps().length ? group('Captures on the graph', doneCaps().map((c) => on(c.file, !S.capOff.has(c.id), () => toggleCapture(c.id))))

@@ -481,7 +481,8 @@ test('edges', async (t) => {
     const app = await richApp();
     try {
       assert.equal(flowEdges(app).length, 3, 'scan-only conversations are in the data but hidden by default');
-      assert.match(facetRow(app, 'Scan-only').textContent, /Scan-only conversations: 1.*hidden, kept in the inventory/);
+      assert.match(facetRow(app, 'Scan-only').textContent, /Scan-only conversations: 1/);
+      assert.equal(facetRow(app, 'Scan-only').querySelector('button').getAttribute('aria-pressed'), 'false', 'hidden');
       await showScans(app);
       assert.equal(flowEdges(app).length, 4);
       const hideUnknown = () => facetRow(app, 'Unknown-protocol').querySelector('button').click();
