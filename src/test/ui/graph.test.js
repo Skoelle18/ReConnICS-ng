@@ -342,6 +342,22 @@ test('graph', async (t) => {
     } finally { app.close(); }
   });
 
+  await t.test('advisory match levels can be combined, and what does not match is removed from the graph', async () => {
+    const app = await loadApp({ routes: defaultRoutes(), hash: '#/graph' });
+    try {
+      const chip = (l) => app.$$('#pop-filter button').find((b) => b.textContent === l);
+      const all = nodes(app).length;
+      chip('EXACT').click(); await settle();
+      const exact = nodes(app).length;
+      assert.ok(exact < all && nodes(app).every((n) => !n.classList.contains('dim')), 'the rest is hidden, not dimmed');
+      chip('NONE').click(); await settle();
+      assert.deepEqual([...app.get('S').levels].sort(), ['EXACT', 'NONE']);
+      assert.ok(nodes(app).length > exact, 'a second level adds its assets');
+      chip('EXACT').click(); chip('NONE').click(); await settle();
+      assert.equal(nodes(app).length, all, 'no level picked means all');
+    } finally { app.close(); }
+  });
+
   await t.test('importing from the toolbar queues the chosen PCAPs', async () => {
     const routes = defaultRoutes();
     let sent = null;

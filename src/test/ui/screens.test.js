@@ -58,12 +58,12 @@ test('reference console shell and navigation', async (t) => {
       const row = app.$('#tree [data-level="2"]');
       row.click(); await settle();
       assert.equal(app.get('S.purdueFilter'), '2');
-      assert.equal(app.get('S.level'), 'ALL');
+      assert.equal(app.get('S.levels.size'), 0);
       assert.equal(row.classList.contains('selected'), true);
       const client = app.$('#graph .node[data-id="10.0.1.50"]');
       assert.ok(client && !client.classList.contains('dim'), 'the Level 2 inferred client remains visible');
       const plc = app.$('#graph .node[data-id="10.0.1.40"]');
-      assert.ok(plc.classList.contains('dim'), 'Level 1 PLC is outside the selected Purdue level');
+      assert.equal(plc, null, 'Level 1 PLC is outside the selected Purdue level, so it is hidden');
       app.$('#btn-filter').click();
       const reset = app.$('#tb-reset');
       reset.click(); await settle();
@@ -99,7 +99,7 @@ test('reference console shell and navigation', async (t) => {
       await waitFor(() => app.$$('#graph .node').filter((n) => !n.classList.contains('dim') && !n.classList.contains('adv')).length === 1,
         'the graph applies the advisory match filter');
       assert.equal(app.get('route()').name, 'graph');
-      assert.equal(app.get('S').level, 'EXACT');
+      assert.deepEqual([...app.get('S').levels], ['EXACT']);
       assert.equal(app.$$('#graph .node').filter((n) => !n.classList.contains('dim') && !n.classList.contains('adv')).length, 1);
     } finally { app.close(); }
   });

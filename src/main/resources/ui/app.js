@@ -30,9 +30,9 @@ const LIFECYCLE = ['Acquisition', 'Deployment', 'Commissioning', 'In service', '
 // or saving an untouched form would log a change nobody made.
 const SITE_DEFAULTS = { lifecycle: 'In service' };
 
-const S = { engines: null, inv: null, rank: [], site: {}, flows: [], caps: [], changes: [], index: null, search: '', level: 'ALL', purdueFilter: null, kevOnly: false, unvalOnly: false,
+const S = { engines: null, inv: null, rank: [], site: {}, flows: [], caps: [], changes: [], index: null, search: '', levels: new Set(), purdueFilter: null, kevOnly: false, unvalOnly: false,
   openCap: null, openAdv: null, tab: 'attrs', editing: false, staged: null,
-  color: 'role', showAdv: true, layout: 'force', path: null, pathPick: false, pathStart: null,
+  color: 'role', layout: 'force', path: null, pathPick: false, pathStart: null,
   hideUnknown: false, hideScans: true, hideSeenOnly: false, hideDecommissioned: true, showGroups: false, groups: [], macs: [], images: [], imageSummary: {}, protoOff: new Set(),
   capAssets: {}, assetCaps: new Map(), capOff: new Set(), inventoryGroupMac: false, bulkSelected: new Set(), macExpanded: new Set(),
   findingsTab: 'advisories', advisorySearch: '', reviewSearch: '', logSearch: '', dataTab: 'captures' };
@@ -178,12 +178,12 @@ function parseQuery(q) {
   }
   return t;
 }
-const filterActive = () => !!(S.search.trim() || S.level !== 'ALL' || S.purdueFilter != null || S.kevOnly || S.unvalOnly);
+const filterActive = () => !!(S.search.trim() || S.levels.size || S.purdueFilter != null || S.kevOnly || S.unvalOnly);
 /** The chips (level, KEV, not validated) and the query box together: the table hides what fails, the graph dims it. */
 function matches(a) {
   const q = parseQuery(S.search), lv = levelOf(a), kev = !!(a.match && a.match.kevAtModel);
   const hay = [a.id, nameOf(a), val(a, 'vendor'), val(a, 'model'), val(a, 'mac'), val(a, 'hostname')].filter(Boolean).map((v) => str(v).toLowerCase());
-  return (S.level === 'ALL' || lv === S.level) && (S.purdueFilter == null || purdueOf(a) === S.purdueFilter) && (!S.kevOnly || kev) && (!S.unvalOnly || !isValidated(a))
+  return (!S.levels.size || S.levels.has(lv)) && (S.purdueFilter == null || purdueOf(a) === S.purdueFilter) && (!S.kevOnly || kev) && (!S.unvalOnly || !isValidated(a))
     && (!q.level || lv.toLowerCase() === q.level) && (!q.kev || kev) && (!q.unvalidated || !isValidated(a))
     && (!q.proto || str(val(a, 'protocols')).toLowerCase().includes(q.proto))
     && (q.rate == null || flowsOf(a).some(flowMatchesQuery))
@@ -293,12 +293,11 @@ function filterPanel() {
   const on = (label, is, fn) => h('button', { class: 'chip' + (is ? ' on' : ''), 'aria-pressed': String(is), onclick: () => { fn(); render(); } }, label);
   const group = (title, ...kids) => h('div', { class: 'stack', style: { gap: '6px' } }, h('div', { class: 'small strong' }, title), h('div', { class: 'row' }, kids));
   p.replaceChildren(
-    group('Assets by advisory match', ['ALL', ...LEVELS].map((l) => on(l === 'ALL' ? 'All levels' : l, S.level === l, () => { S.level = l; }))),
+    group('Advisory match (pick any; advisory nodes follow EXACT and PROBABLE)', LEVELS.map((l) => on(l, S.levels.has(l), () => { if (S.levels.has(l)) S.levels.delete(l); else S.levels.add(l); }))),
     group('Only assets that are', on('Not validated', S.unvalOnly, () => { S.unvalOnly = !S.unvalOnly; })),
     h('div', { class: 'stack', style: { gap: '6px' }, id: 'hidden-facet' }, h('div', { class: 'small strong' }, 'Show on the graph'),
       hiddenClasses().map((c) => h('div', { class: 'row small' }, on(c.label + ': ' + c.n, !c.hidden, c.flip)))),
     group('Colour nodes by', on('Role', S.color === 'role', () => { S.color = 'role'; }), on('Advisory risk', S.color === 'risk', () => { S.color = 'risk'; })),
-    group('Advisory nodes on the graph (EXACT, PROBABLE)', on(S.showAdv ? 'Shown' : 'Hidden', S.showAdv, () => { S.showAdv = !S.showAdv; })),
     doneCaps().length ? group('Captures on the graph', doneCaps().map((c) => on(c.file, !S.capOff.has(c.id), () => toggleCapture(c.id))))
       : group('Captures on the graph', h('span', { class: 'muted small' }, 'No merged captures yet')),
     info('Protocols, KEV only and layout are the chips above the graph. Reset filters is in the graph tools. Capture buttons hide or show everything that capture contributed.'));
@@ -329,9 +328,9 @@ function focusCapture(id) {
 }
 /** Clear every view filter and selection; captures, edits and the change log stay untouched. */
 function resetView() {
-  S.search = ''; S.level = 'ALL'; S.purdueFilter = null; S.kevOnly = false; S.unvalOnly = false;
+  S.search = ''; S.levels = new Set(); S.purdueFilter = null; S.kevOnly = false; S.unvalOnly = false;
   S.hideUnknown = false; S.hideScans = true; S.hideSeenOnly = false; S.hideDecommissioned = true; S.showGroups = false; S.protoOff = new Set(); S.capOff = new Set();
-  S.color = 'role'; S.showAdv = true; S.layout = 'force'; S.path = null; S.pathPick = false; S.pathStart = null; S.openCap = null; S.openAdv = null;
+  S.color = 'role'; S.layout = 'force'; S.path = null; S.pathPick = false; S.pathStart = null; S.openCap = null; S.openAdv = null;
   $('q').value = ''; $('start').value = ''; $('target').value = '';
   lastRoute = '';
   if (location.hash && location.hash !== '#/graph') location.hash = '#/graph';
@@ -407,7 +406,7 @@ function overview() {
           h('div', { class: 'card-b muted small row' }, ['EXACT', 'PROBABLE', 'NONE'].map((l) => h('span', { class: 'row' }, dot(LEVEL_COLOR[l]), l)))),
         h('div', { class: 'stack narrow' },
           h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Advisory match level'),
-            h('div', { class: 'card-b stack' }, LEVELS.map((l) => h('a', { href: '#/graph', class: 'stack', title: 'Show only ' + l + ' on the graph', style: { gap: '6px', textDecoration: 'none', color: 'inherit' }, onclick: () => { S.level = l; } },
+            h('div', { class: 'card-b stack' }, LEVELS.map((l) => h('a', { href: '#/graph', class: 'stack', title: 'Show only ' + l + ' on the graph', style: { gap: '6px', textDecoration: 'none', color: 'inherit' }, onclick: () => { S.levels = new Set([l]); } },
               h('span', { class: 'head' }, levelBadge(l), h('span', { class: 'muted small' }, lv[l] + ' assets')), bar(lv[l] / n * 100, LEVEL_COLOR[l]))),
               h('div', { class: 'muted small' }, 'NONE means no advisory in this index, not a clean device.'))),
           h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Assets by role'),
@@ -1152,9 +1151,9 @@ function graphModel() {
     const f = { client: fs[0].client, server: fs[0].server, protocol: top, port: fs.length + ' ports', labels, messages: n, scanAttempts: scans, bytes: sum('bytes') || undefined, bytesToServer: sum('bytesToServer') || undefined, bytesToClient: sum('bytesToClient') || undefined, operations: fs.flatMap((x) => x.operations || []) };   // synthetic: what the drawing and the cards read
     edges.push({ id: 'm' + g[0].i, key: pairKey(g[0].from, g[0].to), kind: 'flow', from: g[0].from, to: g[0].to, f, n, members: fs, label: fs.length + ' threads' });
   }
-  if (S.showAdv) {
+  {
     for (const r of advisoryRows()) {
-      const hits = r.hits.filter((x) => (x.level === 'EXACT' || x.level === 'PROBABLE') && assetVisible(x.a));   // vendor-only matches would hang every advisory on every device
+      const hits = r.hits.filter((x) => (x.level === 'EXACT' || x.level === 'PROBABLE') && (!S.levels.size || S.levels.has(x.level)) && assetVisible(x.a));   // vendor-only matches would hang every advisory on every device
       if (!hits.length) continue;
       nodes.push({ id: 'adv:' + r.id, adv: r });
       for (const x of hits) edges.push({ id: 'a:' + r.id + '>' + x.a.id, kind: 'adv', from: x.a.id, to: 'adv:' + r.id, label: x.level });
@@ -1409,7 +1408,7 @@ function drawGraph() {
 
   const marker = (id, color) => sv('marker', { id, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 10, markerHeight: 10, markerUnits: 'userSpaceOnUse', orient: 'auto' }, sv('path', { d: 'M0 0L10 5L0 10z', fill: color }));
   const els = { nodes: new Map(), edges: [] };
-  const edgeEls = edges.filter((e) => pathE ? pathE.has(e.id) : selEdge ? e.key === selEdge : sel ? e.from === sel || e.to === sel : true).map((e) => {   // a path, an open edge or an open node hides everything else; Back / Clear brings it back
+  const edgeEls = edges.filter((e) => (pathE ? pathE.has(e.id) : selEdge ? e.key === selEdge : sel ? e.from === sel || e.to === sel : true) && on.has(e.from) && on.has(e.to) && (e.kind !== 'flow' || (e.members || [e.f]).some(flowMatchesQuery))).map((e) => {   // a path, an open edge or an open node hides everything else; Back / Clear brings it back
     const flow = e.kind === 'flow', pk = flow ? protoKey(e.f.protocol) : '';
     const chosen = !!e.key && selEdge === e.key, hot = chosen || (pathE && pathE.has(e.id));
     const dim = !(on.has(e.from) && on.has(e.to)) || (pathE && !hot) || (sel && !(e.from === sel || e.to === sel)) || (selEdge && !chosen) || (flow && !(e.members || [e.f]).some(flowMatchesQuery));
@@ -1425,7 +1424,7 @@ function drawGraph() {
       sv('title', {}, edgeLabel(e, byNode)), hit, path, label);
   });
   const pinA = S.path ? S.path.nodes[0] : S.pathStart, pinB = S.path ? S.path.nodes[S.path.nodes.length - 1] : null;
-  const nodeEls = nodes.filter((n) => pathN ? pathN.has(n.id) : sel || selEdge ? near.has(n.id) : true).map((n) => {
+  const nodeEls = nodes.filter((n) => on.has(n.id)).map((n) => {
     const a = n.a, dim = !on.has(n.id), kev = a ? !!(a.match && a.match.kevAtModel) : !!(n.adv && n.adv.kev);
     const name = n.adv ? n.adv.id : n.g ? n.g.address : nameOf(a), short = name.length > 22 ? name.slice(0, 21) + '…' : name;
     const g = sv('g', { class: 'node' + (dim ? ' dim' : '') + (n.id === sel ? ' sel' : '') + (n.adv ? ' adv' : '') + (n.g ? ' grp' : '') + (a && isSeenOnly(a) ? ' seen' : ''), tabindex: '0', role: 'button', 'data-id': n.id, 'aria-label': nodeLabel(n),
