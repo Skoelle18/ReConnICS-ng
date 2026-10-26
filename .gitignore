@@ -80,3 +80,7 @@ venv/
 ### UI unit tests (src/test/ui) ###
 node_modules/
 /report.html
+
+### Agent worktrees ###
+.claude/worktrees/
+.claude/settings.local.json

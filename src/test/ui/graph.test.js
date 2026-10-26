@@ -189,6 +189,26 @@ test('graph', async (t) => {
     } finally { app.close(); }
   });
 
+  await t.test('the inventory lists what the graph shows, and the hidden captures survive a reload', async () => {
+    const captureAssets = { c0001: ['10.0.1.40', '10.0.1.20'], c0002: ['10.0.1.10', '10.0.1.40'] };
+    const captures = [
+      { id: 'c0001', file: 'cell1.pcap', state: 'done', by: 'A', size: 1, at: '2026-10-19T10:00:00Z', sha256: 'a'.repeat(64), diff: { new: 1, changed: 0, notSeen: 0 } },
+      { id: 'c0002', file: 'cell2.pcap', state: 'done', by: 'A', size: 1, at: '2026-10-19T11:00:00Z', sha256: 'b'.repeat(64), diff: { new: 1, changed: 0, notSeen: 0 } },
+    ];
+    const first = await loadApp({ routes: defaultRoutes({ captureAssets, captures }), hash: '#/inventory' });
+    let saved;
+    try {
+      first.get('S').capOff.add('c0001');
+      first.get('render()');
+      assert.equal(first.$$('#main .inventory-asset').some((a) => a.textContent.includes('10.0.1.20') || a.nextSibling.textContent === '10.0.1.20'), false, 'a hidden capture device is not listed');
+      saved = first.window.localStorage.getItem('view');
+    } finally { first.close(); }
+    const again = await loadApp({ routes: defaultRoutes({ captureAssets, captures }), hash: '#/inventory', storage: { view: saved } });
+    try {
+      assert.ok(again.get('S').capOff.has('c0001'), 'the hidden capture is still hidden after a reload');
+    } finally { again.close(); }
+  });
+
   await t.test('hiding a capture removes only its nodes, and Reset view brings them back', async () => {
     const captureAssets = { c0001: ['10.0.1.40', '10.0.1.20'], c0002: ['10.0.1.10', '10.0.1.40'] };
     const captures = [
@@ -219,6 +239,8 @@ test('graph', async (t) => {
       assert.deepEqual([...app.get('S').path.nodes], ['10.0.1.50', '10.0.1.10', '10.0.1.10/slot0']);
       assert.equal(edges(app).filter((e) => e.classList.contains('hot')).length, 2);
       assert.match(app.text('#toast'), /2 hops/);
+      assert.equal(nodes(app).filter((n) => !n.classList.contains('adv')).length, 3, 'a path hides every asset off it instead of dimming it');
+      assert.equal(app.$$('#graph .pin.a').length + app.$$('#graph .pin.b').length, 2, 'start and target carry A and B pins');
       app.$('#target').value = '10.0.2.1';
       app.$('#btn-go').click();
       await settle();
@@ -237,6 +259,7 @@ test('graph', async (t) => {
       assert.equal(app.$('#btn-route').getAttribute('aria-pressed'), 'true');
       node(app, '10.0.1.50').dispatchEvent(new app.window.MouseEvent('click', { bubbles: true }));
       assert.equal(app.get('S.pathStart'), '10.0.1.50');
+      assert.ok(node(app, '10.0.1.50').querySelector('.pin.a'), 'the start is pinned as soon as it is clicked');
       node(app, '10.0.1.40').dispatchEvent(new app.window.MouseEvent('click', { bubbles: true }));
       assert.ok(app.get('S.path'), 'a path selection is stored');
       assert.deepEqual([...app.get('S.path.nodes')], ['10.0.1.50', '10.0.1.40']);
@@ -300,12 +323,11 @@ test('graph', async (t) => {
     try {
       app.$('#tb-info').click();
       assert.equal(app.$('#pop-info').hidden, false);
-      app.$('#tree-export').click();
+      app.$('#btn-filter').click();
       assert.equal(app.$('#pop-info').hidden, true);
-      assert.equal(app.$('#pop-export').hidden, false);
-      assert.equal(app.$('#tree-export').getAttribute('aria-expanded'), 'true');
+      assert.equal(app.$('#pop-filter').hidden, false);
       app.document.dispatchEvent(new app.window.KeyboardEvent('keydown', { key: 'Escape' }));
-      assert.equal(app.$('#pop-export').hidden, true);
+      assert.equal(app.$('#pop-filter').hidden, true);
     } finally { app.close(); }
   });
 

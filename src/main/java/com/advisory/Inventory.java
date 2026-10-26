@@ -654,6 +654,12 @@ final class Inventory {
             r.f.put("role", new Field(m[0], min(Conf.valueOf(m[1]), dt.conf()), cap("from device type " + dt.str() + " (" + dt.evidence() + ")", MAX_EVIDENCE)));
             return;
         }
+        Field vendor = r.f.get("vendor"), model = r.f.get("model");
+        String family = vendor == null || model == null ? null : modelFamily(vendor.str(), model.str());
+        if (family != null) {                                // a Siemens CPU order number names a controller whatever the traffic direction was
+            r.f.put("role", new Field("PLC", min(vendor.conf(), model.conf()), cap("from " + family + " CPU order number " + model.str() + " (" + model.evidence() + ")", MAX_EVIDENCE)));
+            return;
+        }
         Set<String> dirs = new TreeSet<>();
         for (Obs o : obs) dirs.addAll(o.dirs);
         if (dirs.isEmpty()) return;

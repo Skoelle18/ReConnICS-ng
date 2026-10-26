@@ -391,6 +391,7 @@ class InventoryTest {
         assertEquals(EXACT, r.match.level());
         assertEquals("SIMATIC S7-1500", r.match.matchedAs());
         assertEquals("6ES7 515-2AM01-0AB0", v(r, "model"), "inventory keeps the order number");
+        assertEquals("PLC", v(r, "role"), "a Siemens CPU order number names a controller even with no direction seen");
     }
 
     // signed index: verifies, tamper fails closed, hostile index fails closed
