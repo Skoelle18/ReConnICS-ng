@@ -256,6 +256,7 @@ Passive PCAP results may be incomplete or spoofed.
 - [`docs/data-contract.md`](docs/data-contract.md) — confidence/evidence mapping
 - [`docs/limitations.md`](docs/limitations.md) — supported vs unsupported
 - [`docs/ethics.md`](docs/ethics.md) — passive-only rules
+- [`docs/ui-tour.md`](docs/ui-tour.md) — screenshot tour of every console screen
 - [`docs/foss-components.md`](docs/foss-components.md) — open-source tools wrapped, licences, what was not adopted
 - [`docs/examples/assets.json`](docs/examples/assets.json) — sanitized example payload
 
