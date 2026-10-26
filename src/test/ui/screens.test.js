@@ -86,6 +86,10 @@ test('graph controls and inspector', async (t) => {
       assert.equal(app.$('#main').className, 'panel');
       assert.equal(app.$('#main').parentElement.id, 'workspace');
       assert.equal(app.$('#main .close').getAttribute('aria-label'), 'Close and return to the graph');
+      const copy = app.$('#main .copy-link');
+      assert.equal(copy.getAttribute('aria-label'), 'Copy link to this item');
+      copy.click(); await settle();
+      assert.match(app.text('#toast'), /#\/asset\/10\.0\.1\.40/);
       assert.match(app.text('#main'), /CISA high-priority attributes/);
       assert.match(app.text('#main'), /Confidence/);
       assert.match(app.text('#main'), /Site fields/);

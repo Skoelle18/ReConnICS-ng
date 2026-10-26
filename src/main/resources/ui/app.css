@@ -310,5 +310,7 @@ input, select { border-radius:4px; }
 .search .ib[aria-pressed="true"] { background:var(--accent-tint); color:var(--ink); }
 .search { top:54px; }
 #main.panel .close { top:8px; right:8px; width:26px; height:26px; border:0; background:transparent; font-size:20px; }
+#main.panel .copy-link { position:absolute; top:8px; right:38px; width:26px; height:26px; padding:0; border:0; color:var(--muted); background:transparent; font-family:ui-monospace,monospace; }
+#main.panel .copy-link:hover { color:var(--ink); background:var(--accent-tint); }
 #main.panel .row:first-child { padding-right:28px; }
 @media(max-width:760px) { #graph-chips { max-width:calc(100% - 24px); padding-right:0; } #graph-layout { bottom:8px; left:8px; } .graph-chip { min-height:25px; padding:2px 7px; } }

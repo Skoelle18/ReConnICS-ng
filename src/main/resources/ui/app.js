@@ -1249,6 +1249,15 @@ function route() {
   return { name: name === 'inventory' ? 'graph' : name, arg: decodeURIComponent(arg || '') };   // the row table is gone; old bookmarks open the graph
 }
 
+async function copyCurrentLink() {
+  const link = location.href;
+  try {
+    if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('clipboard unavailable');
+    await navigator.clipboard.writeText(link);
+    toast('Link copied');
+  } catch { toast(location.hash || '#/graph'); }
+}
+
 let lastRoute = '';
 function render() {
   const r = route();
@@ -1261,6 +1270,7 @@ function render() {
   main.className = side ? 'panel' : 'sheet';
   $('stage').toggleAttribute('inert', open && !side);                         // a sheet covers the graph; the side panel does not
   main.replaceChildren(...(open ? [h('a', { class: 'close', href: '#/graph', 'aria-label': 'Close and return to the graph', title: 'Close' }, '×'),
+    side ? h('button', { class: 'copy-link', type: 'button', 'aria-label': 'Copy link to this item', title: 'Copy link', onclick: copyCurrentLink }, '#') : null,
     ...[].concat((screens[r.name] || overview)()).flat(Infinity)] : []).filter(Boolean));
   drawGraph();
 }
