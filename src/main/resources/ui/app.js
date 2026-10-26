@@ -688,7 +688,7 @@ const BEHAVIOUR_TEXT = { 'probe-like': 'SYNs nobody answered or a port refused: 
   'addressed-only': 'only ever the destination: it never sent a frame in these captures' };
 /** What the analyzer saw on the wire without being able to decode it: tags, DHCP details, the web server's identity, traffic to group addresses. */
 function observedCard(a) {
-  const obs = a.observed || {}, tags = Object.entries(obs), d = a.dhcp, w = a.http, ip = str(val(a, 'ip')) || a.id.split('/')[0];
+  const obs = a.observed || {}, tags = Object.entries(obs), syn = tags.filter(([k]) => k.startsWith('syn-target:')), d = a.dhcp, w = a.http, ip = str(val(a, 'ip')) || a.id.split('/')[0];
   const groups = S.flows.filter((f) => f.client === ip && S.groups.some((g) => g.address === f.server));
   const imgs = S.images.filter((i) => i.host === ip), notImages = ((S.imageSummary.nonImageByHost || {})[ip]) || 0;
   if (!tags.length && !d && !w && !groups.length && !(a.behaviour || []).length && !imgs.length && !notImages) return null;
@@ -696,7 +696,9 @@ function observedCard(a) {
   return h('div', { class: 'card', id: 'observed' }, h('div', { class: 'card-h' }, 'Observed on the wire', info('Traffic seen on the wire that is not a decoded industrial message: ARP, ICMP, DHCP, scan attempts and conversations the decoders could not read. It is evidence of what the host did, not proof of what it is.')),
     h('div', { class: 'card-b stack', style: { gap: '6px' } },
       (a.behaviour || []).map((b) => line(b + ':', BEHAVIOUR_TEXT[b] || b)),
-      tags.length ? h('div', { class: 'small row' }, tags.map(([k, n]) => h('span', { class: 'badge lv-NONE' }, (OBSERVED_TEXT[k] || k.replace(/^icmp:/, 'ICMP ')) + ' ×' + n))) : null,
+      tags.length ? h('div', { class: 'small row' }, tags.filter(([k]) => !k.startsWith('syn-target:')).map(([k, n]) => h('span', { class: 'badge lv-NONE' }, (OBSERVED_TEXT[k] || k.replace(/^icmp:/, 'ICMP ')) + ' ×' + n))) : null,
+      syn.length ? h('details', { class: 'small' }, h('summary', {}, 'SYNs to ' + syn.length + ' port' + (syn.length > 1 ? 's' : '') + ' (' + syn.reduce((t, [, n]) => t + n, 0) + ' in all)'),
+        h('div', { class: 'row' }, syn.map(([k, n]) => h('span', { class: 'badge lv-NONE' }, k.slice(11) + ' ×' + n)))) : null,
       groups.map((f) => line('To ' + f.server + ' ' + f.port + ':', (f.messages || f.packets || 0) + ' messages, ' + (f.protocol === 'unknown' ? (f.portHint ? protoName(f.portHint) + '?' : 'not decoded') : f.protocol))),
       d ? h('div', { class: 'stack small', style: { gap: '2px' } }, h('strong', {}, 'DHCP'), d.hostName ? line('Host name', d.hostName) : null, d.clientFqdn ? line('FQDN', d.clientFqdn) : null,
         d.vendorClass ? line('Vendor class', d.vendorClass) : null, d.requestedAddr ? line('Requested address', d.requestedAddr) : null, d.mac ? line('Client MAC', d.mac) : null,
