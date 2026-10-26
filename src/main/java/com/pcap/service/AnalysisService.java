@@ -127,7 +127,7 @@ public final class AnalysisService {
                                        CompletableFuture<List<com.pcap.tools.ToolPipeline.Outcome>> toolsRun)
             throws IOException, PcapException {
         NetworkObserver observer = new NetworkObserver();
-        ConversationTracker conversations = new ConversationTracker().observer(observer);
+        ConversationTracker conversations = new ConversationTracker().observer(observer).scanRule(options.scan());
         DeviceAggregator aggregator = new DeviceAggregator();
         TcpReassembler reassembler = new TcpReassembler();
         Map<String, Long> candidates = new HashMap<>();

@@ -53,6 +53,12 @@
     "portHint": {"type": "string", "maxLength": 32, "description": "Only on protocol unknown: the protocol the server port usually carries. Port-inferred, not dissected."},
     "trace": {"type": "array", "maxItems": 200, "items": {"type": "string", "maxLength": 300}, "description": "chat lines (HH:MM:SS UTC, then a marker) from the Zeek logs (conn, ssl, x509, http, ssh, dns, ftp, smtp, smb, dhcp, rdp, ntp, snmp, sip, kerberos, ntlm, ldap, mqtt and others): * session fact, > client to server, < server to client. Display text only."},
     "scanAttempts": {"$ref": "#/$defs/count"},
+    "connections": {
+      "type": "object",
+      "description": "TCP flows: how the connection attempts whose SYN was captured ended. completed = SYN, SYN-ACK and the client's ACK; unanswered = no SYN-ACK; refused = no SYN-ACK and a RST from the server; incomplete = SYN-ACK sent, client never finished (a half-open connection, also what a SYN scan of an open port looks like). Native engine only.",
+      "additionalProperties": false,
+      "properties": {"completed": {"$ref": "#/$defs/count"}, "unanswered": {"$ref": "#/$defs/count"}, "refused": {"$ref": "#/$defs/count"}, "incomplete": {"$ref": "#/$defs/count"}}
+    },
     "icmp": {
       "type": "object",
       "description": "ICMP flows only: echo round-trip times from request/reply pairs (same hosts, id, sequence), echo requests and replies with no partner, and error messages (destination unreachable, time exceeded) with the destination of the packet they quote.",

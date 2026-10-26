@@ -64,6 +64,7 @@ public final class CliCommand {
         java.time.Duration zeekTimeout = null;
         AnalysisOptions.Tools tools = null;
         Path imagesDir = null;
+        int scanPorts = AnalysisOptions.ScanRule.DEFAULT.ports(), scanHosts = AnalysisOptions.ScanRule.DEFAULT.hosts(), scanWindow = AnalysisOptions.ScanRule.DEFAULT.windowSeconds();
 
         for (int i = 0; i < tokens.size(); i++) {
             String t = tokens.get(i);
@@ -86,6 +87,18 @@ public final class CliCommand {
                     } catch (IllegalArgumentException e) {
                         err.println("error: --engine must be native, zeek or auto");
                         return ExitCode.USAGE;
+                    }
+                }
+                case "--scan-ports", "--scan-hosts", "--scan-window" -> {
+                    int v = i + 1 < tokens.size() ? parseInt(tokens.get(++i)) : -1;
+                    if (v < (t.equals("--scan-window") ? 1 : 2) || v > 1_000_000) {
+                        err.println("error: " + t + " requires a whole number (at least " + (t.equals("--scan-window") ? 1 : 2) + ")");
+                        return ExitCode.USAGE;
+                    }
+                    switch (t) {
+                        case "--scan-ports" -> scanPorts = v;
+                        case "--scan-hosts" -> scanHosts = v;
+                        default -> scanWindow = v;
                     }
                 }
                 case "--tools" -> {
@@ -170,8 +183,17 @@ public final class CliCommand {
         if (zeekLogs != null && engine == null) {
             engine = AnalysisOptions.Engine.ZEEK;                    // pointing at logs is asking for the Zeek engine
         }
-        AnalysisOptions options = new AnalysisOptions(icsOnly, keepScans, engine, zeekLogs, zeekTimeout, tools, imagesDir);
+        AnalysisOptions options = new AnalysisOptions(icsOnly, keepScans, engine, zeekLogs, zeekTimeout, tools, imagesDir)
+                .withScan(new AnalysisOptions.ScanRule(scanPorts, scanHosts, scanWindow));
         return new AnalyzeCommand(input, output, force, verbose, formatJson, post, options, out, err).run();
+    }
+
+    private static int parseInt(String v) {
+        try {
+            return Integer.parseInt(v.trim());
+        } catch (NumberFormatException e) {
+            return -1;
+        }
     }
 
     public static void printHelp(PrintStream ps) {
@@ -194,6 +216,9 @@ public final class CliCommand {
         ps.println("      --ics-only        Only decoded ICS protocols as edges; no unknown-protocol host pairs");
         ps.println("      --keep-scans      Edges for conversations that only saw scan attempts (the default; kept so nothing observed is dropped)");
         ps.println("      --images-dir DIR  Keep the images web servers sent (PNG, GIF, JPEG, WebP, ICO by magic bytes; never SVG) in DIR as <sha256>.<ext>; needs tshark or the tools image");
+        ps.println("      --scan-ports <n>  Flag a source as scan-like when failed connection attempts reach n distinct ports on one host (default 20)");
+        ps.println("      --scan-hosts <n>  ... or n distinct hosts on one port (default 20)");
+        ps.println("      --scan-window <s> Seconds the attempts must fall within (default 60)");
         ps.println("      --drop-scans      Leave scan-only conversations out of the flows (they are still counted in source.scanAttempts)");
         ps.println("                        (connections whose handshake never completed); default: counted only");
         ps.println("      --engine <e>      native (default): the built-in decoders only, nothing to install");

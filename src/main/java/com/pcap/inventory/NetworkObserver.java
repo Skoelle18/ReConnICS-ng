@@ -41,6 +41,7 @@ public final class NetworkObserver {
     private static final class Host {
         final Map<String, long[]> tags = new LinkedHashMap<>();
         final Map<String, long[]> macs = new LinkedHashMap<>();       // as sender: mac -> frames
+        Map<String, Object> probes;                                   // scan windows (ConversationTracker), null when none
         final Set<String> arpMacs = new LinkedHashSet<>();            // MACs this address claimed in ARP (virtual router MACs excluded)
         long from, to, firstFrame = Long.MAX_VALUE, lastFrame;
 
@@ -477,6 +478,14 @@ public final class NetworkObserver {
         }
     }
 
+    /** The scan windows a source reached the thresholds in ({@link ConversationTracker}); an inference from failed attempts, not an identity. */
+    public void probes(String ip, Map<String, Object> m) {
+        Host h = hostOf(ip);
+        if (h != null) {
+            h.probes = m;
+        }
+    }
+
     // ------------------------------------------------------------------ flows
 
     /** Adds the ICMP conversations and the conversations to group addresses to {@code table}; call before the other engines merge theirs. */
@@ -647,6 +656,10 @@ public final class NetworkObserver {
         if (h.tags.keySet().stream().anyMatch(t -> t.startsWith("handshake-incomplete:"))) {
             behaviour.add("incomplete-handshake");
         }
+        if (h.probes != null) {
+            behaviour.add("scan-like");
+            a.attributes.put("probes", h.probes);
+        }
         if (h.tags.containsKey("arp-asked") && !h.tags.containsKey("arp-reply")) {
             behaviour.add("arp-unanswered");
         }
@@ -672,6 +685,10 @@ public final class NetworkObserver {
     /** A short, honest description of how a host was seen, most telling facts first. */
     private static String phrase(Host h) {
         List<String> parts = new ArrayList<>();
+        if (h.probes != null) {
+            parts.add("scan-like: " + (h.probes.containsKey("manyPorts") ? ((Map<?, ?>) h.probes.get("manyPorts")).get("ports") + " ports on one host" : ((Map<?, ?>) h.probes.get("manyHosts")).get("hosts") + " hosts on one port")
+                    + " within " + h.probes.get("windowSeconds") + " s");
+        }
         addPorts(parts, h, "handshake-incomplete:", "TCP handshake never completed on ", " (SYN-ACK sent, no final ACK)");
         addPorts(parts, h, "syn-unanswered:", "unanswered SYN to ", " (probe-like)");
         addPorts(parts, h, "syn-refused:", "SYN refused (RST) on ", " (probe-like)");
