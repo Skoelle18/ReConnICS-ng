@@ -12,8 +12,9 @@ import java.time.Duration;
  * @param zeekLogs    read Zeek logs that already exist instead of running Zeek (CLI {@code --zeek-logs}); null = run Zeek
  * @param zeekTimeout how long a Zeek run may take (CLI {@code --zeek-timeout}); null = the runner's default
  * @param tools       the optional FOSS tools beyond Zeek (tshark, Suricata, nDPI, p0f; CLI {@code --tools}); null = {@link Tools#DEFAULT}
+ * @param imageDir    keep the images web servers sent in this directory, named by hash (CLI {@code --images-dir}); null = extract none
  */
-public record AnalysisOptions(boolean icsOnly, boolean keepScans, Engine engine, Path zeekLogs, Duration zeekTimeout, Tools tools) {
+public record AnalysisOptions(boolean icsOnly, boolean keepScans, Engine engine, Path zeekLogs, Duration zeekTimeout, Tools tools, Path imageDir) {
     /**
      * {@code NATIVE}: the Java decoders only (default, needs nothing installed). {@code ZEEK}: native plus Zeek + ICSNPP,
      * merged; an error if Zeek is not available. {@code AUTO}: Zeek when available, else native with a note.
@@ -36,17 +37,25 @@ public record AnalysisOptions(boolean icsOnly, boolean keepScans, Engine engine,
         this(icsOnly, keepScans, engine, zeekLogs, zeekTimeout, Tools.DEFAULT);
     }
 
+    public AnalysisOptions(boolean icsOnly, boolean keepScans, Engine engine, Path zeekLogs, Duration zeekTimeout, Tools tools) {
+        this(icsOnly, keepScans, engine, zeekLogs, zeekTimeout, tools, null);
+    }
+
     public AnalysisOptions {
         engine = engine == null ? Engine.NATIVE : engine;
         tools = tools == null ? Tools.DEFAULT : tools;
     }
 
     public AnalysisOptions withEngine(Engine e, Path logs, Duration timeout) {
-        return new AnalysisOptions(icsOnly, keepScans, e, logs, timeout, tools);
+        return new AnalysisOptions(icsOnly, keepScans, e, logs, timeout, tools, imageDir);
     }
 
     public AnalysisOptions withTools(Tools t) {
-        return new AnalysisOptions(icsOnly, keepScans, engine, zeekLogs, zeekTimeout, t);
+        return new AnalysisOptions(icsOnly, keepScans, engine, zeekLogs, zeekTimeout, t, imageDir);
+    }
+
+    public AnalysisOptions withImageDir(Path dir) {
+        return new AnalysisOptions(icsOnly, keepScans, engine, zeekLogs, zeekTimeout, tools, dir);
     }
 
     public boolean toolsEnabled() {

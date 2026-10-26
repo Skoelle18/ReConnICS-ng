@@ -60,6 +60,9 @@ public final class IngestSchemaValidator {
             if (root.has("macs")) {
                 validateMacs(root.get("macs"), errors);
             }
+            if (root.has("images")) {
+                validateImages(root.get("images"), errors);
+            }
         } else {
             errors.add("root must be an array or object");
             return errors;
@@ -279,6 +282,31 @@ public final class IngestSchemaValidator {
                 if (m.has(k) && !m.get(k).isArray()) {
                     errors.add(at + "." + k + " must be an array");
                 }
+            }
+        }
+    }
+
+    /** {@code images}: files kept from HTTP bodies; the hash and kind are what name and type the stored file, so they are checked strictly. */
+    private void validateImages(JsonNode images, List<String> errors) {
+        if (!images.isArray()) {
+            errors.add("'images' must be an array when present");
+            return;
+        }
+        for (int i = 0; i < images.size(); i++) {
+            JsonNode m = images.get(i);
+            String at = "images[" + i + "]";
+            if (!m.isObject() || text(m, "host") == null) {
+                errors.add(at + " must be an object with a host");
+                continue;
+            }
+            if (!(m.has("sha256") && m.get("sha256").isTextual() && m.get("sha256").asText().matches("[0-9a-f]{64}"))) {
+                errors.add(at + ".sha256 must be 64 lowercase hex characters");
+            }
+            if (!(m.has("kind") && m.get("kind").isTextual() && List.of("png", "gif", "jpeg", "webp", "ico").contains(m.get("kind").asText()))) {
+                errors.add(at + ".kind must be png|gif|jpeg|webp|ico");
+            }
+            if (m.has("bytes") && !count(m.get("bytes"))) {
+                errors.add(at + ".bytes must be a non-negative integer");
             }
         }
     }

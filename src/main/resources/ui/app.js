@@ -33,7 +33,7 @@ const SITE_DEFAULTS = { lifecycle: 'In service' };
 const S = { engines: null, inv: null, rank: [], site: {}, flows: [], caps: [], changes: [], index: null, search: '', level: 'ALL', kevOnly: false, unvalOnly: false,
   openCap: null, openAdv: null, tab: 'attrs', editing: false, staged: null,
   color: 'role', showAdv: true, layout: 'force', path: null,
-  hideUnknown: false, hideScans: true, hideSeenOnly: false, showGroups: false, groups: [], macs: [], protoOff: new Set(),
+  hideUnknown: false, hideScans: true, hideSeenOnly: false, showGroups: false, groups: [], macs: [], images: [], imageSummary: {}, protoOff: new Set(),
   capAssets: {}, assetCaps: new Map(), capOff: new Set() };
 
 // ------------------------------------------------------------------ helpers
@@ -209,6 +209,7 @@ async function loadAll() {
   const [inv, caps, idx] = await Promise.all([api('GET', 'inventory'), api('GET', 'captures'), api('GET', 'index')]);
   S.inv = inv.inventory; S.rank = inv.rank; S.site = inv.site; S.flows = inv.flows || []; S.caps = caps; S.index = idx;
   S.groups = inv.groups || []; S.macs = inv.macs || [];
+  S.images = inv.images || []; S.imageSummary = inv.imageSummary || {};
   S.capAssets = inv.captureAssets || {};
   S.assetCaps = new Map();
   Object.entries(S.capAssets).forEach(([id, ids]) => (ids || []).forEach((a) => {
@@ -538,7 +539,8 @@ const BEHAVIOUR_TEXT = { 'probe-like': 'SYNs nobody answered or a port refused: 
 function observedCard(a) {
   const obs = a.observed || {}, tags = Object.entries(obs), d = a.dhcp, w = a.http, ip = str(val(a, 'ip')) || a.id.split('/')[0];
   const groups = S.flows.filter((f) => f.client === ip && S.groups.some((g) => g.address === f.server));
-  if (!tags.length && !d && !w && !groups.length && !(a.behaviour || []).length) return null;
+  const imgs = S.images.filter((i) => i.host === ip), notImages = ((S.imageSummary.nonImageByHost || {})[ip]) || 0;
+  if (!tags.length && !d && !w && !groups.length && !(a.behaviour || []).length && !imgs.length && !notImages) return null;
   const line = (label, text) => h('div', {}, h('span', { class: 'muted small' }, label + ' '), h('span', { class: 'wrap' }, text));
   return h('div', { class: 'card', id: 'observed' }, h('div', { class: 'card-h' }, 'Observed on the wire', h('span', { class: 'muted small' }, 'evidence, not a decode')),
     h('div', { class: 'card-b stack', style: { gap: '6px' } },
@@ -552,7 +554,21 @@ function observedCard(a) {
       w ? h('div', { class: 'stack small', style: { gap: '2px' } }, h('strong', {}, 'Web server'), w.server ? line('Server header', w.server) : null,
         (w.hosts || []).length ? line('Host', w.hosts.join(', ')) : null, (w.uris || []).length ? line('URIs', w.uris.join('  ')) : null,
         w.statuses ? line('Status codes', Object.entries(w.statuses).map(([k, n]) => k + ' ×' + n).join(', ')) : null, (w.contentTypes || []).length ? line('Content types', w.contentTypes.join(', ')) : null,
-        w.requests ? line('Requests', String(w.requests)) : null) : null));
+        w.requests ? line('Requests', String(w.requests)) : null) : null,
+      imageStrip(imgs, notImages)));
+}
+
+/** Thumbnails of the images this server sent: files the console stored after checking their first bytes, served as inert image bytes. */
+function imageStrip(imgs, notImages) {
+  if (!imgs.length && !notImages) return null;
+  const lost = ((S.imageSummary.notExtracted || {}).tooLarge || 0) + ((S.imageSummary.notExtracted || {}).overCap || 0);
+  return h('div', { class: 'stack small', id: 'images', style: { gap: '4px' } }, h('strong', {}, 'Images this server sent'),
+    imgs.length ? h('div', { class: 'thumbs' }, imgs.map((i) => h('figure', { class: 'thumb', title: i.sha256 },
+      h('img', { src: '/api/v1/captures/' + encodeURIComponent(i.capture) + '/images/' + i.sha256, alt: i.name || i.kind, loading: 'lazy', referrerpolicy: 'no-referrer' }),
+      h('figcaption', { class: 'muted' }, (i.name || i.kind) + ' · ' + fmtBytes(i.bytes || 0)),
+      h('figcaption', {}, h('span', { class: 'badge lv-NONE' }, i.source || 'tshark'), ' ', h('span', { class: 'mono' }, i.sha256.slice(0, 8)))))) : null,
+    notImages ? h('span', { class: 'muted' }, notImages + (notImages === 1 ? ' non-image file' : ' non-image files') + ' not extracted') : null,
+    lost && imgs.length ? h('span', { class: 'muted' }, lost + ' more image' + (lost === 1 ? '' : 's') + ' over the size or count limit, not kept') : null);
 }
 
 /** Observed conversations of one asset (the graph's edges touching it), with the message kinds as evidence. */
@@ -1229,7 +1245,7 @@ async function refresh(background) {
     if (route().name === 'log' || route().name === 'asset') S.changes = await api('GET', 'changes');
     if (route().name === 'engines') S.engines = await api('GET', 'engines').catch(() => S.engines || []);
   } catch (e) { if (background) { schedulePoll(); return; } toast('Cannot reach the console: ' + e.message); }
-  const sig = JSON.stringify([S.inv, S.rank, S.site, S.flows, S.groups, S.macs, S.caps, S.index, S.changes, S.engines]);
+  const sig = JSON.stringify([S.inv, S.rank, S.site, S.flows, S.groups, S.macs, S.images, S.imageSummary, S.caps, S.index, S.changes, S.engines]);
   if (!background || sig !== lastSig) { lastSig = sig; if (!S.editing) render(); else chrome(route().name); }
   schedulePoll();
 }

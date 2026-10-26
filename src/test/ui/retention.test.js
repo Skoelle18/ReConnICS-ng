@@ -25,7 +25,8 @@ function inventory() {
   Object.assign(w, { http: { server: 'A-B WWW/0.1', requests: 40, uris: ['/logo.gif'], statuses: { 200: 30 } }, dhcp: { mac: '00:0f:73:03:72:59', messageTypes: ['unknown-message-type-0'], messages: 15 } });
   return inv;
 }
-const open = (hash = '#/graph') => loadApp({ routes: defaultRoutes({ inventory: inventory(), flows: FLOWS, groups: [GROUP], macs: MACS }), hash });
+const IMAGES = [{ capture: 'c0001', host: '10.0.1.40', sha256: 'e'.repeat(64), kind: 'gif', bytes: 926, name: 'ablogo.gif', source: 'tshark' }];
+const open = (hash = '#/graph') => loadApp({ routes: defaultRoutes({ inventory: inventory(), flows: FLOWS, groups: [GROUP], macs: MACS, images: IMAGES, imageSummary: { nonImageByHost: { '10.0.1.40': 18 }, notExtracted: { overCap: 2 } } }), hash });
 const facet = (a, label) => a.$$('#hidden-facet .row').find((r) => r.textContent.includes(label));
 const groupNode = (a) => a.$('#graph .node.grp');
 
@@ -73,6 +74,21 @@ test('retained observations', async (t) => {
       assert.match(txt, /Server header A-B WWW\/0\.1/);
       assert.match(txt, /\/logo\.gif/);
       assert.match(txt, /carry no host name, vendor class or requested address/);
+    } finally { a.close(); }
+  });
+
+  await t.test('the web server shows thumbnails served from the image route, with source, hash and the count of what was not extracted', async () => {
+    const a = await open('#/asset/10.0.1.40');
+    try {
+      const img = a.$('#images img');
+      assert.equal(img.getAttribute('src'), '/api/v1/captures/c0001/images/' + 'e'.repeat(64));
+      const txt = a.text('#images');
+      assert.match(txt, /ablogo\.gif/);
+      assert.match(txt, /tshark/);
+      assert.match(txt, /eeeeeeee/);
+      assert.match(txt, /18 non-image files not extracted/);
+      assert.match(txt, /2 more images over the size or count limit/);
+      assert.equal((await open('#/asset/10.0.1.60').then((b) => { const n = b.$('#images'); b.close(); return n; })), null, 'a host that sent no images has no strip');
     } finally { a.close(); }
   });
 

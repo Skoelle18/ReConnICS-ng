@@ -181,6 +181,19 @@ an asset's identity.
 hostsSeen, hostsSeenOnlyAdded, groupAddresses, macs, macOnlyHosts?, overCap?}`. The ledger of what was not turned into anything and
 why, plus the caps that were hit. A cap is the only reason a valid host or flow is left out, and it is counted here.
 
+**`images`.** An optional top-level array: images web servers sent, taken from HTTP response bodies (`tshark`, Wireshark's HTTP
+reassembly, in the tools image when not installed; only when `--images-dir DIR` is given, which the console always does unless started with
+`-Dreconics.images=off`). Each entry is `{host, sha256, kind: png|gif|jpeg|webp|ico, bytes, name?, source: "tshark"}`. A body is kept only when
+its first bytes are that image's magic number; the `Content-Type` header only chooses which bodies to look at. SVG is never kept (it can carry
+script), nor is anything else. Files are written as `<sha256>.<ext>` (the extension comes from the validated kind), at most 24 per capture,
+2 MiB each, 16 MiB together; the same image from the same host is kept once. `name` is the last path segment of the request, reduced to
+`[A-Za-z0-9._-]`, and is a label only. Nothing is opened, rendered or executed. `source.images` is `{tool, state: ran|not-run|failed, reason?,
+extracted, duplicates, nonImageNotExtracted, nonImageByHost{}, notExtracted{tooLarge?, overCap?, notAnImage?}, limits{}}`: every response body
+that was not kept is counted, per server, so none is dropped silently. The console serves a kept image at
+`GET /api/v1/captures/{id}/images/{sha256}` with a fixed `image/*` type, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src
+'none'; sandbox` and `Cross-Origin-Resource-Policy: same-origin`, and deletes the files with the capture (Remove assets). `GET /api/v1/inventory`
+carries the merged list as `images` (each with its `capture` id) and the summed counts as `imageSummary`.
+
 **Hidden by default (console).** Retention is separate from display. The console shows low-value classes only on request and says
 how many it hides: group addresses (toggle "Show broadcast / multicast", default off), addressed-only hosts, and scan-only edges
 (`messages` 0). Seen-only and probe-like hosts are visible by default, drawn as low-confidence. The "Hidden by default" facet lists

@@ -42,7 +42,7 @@ const RICH_FLOWS = [
 ];
 
 /** Default fake API: real example assets, ranked as listed, index verified. */
-function defaultRoutes({ inventory, rank, site = {}, index, captures = [], changes = [], flows = EXAMPLE_FLOWS, captureAssets = {}, groups = [], macs = [] } = {}) {
+function defaultRoutes({ inventory, rank, site = {}, index, captures = [], changes = [], flows = EXAMPLE_FLOWS, captureAssets = {}, groups = [], macs = [], images = [], imageSummary = {} } = {}) {
   const inv = inventory || exampleInventory();
   // Give two assets a match result so advisory screens have something to show.
   const plc = inv.assets.find((a) => a.id === '10.0.1.40');
@@ -50,7 +50,7 @@ function defaultRoutes({ inventory, rank, site = {}, index, captures = [], chang
   const adapter = inv.assets.find((a) => a.id === '10.0.1.10');
   adapter.match = { level: 'NONE', kevAtModel: false, maxCvss: 0, advisories: [] };
   return {
-    'GET inventory': { inventory: inv, rank: rank || inv.assets.map((a) => a.id), site, flows, groups, macs, captureAssets },
+    'GET inventory': { inventory: inv, rank: rank || inv.assets.map((a) => a.id), site, flows, groups, macs, images, imageSummary, captureAssets },
     'GET captures': captures,
     'GET index': index || { verified: true, generated: '2026-10-01T00:00:00Z', warning: null, kevCatalogVersion: '2026.10.01', advisories: 3100, rows: 52000 },
     'GET changes': changes,

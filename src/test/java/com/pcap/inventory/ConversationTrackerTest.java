@@ -59,12 +59,8 @@ class ConversationTrackerTest {
         assertEquals(2L, w.get("messages"), "payload-carrying packets, both directions");
         assertEquals(5L, w.get("packets"));
         assertEquals((long) "GET / HTTP/1.0\r\n\r\n".length() + "HTTP/1.0 200 OK\r\n\r\nhello".length(), w.get("bytes"));
-        assertEquals((long) "GET / HTTP/1.0
-
-".length(), w.get("bytesToServer"));
-        assertEquals((long) "HTTP/1.0 200 OK
-
-hello".length(), w.get("bytesToClient"));
+        assertEquals((long) "GET / HTTP/1.0\r\n\r\n".length(), w.get("bytesToServer"));
+        assertEquals((long) "HTTP/1.0 200 OK\r\n\r\nhello".length(), w.get("bytesToClient"));
         assertEquals("native", w.get("source"));
         assertFalse(w.containsKey("scanAttempts"));
     }

@@ -63,6 +63,7 @@ public final class CliCommand {
         Path zeekLogs = null;
         java.time.Duration zeekTimeout = null;
         AnalysisOptions.Tools tools = null;
+        Path imagesDir = null;
 
         for (int i = 0; i < tokens.size(); i++) {
             String t = tokens.get(i);
@@ -94,6 +95,13 @@ public final class CliCommand {
                         return ExitCode.USAGE;
                     }
                     tools = AnalysisOptions.Tools.valueOf(v.toUpperCase(Locale.ROOT));
+                }
+                case "--images-dir" -> {
+                    if (i + 1 >= tokens.size()) {
+                        err.println("error: --images-dir requires a directory");
+                        return ExitCode.USAGE;
+                    }
+                    imagesDir = Path.of(tokens.get(++i));
                 }
                 case "--zeek-logs" -> {
                     if (i + 1 >= tokens.size()) {
@@ -162,7 +170,7 @@ public final class CliCommand {
         if (zeekLogs != null && engine == null) {
             engine = AnalysisOptions.Engine.ZEEK;                    // pointing at logs is asking for the Zeek engine
         }
-        AnalysisOptions options = new AnalysisOptions(icsOnly, keepScans, engine, zeekLogs, zeekTimeout, tools);
+        AnalysisOptions options = new AnalysisOptions(icsOnly, keepScans, engine, zeekLogs, zeekTimeout, tools, imagesDir);
         return new AnalyzeCommand(input, output, force, verbose, formatJson, post, options, out, err).run();
     }
 
@@ -185,6 +193,7 @@ public final class CliCommand {
         ps.println("                        http://127.0.0.1:8088/api/v1/assets (see 'serve')");
         ps.println("      --ics-only        Only decoded ICS protocols as edges; no unknown-protocol host pairs");
         ps.println("      --keep-scans      Edges for conversations that only saw scan attempts (the default; kept so nothing observed is dropped)");
+        ps.println("      --images-dir DIR  Keep the images web servers sent (PNG, GIF, JPEG, WebP, ICO by magic bytes; never SVG) in DIR as <sha256>.<ext>; needs tshark or the tools image");
         ps.println("      --drop-scans      Leave scan-only conversations out of the flows (they are still counted in source.scanAttempts)");
         ps.println("                        (connections whose handshake never completed); default: counted only");
         ps.println("      --engine <e>      native (default): the built-in decoders only, nothing to install");

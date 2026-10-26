@@ -24,6 +24,8 @@ public final class IngestModels {
         public List<Map<String, Object>> groups;
         /** The Ethernet view: one entry per MAC with frame counts and the IPs seen behind it. Absent when the capture had no Ethernet frames. */
         public List<Map<String, Object>> macs;
+        /** Images web servers sent, kept by their magic bytes ({@code host, sha256, kind, bytes, name, source}); absent when none were extracted. */
+        public List<Map<String, Object>> images;
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

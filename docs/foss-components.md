@@ -84,8 +84,13 @@ the console's capture queue uses the automatic mode. Environment: `RECONICS_SURI
   guess and is only used for conversations nothing else saw.
 - Merge: a conversation Zeek and the native decoders did not report, that had traffic both ways, becomes a flow with protocol
   `unknown`, `source: "tshark"` and the Wireshark dissector name as a `classifiedBy` label (MEDIUM, basis `dissector`) mapped to
-  the product's protocol names where one exists (`mbtcp` is shown as modbus). Unanswered SYNs are dropped, so a scan does not
-  become a conversation. The two ends become LOW presence observations (`TSHARK_CONV`), with no identity and no protocol.
+  the product's protocol names where one exists (`mbtcp` is shown as modbus). Unanswered SYNs are kept as scan attempts (`scanAttempts`, shown as low-confidence presence),
+  never as an ICS conversation. The two ends become LOW presence observations (`TSHARK_CONV`), with no identity and no protocol.
+- Images (`HttpImages`, on by default in the console, `--images-dir DIR` on the CLI): two more tshark passes over the same capture, with no string
+  literals in the filter (quotes do not survive every way of starting a process): `-Y "http.request or (http.response and http.file_data)"`
+  with `-e frame.number -e ip.src -e http.request.uri -e http.request_in -e http.response` to learn request paths and count bodies per server, then
+  `-Y "http.response and http.file_data"` with `-e http.content_type -e http.file_data` (the body as hex). Java checks the magic bytes, hashes and
+  writes the file. Passive and read-only, tools image (`--network none`) like the other adapters.
 - Why only a fallback: Zeek+ICSNPP is the better source of ICS operations; tshark is the broadest dissector set, so it
   catches protocols Zeek has no analyzer for, as a name.
 - Data file: Wireshark's `manuf` (see below).

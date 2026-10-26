@@ -77,6 +77,8 @@ final class Site {
     private Inventory cached;
     private List<Object> cachedFlows = List.of();    // conversations of the merged captures; built together with `cached`
     private List<Object> cachedGroups = List.of(), cachedMacs = List.of();   // broadcast / multicast destinations and the Ethernet view of the merged captures
+    private List<Object> cachedImages = List.of();                           // images extracted from HTTP bodies, whose files are in <id>.images/
+    private Map<String, Object> cachedImageSummary = Map.of();
     /** Capture id -> inventory record ids it contributed; built with `cached`, so the UI can hide one capture's nodes. */
     private Map<String, List<String>> cachedCaptureAssets = new LinkedHashMap<>();
     static final int MAX_FLOWS = 5_000, MAX_LABELS = 8, MAX_OPERATIONS = 50, MAX_SAMPLES = 8, MAX_STATUSES = 6;
@@ -191,6 +193,7 @@ final class Site {
         captures.remove(c);
         cached = null;
         for (String ext : List.of(".pcap", ".json", ".obs.json")) Files.deleteIfExists(captureDir.resolve(id + ext));
+        com.pcap.tools.Exec.deleteTree(imageDir(id));                 // the images this capture's web traffic carried go with it
         if (!done) return null;
         Set<String> after = inventory().records.stream().map(r -> r.id).collect(java.util.stream.Collectors.toSet());
         Set<String> elsewhere = new HashSet<>();
@@ -231,8 +234,9 @@ final class Site {
             saveQuietly(c);
         }
         try {
-            var result = new AnalysisService().analyze(captureDir.resolve(id + ".pcap"), false,
-                    new com.pcap.service.AnalysisOptions(false, true).withEngine(com.pcap.service.AnalysisOptions.Engine.valueOf(System.getProperty("reconics.engine", "AUTO")), null, null));   // Zeek when installed, else native; -Dreconics.engine=NATIVE to skip Zeek
+            var opts = new com.pcap.service.AnalysisOptions(false, true).withEngine(com.pcap.service.AnalysisOptions.Engine.valueOf(System.getProperty("reconics.engine", "AUTO")), null, null);
+            if (!"off".equals(System.getProperty("reconics.images"))) opts = opts.withImageDir(imageDir(id));          // -Dreconics.images=off: keep no images
+            var result = new AnalysisService().analyze(captureDir.resolve(id + ".pcap"), false, opts);   // Zeek when installed, else native; -Dreconics.engine=NATIVE to skip Zeek
             String obs = result.document() == null ? "{\"assets\":[]}" : new com.pcap.output.IngestJsonWriter().mapper().writeValueAsString(result.document());
             var r = result.report();
             Map<String, Object> summary = new LinkedHashMap<>();
@@ -401,6 +405,8 @@ final class Site {
         List<Object> all = new ArrayList<>();
         Map<String, Map<String, Object>> flows = new LinkedHashMap<>(), groups = new LinkedHashMap<>(), macs = new LinkedHashMap<>();
         Map<String, List<String>> captureAssets = new LinkedHashMap<>();
+        List<Object> images = new ArrayList<>();
+        Map<String, Object> imageSummary = new LinkedHashMap<>();
         for (var c : captures) {
             if (!"done".equals(c.get("state"))) continue;
             Path p = captureDir.resolve(c.get("id") + ".obs.json");
@@ -412,6 +418,8 @@ final class Site {
             addFlows(flows, doc.get("flows"), String.valueOf(c.get("id")));
             addGroups(groups, doc.get("groups"));
             addMacs(macs, doc.get("macs"));
+            addImages(images, String.valueOf(c.get("id")), doc.get("images"));
+            addImageSummary(imageSummary, Json.obj(doc.get("source")).get("images"));
             List<String> ids = assetIds(doc);
             if (!ids.isEmpty()) captureAssets.put(String.valueOf(c.get("id")), ids);
         }
@@ -436,6 +444,8 @@ final class Site {
         cachedFlows = flowList(flows.values());
         cachedGroups = List.copyOf(groups.values());
         cachedMacs = macList(macs.values());
+        cachedImages = List.copyOf(images);
+        cachedImageSummary = imageSummary;
         cachedCaptureAssets = recordIds(captureAssets, inv);
         return cached = inv;
     }
@@ -720,6 +730,66 @@ final class Site {
         }
     }
 
+    // ------------------------------------------------------------------ images from HTTP bodies
+
+    static final int MAX_IMAGES_LISTED = 200;
+    private static final java.util.regex.Pattern CAPTURE_ID = java.util.regex.Pattern.compile("^c[0-9]{4,9}$"), SHA_RE = java.util.regex.Pattern.compile("^[0-9a-f]{64}$"),
+            IMAGE_NAME = java.util.regex.Pattern.compile("^[A-Za-z0-9._-]{1,48}$");
+    private static final Map<String, String> IMAGE_EXT = Map.of("png", "png", "gif", "gif", "jpeg", "jpg", "webp", "webp", "ico", "ico");
+
+    Path imageDir(String id) { return captureDir.resolve(id + ".images"); }
+
+    /**
+     * The stored file of one extracted image, or null. Both parts are matched against fixed patterns, the capture must exist, and the
+     * path is built from them only, so no request text reaches the file system. The extension (and with it the Content-Type) is
+     * whichever one the extractor wrote after checking the bytes.
+     */
+    synchronized Path imageFile(String id, String sha) {
+        if (id == null || sha == null || !CAPTURE_ID.matcher(id).matches() || !SHA_RE.matcher(sha).matches()) return null;
+        if (captures.stream().noneMatch(c -> c.get("id").equals(id))) return null;
+        for (String ext : IMAGE_EXT.values()) {
+            Path f = imageDir(id).resolve(sha + "." + ext);
+            if (Files.isRegularFile(f, LinkOption.NOFOLLOW_LINKS)) return f;
+        }
+        return null;
+    }
+
+    /** Image metadata from one capture's document: untrusted like everything in it, and listed only while the file is still there. */
+    private void addImages(List<Object> into, String capture, Object list) {
+        for (Object o : Json.arr(list)) {
+            if (into.size() >= MAX_IMAGES_LISTED) return;
+            var m = Json.obj(o);
+            if (!(m.get("host") instanceof String host) || !IP_RE.matcher(host).matches() || !(m.get("sha256") instanceof String sha) || !SHA_RE.matcher(sha).matches()
+                    || !(m.get("kind") instanceof String kind) || !IMAGE_EXT.containsKey(kind)
+                    || !Files.isRegularFile(imageDir(capture).resolve(sha + "." + IMAGE_EXT.get(kind)), LinkOption.NOFOLLOW_LINKS)) continue;
+            Map<String, Object> e = new LinkedHashMap<>();
+            e.put("capture", capture); e.put("host", host); e.put("sha256", sha); e.put("kind", kind);
+            e.put("bytes", count(m.get("bytes")));
+            if (m.get("name") instanceof String n && IMAGE_NAME.matcher(n).matches()) e.put("name", n);
+            e.put("source", "tshark");
+            into.add(e);
+        }
+    }
+
+    /** source.images of every capture added up: what was kept, and the bodies that were not images, counted per server so none is silent. */
+    @SuppressWarnings("unchecked")
+    private static void addImageSummary(Map<String, Object> into, Object src) {
+        var s = Json.obj(src);
+        if (s.isEmpty()) return;
+        String state = s.get("state") instanceof String st ? st : "";
+        into.merge(state.equals("ran") ? "ran" : state.equals("failed") ? "failed" : "notRun", 1.0, (a, b) -> (double) a + (double) b);
+        if (!state.equals("ran") && s.get("reason") instanceof String r && !into.containsKey("reason")) into.put("reason", Inventory.clean(r, 200));
+        for (String k : List.of("extracted", "duplicates", "nonImageNotExtracted")) into.merge(k, count(s.get(k)), (a, b) -> Math.min(1e12, (double) a + (double) b));
+        var by = (Map<String, Object>) into.computeIfAbsent("nonImageByHost", k -> new LinkedHashMap<String, Object>());
+        for (var e : Json.obj(s.get("nonImageByHost")).entrySet())
+            if (IP_RE.matcher(e.getKey()).matches() && (by.size() < 256 || by.containsKey(e.getKey()))) by.merge(e.getKey(), count(e.getValue()), (a, b) -> Math.min(1e12, (double) a + (double) b));
+        var not = (Map<String, Object>) into.computeIfAbsent("notExtracted", k -> new LinkedHashMap<String, Object>());
+        for (String k : List.of("tooLarge", "overCap", "notAnImage")) {
+            double v = count(Json.obj(s.get("notExtracted")).get(k));
+            if (v > 0) not.merge(k, v, (a, b) -> Math.min(1e12, (double) a + (double) b));
+        }
+    }
+
     /** The Ethernet view across captures: frame counts add, the IPs behind a MAC union. */
     @SuppressWarnings("unchecked")
     private static void addMacs(Map<String, Map<String, Object>> into, Object list) {
@@ -788,6 +858,8 @@ final class Site {
         m.put("flows", cachedFlows);
         m.put("groups", cachedGroups);
         m.put("macs", cachedMacs);
+        m.put("images", cachedImages);
+        m.put("imageSummary", cachedImageSummary);
         m.put("captureAssets", cachedCaptureAssets);
         return m;
     }

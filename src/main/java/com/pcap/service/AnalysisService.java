@@ -340,6 +340,15 @@ public final class AnalysisService {
                 }
             }
             facts.apply(doc);               // every address, group address and MAC the capture showed, as sourced low-confidence facts
+            if (options.imageDir() != null && options.toolsEnabled()) {          // like the other tools: not with --engine native, which promises nothing outside the jar
+                var im = com.pcap.tools.HttpImages.extract(toolEnv.withTimeout(options.zeekTimeout()), capturePath, options.imageDir());
+                if (!im.images().isEmpty()) {
+                    doc.images = im.images().stream().map(com.pcap.tools.HttpImages.Image::toMap).toList();
+                }
+                doc.source.put("images", im.summary());
+            } else if (options.imageDir() != null) {
+                doc.source.put("images", Map.of("tool", "tshark (http bodies)", "state", "not-run", "reason", "tools are off (--engine native or --tools off)"));
+            }
             // connections that never completed a handshake: edges only with --keep-scans, but the total is worth knowing
             long scanTotal = Math.max(conversations.scanAttempts(), zeek == null ? 0 : zeek.stats().scanAttempts());
             if (scanTotal > 0) {

@@ -484,4 +484,51 @@ class SiteServerTest {
         assertEquals(5.0, rule.get("count"), "the same rule adds up across captures");
         assertEquals(3.0, Json.obj(alerts.get(1)).get("severity"), "an out-of-range severity becomes the default");
     }
+
+    @Test
+    void extractedImagesAreListedServedAsInertBytesAndDeletedWithTheirCapture() throws Exception {
+        String id = (String) Json.obj(Json.parse(send("POST", "/api/v1/captures?name=web.pcap", "application/octet-stream", acmePcap("1.9")).body())).get("id");
+        assertEquals("done", waitFor(id).get("state"));
+        byte[] png = com.pcap.tools.HttpImagesTestBytes.PNG;
+        String sha = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(png));
+        String svgSha = "a".repeat(64), noFileSha = "b".repeat(64);
+        Path dir = Files.createDirectories(tmp.resolve("site/captures/" + id + ".images"));
+        Files.write(dir.resolve(sha + ".png"), png);
+        Files.writeString(dir.resolve(svgSha + ".svg"), "<svg onload=alert(1)/>");          // an extension the extractor never writes: never served
+        Path obs = tmp.resolve("site/captures/" + id + ".obs.json");
+        var doc = Json.obj(Json.parse(Files.readString(obs)));
+        doc.put("images", List.of(
+                Map.of("host", "10.10.1.31", "sha256", sha, "kind", "png", "bytes", 16.0, "name", "logo.png", "source", "tshark"),
+                Map.of("host", "<script>", "sha256", sha, "kind", "png", "bytes", 16.0),                       // not an address
+                Map.of("host", "10.10.1.31", "sha256", noFileSha, "kind", "png", "bytes", 16.0),               // its file is gone
+                Map.of("host", "10.10.1.31", "sha256", svgSha, "kind", "svg", "bytes", 20.0)));                // not a kept kind
+        var src = new java.util.LinkedHashMap<String, Object>(Json.obj(doc.get("source")));
+        src.put("images", Map.of("state", "ran", "extracted", 1.0, "nonImageNotExtracted", 3.0, "nonImageByHost", Map.of("10.10.1.31", 3.0)));
+        doc.put("source", src);
+        Files.writeString(obs, Json.write(doc));
+        assertEquals(200, send("PATCH", "/api/v1/assets/10.10.1.31", "application/json", "{\"zone\":\"Cell 1\"}".getBytes(StandardCharsets.UTF_8)).statusCode());   // rebuilds the cached inventory
+
+        var inv = Json.obj(Json.parse(get("/api/v1/inventory").body()));
+        var listed = Json.arr(inv.get("images"));
+        assertEquals(1, listed.size(), "only the well-formed entry whose file is on disk");
+        assertEquals(id, Json.obj(listed.get(0)).get("capture"));
+        assertEquals(3.0, Json.obj(inv.get("imageSummary")).get("nonImageNotExtracted"));
+
+        var r = http.send(HttpRequest.newBuilder(URI.create(base + "/api/v1/captures/" + id + "/images/" + sha)).build(), HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(200, r.statusCode());
+        assertArrayEquals(png, r.body());
+        var h = r.headers();
+        assertEquals("image/png", h.firstValue("Content-Type").orElse(""));
+        assertEquals("nosniff", h.firstValue("X-Content-Type-Options").orElse(""));
+        assertEquals("default-src 'none'; sandbox", h.firstValue("Content-Security-Policy").orElse(""));
+        assertEquals("same-origin", h.firstValue("Cross-Origin-Resource-Policy").orElse(""));
+
+        for (String bad : List.of(id + "/images/" + noFileSha, id + "/images/" + svgSha, id + "/images/" + sha.toUpperCase(), id + "/images/..%2F" + sha,
+                id + "/images/" + sha.substring(1), "c9999/images/" + sha, "..%2F" + id + "/images/" + sha, id + "/images/")) {
+            assertEquals(404, get("/api/v1/captures/" + bad).statusCode(), bad);
+        }
+        assertEquals(200, send("DELETE", "/api/v1/captures/" + id, null, null).statusCode());
+        assertFalse(Files.exists(dir), "the images go with the capture");
+        assertEquals(404, get("/api/v1/captures/" + id + "/images/" + sha).statusCode());
+    }
 }

@@ -116,6 +116,10 @@ main.panel .form { grid-template-columns: 1fr; }
 .empty { padding: 24px 16px; color: var(--muted); }
 .strip-note { padding: 8px 16px; background: var(--panel2); border-bottom: 1px solid var(--line2); }
 
+.thumbs { display: flex; flex-wrap: wrap; gap: 8px; }
+.thumb { margin: 0; width: 112px; display: flex; flex-direction: column; gap: 2px; }
+.thumb img { max-width: 112px; max-height: 80px; object-fit: contain; background: var(--line2, #eee); border: 1px solid var(--line2, #ddd); border-radius: 4px; image-rendering: auto; }
+.thumb figcaption { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .badge { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; text-decoration: none; }
 .lv-EXACT { background: var(--exact-bg); color: var(--exact); }
 .lv-PROBABLE { background: var(--prob-bg); color: var(--prob); }

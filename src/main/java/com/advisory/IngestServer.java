@@ -158,7 +158,8 @@ final class IngestServer {
                 var gone = site.removeCapture(path.substring("/api/v1/captures/".length()), actor);
                 if (gone == null) send(ex, 204, null);
                 else send(ex, 200, Json.write(gone));              // a merged capture: what left the inventory and what stayed
-            } else if (method.equals("GET") && path.equals("/api/v1/inventory")) send(ex, 200, Json.write(site.inventoryJson()));
+            } else if (method.equals("GET") && path.startsWith("/api/v1/captures/") && path.contains("/images/")) image(ex, path);
+            else if (method.equals("GET") && path.equals("/api/v1/inventory")) send(ex, 200, Json.write(site.inventoryJson()));
             else if (method.equals("PATCH") && path.startsWith("/api/v1/assets/")) {
                 if (!contentType(ex, "application/json")) { error(ex, 415, "Content-Type must be application/json"); return true; }
                 if (tooLong(ex, 64 << 10)) { error(ex, 413, "request body too large"); return true; }
@@ -283,6 +284,31 @@ final class IngestServer {
         if (site != null && !ok.isEmpty()) site.addPosted(ok, doc instanceof List ? List.of() : Json.arr(Json.obj(doc).get("flows")), doc instanceof List ? List.of() : Json.arr(Json.obj(doc).get("groups")),
                 doc instanceof List ? List.of() : Json.arr(Json.obj(doc).get("macs")), actor(ex));   // the UI reads only the Site inventory
         send(ex, rejected.isEmpty() ? 200 : 207, Json.write(Map.of("accepted", (double) accepted, "rejected", rejected)));
+    }
+
+    private static final Map<String, String> IMAGE_TYPES = Map.of("png", "image/png", "gif", "image/gif", "jpg", "image/jpeg", "webp", "image/webp", "ico", "image/x-icon");
+
+    /**
+     * {@code GET /api/v1/captures/{id}/images/{sha256}}: one image taken from the capture's HTTP traffic, as inert bytes. The type is fixed from the
+     * extension the extractor wrote after checking the magic bytes, never from anything the server sent, and the response forbids sniffing,
+     * scripts, framing and cross-origin use.
+     */
+    private void image(HttpExchange ex, String path) throws IOException {
+        String[] p = path.substring("/api/v1/captures/".length()).split("/images/", -1);
+        java.nio.file.Path f = p.length == 2 ? site.imageFile(p[0], p[1]) : null;
+        String name = f == null ? "" : f.getFileName().toString();
+        String type = IMAGE_TYPES.get(name.substring(name.lastIndexOf('.') + 1));
+        if (f == null || type == null) { error(ex, 404, "no such image"); return; }
+        var h = ex.getResponseHeaders();
+        h.set("Content-Type", type);
+        h.set("X-Content-Type-Options", "nosniff");
+        h.set("Content-Security-Policy", "default-src 'none'; sandbox");
+        h.set("Cross-Origin-Resource-Policy", "same-origin");
+        h.set("Content-Disposition", "inline; filename=\"" + name + "\"");
+        byte[] b = java.nio.file.Files.readAllBytes(f);
+        ex.sendResponseHeaders(200, b.length);
+        ex.getResponseBody().write(b);
+        ex.getResponseBody().flush();
     }
 
     private static void error(HttpExchange ex, int code, String msg) throws IOException {

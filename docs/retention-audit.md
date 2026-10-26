@@ -35,6 +35,7 @@ TCP handshakes to the PLC's web server) and 255.255.255.255 (15 DHCP boot reques
 | 20 | `HostClassifier` | n/a | Role inference from flows counted ICMP and group flows as "client of unknown" | ICMP flows, group destinations and flows with zero messages no longer drive role or direction inference (they are shown, not interpreted); port hints are still set |
 | 21 | Caps: `FlowTable.MAX_FLOWS` 5 000, `NetworkObserver` hosts 65 536, MACs 20 000, groups 2 048, ICMP flows 20 000, Zeek `MAX_*` | Anything past the cap | Memory bound on a hostile capture | **Stay** and are counted: `source.retention.overCap`, `zeek.*DroppedOverCap` |
 | 22 | `--ics-only` | Non-ICS flows (and, via tshark, conversations) | The user asked for ICS only | **Stays** by explicit request, and counted |
+| 23 | HTTP response bodies | Never looked at | Not an inventory fact | **Images** (PNG, GIF, JPEG, WebP, ICO, by magic bytes) are kept as hashed files with a source badge; **everything else is counted** per server (`source.images.nonImageNotExtracted`), as are bodies over the size cap, over the count cap and ones whose type claimed an image but whose bytes were not (`notExtracted`). SVG is never kept |
 
 ## What the console does with it (`Site`, `Inventory`, UI)
 
