@@ -53,7 +53,7 @@ test('graph', async (t) => {
       const { edges: es } = app.get('graphModel()');
       const flow = es.filter((e) => e.kind === 'flow');
       assert.equal(flow.length, 1);
-      assert.equal(flow[0].label, '5 conversations');
+      assert.equal(flow[0].label, '5 threads');
       assert.equal(flow[0].n, 15);
     } finally { app.close(); }
   });
@@ -63,7 +63,7 @@ test('graph', async (t) => {
       labels: i < 3 ? { ['Modbus FC' + i]: 2, 'Modbus FC17 exception': 1 } : {}, operations: i === 0 ? [{ function: 'FC0 x', access: 'read', count: 2 }] : [] }));
     const app = await loadApp({ routes: defaultRoutes({ flows: many }), hash: '#/asset/10.0.1.50' });
     try {
-      app.$$('#main button.tab').find((b) => /^Conversations/.test(b.textContent)).click();
+      app.$$('#main button.tab').find((b) => /^Talks to/.test(b.textContent)).click();
       await settle();
       const details = app.$$('#main a.btn').filter((a) => a.textContent === 'Details');
       assert.equal(details.length, 1, 'one merged card');
@@ -71,7 +71,7 @@ test('graph', async (t) => {
       assert.match(app.text(), /Modbus FC17 exception ×3/, 'the card lists every message kind');
       await app.go(details[0].getAttribute('href'));
       assert.doesNotMatch(app.text(), /No such conversation/);
-      assert.match(app.text(), /5 conversations/);
+      assert.match(app.text(), /5 threads/);
       assert.match(app.text(), /Modbus FC17 exception ×3/, 'the panel shows the same kinds as the card');
       assert.match(app.text(), /FC0 x/, 'merged operations are listed too');
       assert.equal(app.$$('#main a.btn').filter((a) => a.textContent === 'Details').length, 5, 'each member conversation links to its own panel');
@@ -138,8 +138,8 @@ test('graph', async (t) => {
   await t.test('the panel lists the asset\'s conversations as evidence', async () => {
     const app = await loadApp({ routes: defaultRoutes(), hash: '#/asset/10.0.1.40' });
     try {
-      assert.match(app.text(), /Conversations \(3\)/);
-      app.$$('#main button.tab').find((b) => /^Conversations/.test(b.textContent)).click();
+      assert.match(app.text(), /Talks to \(2\)/, 'two devices talk to it, over three conversations');
+      app.$$('#main button.tab').find((b) => /^Talks to/.test(b.textContent)).click();
       await settle();
       assert.match(app.text(), /from.*10\.0\.1\.50.*modbus 502\/tcp.*12 messages/);
       assert.match(app.text(), /Modbus FC43\/14 request ×4/);
@@ -424,6 +424,18 @@ test('edges', async (t) => {
     } finally { app.close(); }
   });
 
+  await t.test('a conversation trace is drawn as chat bubbles, and the side panel has a resize handle', async () => {
+    const flows = [{ client: '10.0.1.50', server: '10.0.1.60', protocol: 'ssl', port: '443/tcp', transport: 'tcp', messages: 4, labels: {},
+      trace: ['11:35:36 * TLS TLSv12 cipher=AES128', '11:35:36 > ClientHello server_name=plc.local', '11:35:36 < ServerHello', '11:35:37 < Certificate[0] subject=CN=plc.local self-signed'] }];
+    const app = await loadApp({ routes: defaultRoutes({ flows }), hash: '#/edge/' + encodeURIComponent('10.0.1.50>10.0.1.60>ssl>443/tcp') });
+    try {
+      assert.equal(app.$$('.chat .msg.out').length, 1, 'the client line is one bubble');
+      assert.equal(app.$$('.chat .msg.in').length, 1, 'two server lines in a row share one bubble');
+      assert.match(app.text('.chat .msg.in'), /Certificate\[0\].*subject.*CN=plc\.local/);
+      assert.equal(app.$('#split').hidden, false);
+    } finally { app.close(); }
+  });
+
   await t.test('an undecoded flow shows its port-inferred hint as a hint, and keeps the grey unknown colour', async () => {
     const flows = [{ client: '10.0.1.50', server: '10.0.1.60', protocol: 'unknown', port: '22/tcp', transport: 'tcp', messages: 4, portHint: 'ssh', labels: {} }];
     const app = await loadApp({ routes: defaultRoutes({ flows }), hash: '#/edge/' + encodeURIComponent('10.0.1.50>10.0.1.60>unknown>22/tcp') });
@@ -495,7 +507,7 @@ test('edges', async (t) => {
   await t.test('the node panel lists peers with rate and the operations summary, linking to the edge panel', async () => {
     const app = await richApp('#/asset/10.0.1.40');
     try {
-      app.$$('#main button.tab').find((b) => /^Conversations/.test(b.textContent)).click();
+      app.$$('#main button.tab').find((b) => /^Talks to/.test(b.textContent)).click();
       await settle();
       const text = app.text();
       assert.match(text, /from.*10\.0\.1\.50.*modbus 502\/tcp.*1200 messages · 20\.0 \/min/);

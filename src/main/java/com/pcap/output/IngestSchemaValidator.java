@@ -203,6 +203,9 @@ public final class IngestSchemaValidator {
                     errors.add(at + "." + k + " must be a non-negative integer");
                 }
             }
+            if (f.has("trace") && !(f.get("trace").isArray() && f.get("trace").size() <= 200 && java.util.stream.StreamSupport.stream(f.get("trace").spliterator(), false).allMatch(t -> t.isTextual() && t.asText().length() <= 300))) {
+                errors.add(at + ".trace must be an array of at most 200 strings of at most 300 characters");
+            }
             for (String k : List.of("firstSeen", "lastSeen")) {
                 if (f.has(k) && !instant(f.get(k))) {
                     errors.add(at + "." + k + " must be an ISO-8601 UTC timestamp");

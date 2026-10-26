@@ -51,6 +51,7 @@
       }
     },
     "portHint": {"type": "string", "maxLength": 32, "description": "Only on protocol unknown: the protocol the server port usually carries. Port-inferred, not dissected."},
+    "trace": {"type": "array", "maxItems": 200, "items": {"type": "string", "maxLength": 300}, "description": "chat lines (HH:MM:SS UTC, then a marker) from the Zeek logs (conn, ssl, x509, http, ssh, dns, ftp, smtp, smb, dhcp, rdp, ntp, snmp, sip, kerberos, ntlm, ldap, mqtt and others): * session fact, > client to server, < server to client. Display text only."},
     "scanAttempts": {"$ref": "#/$defs/count"},
     "source": {"type": "string", "pattern": "^(zeek|native|tshark)(\\+(zeek|native|tshark))*$", "description": "Engines that saw the conversation, joined by +: zeek, native, tshark (a conversation only tshark saw, from the optional Wireshark fallback)"},
     "note": {"type": "string", "maxLength": 400, "description": "Present when an ICS decode was rejected and the flow went back to unknown: what was decoded and why another tool's classification outweighs it. See docs/foss-components.md, Modbus decodes that another tool contradicts."},

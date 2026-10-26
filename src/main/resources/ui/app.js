@@ -645,7 +645,7 @@ function asset(id) {
         h('div', { class: 'row', style: { gap: '20px' } },
           fact('Completeness', c.filled + ' / 14'), h('div', {}, h('div', { class: 'muted small' }, 'Match ceiling'), levelBadge(c.matchCeiling)),
           fact('Lifecycle', site.lifecycle || 'In service'))),
-      h('div', { class: 'tabs' }, tab('attrs', 'Attributes'), tab('advs', 'Advisories (' + advs.length + ')'), tab('conv', 'Conversations (' + convs.length + ')'), tab('hist', 'History (' + hist.length + ')'))),
+      h('div', { class: 'tabs' }, tab('attrs', 'Attributes'), tab('advs', 'Advisories (' + advs.length + ')'), tab('conv', 'Talks to (' + peersOf(convs, a.id) + ')'), tab('hist', 'History (' + hist.length + ')'))),
     S.tab === 'attrs' ? [attrsCard(a, site, role), observedCard(a)] : S.tab === 'conv' ? convCard(convs, a.id) : S.tab === 'advs' ? h('div', { class: 'card' },
       advs.length ? advs.map((x) => h('div', { class: 'card-b stack', style: { gap: '8px', borderBottom: '1px solid var(--line2)' } },
         h('div', { class: 'row' }, h('span', { class: 'mono strong' }, x.advisory), levelBadge(x.level), (x.kev || []).length ? h('span', { class: 'badge kev' }, 'KEV') : null,
@@ -704,9 +704,10 @@ function imageStrip(imgs, notImages) {
 }
 
 /** Observed conversations of one asset (the graph's edges touching it), with the message kinds as evidence. */
+const peersOf = (convs, id) => new Set(convs.map((e) => (e.from === id ? e.to : e.from))).size;
 const convsOf = (a) => graphModel().edges.filter((e) => e.kind === 'flow' && (e.from === a.id || e.to === a.id));
 function convCard(convs, id) {
-  return h('div', { class: 'card' }, convs.length ? convs.map((e) => {
+  return h('div', { class: 'card' }, convs.length ? h('div', { class: 'small muted strip-note' }, 'One row per device this one talks to. Several ports between the same two devices are one row; open it to see each thread (one protocol on one port).') : null, convs.length ? convs.map((e) => {
     const out = e.from === id, peerId = out ? e.to : e.from, grp = peerId.startsWith('grp:'), peer = grp ? { id: peerId.slice(4) } : byId(peerId);
     return h('div', { class: 'card-b stack', style: { gap: '6px', borderBottom: '1px solid var(--line2)' } },
       h('div', { class: 'row' }, h('span', { class: 'badge lv-NONE' }, out ? 'to' : 'from'), h('a', { class: 'strong', href: (grp ? '#/group/' : '#/asset/') + encodeURIComponent(peer.id) }, grp ? peer.id : nameOf(peer)),
@@ -781,7 +782,13 @@ function edgePanel(key) {
   const f = pair ? pair.f : S.flows.find((x) => flowKey(x) === key);
   if (!f) return [back, h('div', { class: 'card empty' }, 'No such conversation in the current inventory. It may have been re-merged, or hidden by a filter or a capture toggle; open the graph and click the edge again.')];
   const rate = flowRate(f), pk = protoKey(f.protocol);
+  const parent = pair ? null : graphModel().edges.find((e) => e.members && e.members.includes(f));       // the merged pair this thread was opened from, if any
+  const crumbs = h('nav', { class: 'crumbs small', 'aria-label': 'Where you are' }, h('a', { href: '#/graph' }, 'Graph'), ' › ',
+    parent ? h('a', { href: '#/edge/' + encodeURIComponent(parent.key) }, f.client + ' → ' + f.server + ' (' + parent.members.length + ' threads)') : h('span', {}, f.client + ' → ' + f.server),
+    pair ? null : [' › ', h('span', { class: 'strong' }, protoName(f.protocol) + ' ' + (f.port || ''))]);
   return [
+    crumbs,
+    pair ? null : h('div', { class: 'small muted' }, 'One thread: ' + protoName(f.protocol) + ' on port ' + (f.port || '?') + ' between these two devices. Messages are the protocol messages inside it.'),
     h('div', { class: 'card' },
       h('div', { class: 'card-b stack', style: { gap: '8px' } },
         h('h1', {}, endLink(f.client), ' → ', endLink(f.server)),
@@ -790,7 +797,8 @@ function edgePanel(key) {
           pair ? null : h('span', { class: 'mono small' }, f.port || ''), f.transport && !String(f.port || '').includes('/') ? h('span', { class: 'mono small' }, f.transport) : null,
           f.source ? h('span', { class: 'badge lv-NONE', title: 'which engine produced this conversation' }, f.source) : null,
           isScan(f) ? h('span', { class: 'badge warn' }, 'scan attempts only') : null),
-        pair ? h('div', { class: 'small muted' }, 'A busy host pair drawn as one edge: the counters and kinds below add up its ' + pair.members.length + ' conversations, which are listed under them.')
+        pair ? h('div', { class: 'small muted' }, 'A busy host pair drawn as one edge: the counters and kinds below add up its ' + pair.members.length + ' threads, which are listed under them as threads.')
+          : (f.trace || []).some((l) => l.startsWith('* TLS')) ? h('div', { class: 'small muted' }, 'Encrypted (TLS): the payload cannot be read by anyone without the keys. Messages count data packets; everything the handshake and the connection record reveal is in the session trace below.')
           : pk === 'unknown' ? h('div', { class: 'small muted' }, 'Carried but not decoded: the host pair and port are known, the protocol is not. Messages count data packets.',
             f.portHint ? [' ', h('span', { class: 'badge warn' }, 'port-inferred: ' + protoName(f.portHint) + '?'),
               ' Port ' + f.port + ' is usually ' + protoName(f.portHint) + ' (a hint from the port number only, not decoded'
@@ -803,14 +811,42 @@ function edgePanel(key) {
         f.firstSeen ? fact('First seen', fmtStamp(f.firstSeen)) : null, f.lastSeen ? fact('Last seen', fmtStamp(f.lastSeen)) : null,
         !pair && !f.firstSeen && !f.lastSeen ? fact('Time', 'unknown (the capture has no usable timestamps)') : null,
         fmtSpan(f) ? fact('Span', fmtSpan(f)) : null, f.scanAttempts ? fact('Scan attempts', f.scanAttempts.toLocaleString()) : null)),
+    traceCard(f),
     ...kindsAndOps(f),
     ...toolEvidence(f),
-    pair ? h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Conversations (' + pair.members.length + ')'),
+    pair ? h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Threads (' + pair.members.length + ')', h('span', { class: 'muted small' }, 'one protocol on one port each')),
       pair.members.slice().sort((a, b) => (b.messages || 0) - (a.messages || 0)).map((m) => h('div', { class: 'card-b stack', style: { gap: '4px', borderBottom: '1px solid var(--line2)' } },
         h('div', { class: 'row' }, h('span', { class: 'badge c-LOW', style: { borderLeft: '4px solid ' + protoColor(m.protocol) } }, m.protocol + ' ' + m.port),
           h('span', { class: 'small muted' }, (m.messages || 0) + ' messages · ' + fmtRate(flowRate(m))), h('a', { class: 'btn sm', href: '#/edge/' + encodeURIComponent(flowKey(m)) }, 'Details')),
         h('div', { class: 'small' }, Object.entries(m.labels || {}).map(([k, n]) => k + ' ×' + n).join(' · ') || 'no message kinds recorded')))) : null,
   ].filter(Boolean);
+}
+
+/** One trace line as a bubble row: a bold head, then its key=value pairs as small labelled values. */
+function bubbleRow(text) {
+  const parts = text.split(/ (?=[a-z_][a-z0-9_.]*=)/), head = /^[a-z_][a-z0-9_.]*=/.test(parts[0]) ? null : parts.shift();
+  return h('div', { class: 'bl' }, head ? h('span', { class: 'bh' }, head) : null,
+    parts.map((p) => { const i = p.indexOf('='); return h('span', { class: 'kv' }, h('span', { class: 'k' }, p.slice(0, i)), h('span', { class: 'v' }, p.slice(i + 1))); }));
+}
+
+/** What the Zeek logs recorded about one conversation, as a chat: client on the right, server on the left, session facts in the middle. */
+function traceCard(f) {
+  const msgs = [];
+  for (const l of f.trace || []) {
+    const m = /^(\d\d:\d\d:\d\d) ([*<>]) (.*)$/.exec(l);
+    if (!m) continue;
+    const side = { '>': 'out', '<': 'in', '*': 'sys' }[m[2]], last = msgs[msgs.length - 1];
+    if (last && last.side === side && side !== 'sys') last.rows.push(m[3]); else msgs.push({ side, time: m[1], rows: [m[3]] });
+  }
+  if (!msgs.length) return null;
+  let prev = '';
+  return h('div', { class: 'card' }, h('div', { class: 'card-h' }, 'Conversation', h('span', { class: 'muted small' }, (f.trace || []).length + ' events from the Zeek logs, UTC')),
+    h('div', { class: 'chat' }, msgs.map((m) => {
+      const who = m.side === 'out' ? 'Client ' + f.client : m.side === 'in' ? 'Server ' + f.server : null, showWho = who && prev !== m.side;
+      prev = m.side;
+      return h('div', { class: 'msg ' + m.side }, showWho ? h('div', { class: 'who' }, who) : null,
+        m.rows.map(bubbleRow), h('div', { class: 'time' }, m.time));
+    })));
 }
 
 /** What optional open-source tools said about a conversation: nDPI/tshark labels (not decodes), Suricata alerts, Community IDs. */
@@ -1101,7 +1137,7 @@ function graphModel() {
     const top = Object.keys(byProto).sort((a, b) => byProto[b] - byProto[a])[0], n = fs.reduce((a, f) => a + (f.messages || 0), 0), scans = fs.reduce((a, f) => a + (f.scanAttempts || 0), 0);
     const sum = (k) => fs.reduce((a, x) => a + (x[k] || 0), 0);
     const f = { client: fs[0].client, server: fs[0].server, protocol: top, port: fs.length + ' ports', labels, messages: n, scanAttempts: scans, bytes: sum('bytes') || undefined, bytesToServer: sum('bytesToServer') || undefined, bytesToClient: sum('bytesToClient') || undefined, operations: fs.flatMap((x) => x.operations || []) };   // synthetic: what the drawing and the cards read
-    edges.push({ id: 'm' + g[0].i, key: pairKey(g[0].from, g[0].to), kind: 'flow', from: g[0].from, to: g[0].to, f, n, members: fs, label: fs.length + ' conversations' });
+    edges.push({ id: 'm' + g[0].i, key: pairKey(g[0].from, g[0].to), kind: 'flow', from: g[0].from, to: g[0].to, f, n, members: fs, label: fs.length + ' threads' });
   }
   if (S.showAdv) {
     for (const r of advisoryRows()) {
@@ -1465,6 +1501,25 @@ function route() {
   return { name, arg: decodeURIComponent(arg || '') };
 }
 
+// The side panel's width, draggable like a split screen; remembered per browser.
+(function splitter() {
+  const root = document.documentElement, KEY = 'reconics.panelWidth';
+  const set = (w) => { w = Math.max(280, Math.min(w, Math.round(innerWidth * 0.75))); root.style.setProperty('--panel-w', w + 'px'); return w; };
+  const save = (w) => { try { localStorage.setItem(KEY, String(w)); } catch (e) { /* not remembered */ } };
+  try { const w = parseInt(localStorage.getItem(KEY), 10); if (w) set(w); } catch (e) { /* storage blocked: the default width applies */ }
+  let raf = 0, drag = null;
+  const redraw = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => drawGraph()); };
+  // delegated on the document: the handle lives in index.html, which may not be parsed yet when this runs
+  document.addEventListener('pointerdown', (ev) => { if (ev.target.id === 'split') { drag = ev.target; drag.setPointerCapture(ev.pointerId); } });
+  document.addEventListener('pointermove', (ev) => { if (drag) { set(innerWidth - ev.clientX); redraw(); } });
+  document.addEventListener('pointerup', () => { if (drag) { drag = null; save(parseInt(root.style.getPropertyValue('--panel-w'), 10) || 360); } });
+  document.addEventListener('keydown', (e) => {
+    if (e.target.id !== 'split' || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+    const w = set($('main').getBoundingClientRect().width + (e.key === 'ArrowLeft' ? 40 : -40));
+    save(w); redraw(); e.preventDefault();
+  });
+})();
+
 let lastRoute = '';
 function render() {
   const r = route();
@@ -1475,6 +1530,7 @@ function render() {
   const main = $('main'), open = r.name !== 'graph', side = r.name === 'asset' || r.name === 'edge' || r.name === 'group';
   main.hidden = !open;
   main.className = side ? 'panel' : 'sheet';
+  $('split').hidden = !side;
   $('stage').toggleAttribute('inert', open && !side);                         // a sheet covers the graph; the side panel does not
   main.replaceChildren(...(open ? [h('a', { class: 'close', href: '#/graph', 'aria-label': 'Close and return to the graph', title: 'Close' }, '×'),
     r.name === 'asset' ? h('button', { class: 'dock-btn', type: 'button', 'aria-label': 'Float the panel beside its node', title: 'Float beside the node', onclick: () => toggleFloat(r.arg) }, '⇱') : null,

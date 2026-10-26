@@ -189,7 +189,7 @@ test('graph controls and inspector', async (t) => {
       assert.match(app.text('#main'), /CISA high-priority attributes/);
       assert.match(app.text('#main'), /HIGH/);
       assert.match(app.text('#main'), /Site fields/);
-      assert.ok(app.$$('#main button.tab').some((b) => /^Conversations/.test(b.textContent)));
+      assert.ok(app.$$('#main button.tab').some((b) => /^Talks to/.test(b.textContent)));
       const validate = app.$$('#main button').find((b) => /Mark validated/.test(b.textContent));
       assert.equal(validate.disabled, true, 'a collector cannot validate');
       app.$('#main .dock-btn').click(); await settle();

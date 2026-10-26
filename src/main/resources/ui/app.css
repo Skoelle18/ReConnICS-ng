@@ -236,7 +236,7 @@ body { display: grid; grid-template-rows: 52px minmax(0, 1fr); font: 13px/1.4 ui
 .tree-button { width:calc(100% - 12px); background:none; border:0; text-align:left; cursor:pointer; font:inherit; }
 #stage { grid-column:2; grid-row:1; position:relative; min-width:0; min-height:0; background-color:var(--ground); background-image:linear-gradient(#ffffff08 1px,transparent 1px),linear-gradient(90deg,#ffffff08 1px,transparent 1px); background-size:24px 24px; }
 #graph { width:100%; height:100%; }
-#main.panel { position:relative; grid-column:3; grid-row:1; top:auto; right:auto; bottom:auto; width:360px; max-width:38vw; padding:14px 12px; border:0; border-left:1px solid var(--line); border-radius:0; box-shadow:none; background:var(--panel); gap:10px; z-index:5; }
+#main.panel { position:relative; grid-column:3; grid-row:1; top:auto; right:auto; bottom:auto; width:var(--panel-w,360px); min-width:280px; max-width:75vw; padding:14px 12px; border:0; border-left:1px solid var(--line); border-radius:0; box-shadow:none; background:var(--panel); gap:10px; z-index:5; }
 #main.panel h1, .float h1 { font-size:16px; }
 #main.panel .card, .float .card { background:transparent; border:0; border-radius:0; border-bottom:1px solid var(--line); }
 #main.panel .card-h, .float .card-h { padding:8px 2px; border-bottom:1px solid var(--line); }
@@ -376,3 +376,27 @@ input, select { border-radius:4px; }
 .tip { display: none !important; }   /* the text is read by #tip, which floats above every panel */
 #tip { position: fixed; z-index: 100; max-width: min(320px, 90vw); padding: 6px 8px; background: var(--ground); border: 1px solid var(--line); border-radius: 4px; color: var(--ink); font: 12px ui-monospace, Consolas, monospace; overflow-wrap: anywhere; box-shadow: 0 6px 20px #0008; pointer-events: none; }
 .steps { gap: 4px; flex-wrap: wrap; align-items: center; }
+.crumbs { color: var(--muted); overflow-wrap: anywhere; }
+/* split between the canvas and the side panel */
+#split { position:absolute; top:0; bottom:0; right:calc(var(--panel-w,360px) - 4px); width:9px; cursor:col-resize; z-index:30; touch-action:none; }
+#split:hover, #split:focus-visible, #split:active { background:var(--accent-tint); outline:0; box-shadow:inset -2px 0 0 var(--accent); }
+/* operations table inside the side panel: columns shrink instead of overlapping */
+main.panel .g-op { grid-template-columns:minmax(0,2fr) 52px 48px 36px 44px minmax(0,1fr); }
+main.panel .g-op > span { min-width:0; overflow-wrap:anywhere; }
+main.panel .g-op .badge { white-space:normal; max-width:100%; }
+/* conversation as chat bubbles */
+.chat { display:flex; flex-direction:column; gap:3px; padding:10px; max-height:520px; overflow:auto; background:var(--ground); border-radius:6px; }
+.msg { max-width:88%; padding:6px 9px 4px; border-radius:10px; font-size:12px; line-height:1.45; overflow-wrap:anywhere; }
+.msg.out { align-self:flex-end; background:var(--accent-tint); border-bottom-right-radius:2px; }
+.msg.in { align-self:flex-start; background:var(--panel2); border:1px solid var(--line2); border-bottom-left-radius:2px; }
+.msg.sys { align-self:center; max-width:96%; background:transparent; border:1px dashed var(--line); color:var(--muted); text-align:center; margin:4px 0; }
+.msg .who { font-size:10px; font-weight:700; color:var(--accent); margin-bottom:2px; }
+.msg.in .who { color:var(--muted); }
+.msg .bl { display:flex; flex-wrap:wrap; gap:2px 10px; align-items:baseline; }
+.msg .bh { font-weight:600; }
+.msg .kv .k { color:var(--muted); margin-right:4px; }
+.msg .kv .v { color:var(--ink); }
+.msg .time { text-align:right; font-size:10px; color:var(--muted); margin-top:1px; }
+/* the filter popup scrolls as a whole; its groups keep their height instead of shrinking into their own scrollbars */
+.search .pop > * { flex: none; }
+#hidden-facet .row { flex-wrap: wrap; overflow: visible; }

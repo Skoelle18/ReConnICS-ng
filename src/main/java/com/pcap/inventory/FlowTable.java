@@ -20,6 +20,7 @@ public final class FlowTable {
     static final int MAX_LABELS = 8;
     public static final int MAX_OPERATIONS = 50;
     public static final int MAX_SAMPLES = 8;
+    public static final int MAX_TRACE = 200;
     /** Distinct outcome labels kept per operation row. */
     public static final int MAX_STATUSES = 6;
     private static final java.util.regex.Pattern DROP = java.util.regex.Pattern.compile(
@@ -88,6 +89,8 @@ public final class FlowTable {
         final java.util.Set<String> communityIds = new java.util.LinkedHashSet<>();
         final Map<String, Long> labels = new LinkedHashMap<>();
         final Map<String, Operation> operations = new LinkedHashMap<>();
+        /** curl -v style lines: '*' about the session, '>' client to server, '<' server to client. */
+        final List<String> trace = new ArrayList<>();
 
         Flow(String client, String server, String protocol, String port, String transport) {
             this.client = client;
@@ -137,6 +140,13 @@ public final class FlowTable {
             if (com.pcap.util.Timestamps.usable(micros)) {
                 firstMicros = Math.min(firstMicros, micros);
                 lastMicros = Math.max(lastMicros, micros);
+            }
+            return this;
+        }
+
+        public Flow trace(String line) {
+            if (line != null && !line.isEmpty() && trace.size() < MAX_TRACE && !trace.contains(line)) {
+                trace.add(line);
             }
             return this;
         }
@@ -282,6 +292,7 @@ public final class FlowTable {
             }
             z.communityIds.forEach(this::communityId);
             scanAttempts = into ? Math.max(scanAttempts, z.scanAttempts) : scanAttempts + z.scanAttempts;
+            z.trace.forEach(this::trace);
         }
 
         public String protocolName() {
@@ -373,6 +384,9 @@ public final class FlowTable {
             }
             if (scanAttempts > 0) {
                 m.put("scanAttempts", scanAttempts);
+            }
+            if (!trace.isEmpty()) {
+                m.put("trace", trace);
             }
             if (source != null) {
                 m.put("source", source);
