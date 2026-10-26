@@ -240,7 +240,8 @@ function chrome(route) {
     n.classList.toggle('on', active);
     if (active) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current');
   });
-  $('mode-review-count').textContent = reviewCount() || '';
+  $('mode-findings-pills').replaceChildren(...['EXACT', 'PROBABLE', 'POSSIBLE'].map((l) => [l, assets().filter((a) => levelOf(a) === l).length]).filter(([, n]) => n)
+    .map(([l, n]) => h('b', { class: 'pill-' + l, title: n + ' ' + l + ' advisory matches' }, n)));
   $('tree-capture-count').textContent = S.caps.length || '';
   $('tree-advisory-count').textContent = advisoryRows().length || '';
   $('tree-review-count').textContent = reviewCount() || '';
