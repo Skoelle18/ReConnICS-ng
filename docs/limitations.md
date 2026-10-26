@@ -98,8 +98,7 @@ A small curated ODVA vendor-ID table is included for common IDs (checked against
 
 - **Zeek is not native on Windows.** The team's Windows machines use the `reconics-zeek` Docker image (`docker/zeek`); without
   Docker or a Linux/macOS Zeek, `--engine zeek` is an error (exit 5) and `--engine auto` falls back to native with a note. The
-  Docker image could not be built in the Linux environment this work was done in (no Docker daemon); the same steps were run
-  natively, but the first `docker build` is untested.
+  Docker image builds and runs on Windows 10 / Docker Desktop (built 25 Oct 2026, 1 min 17 s cold, 1.3 GB).
 - **The Docker engine writes its logs inside the container first.** Zeek writes to `/work` on the container filesystem and
   the entrypoint then copies the log set to the mounted `/out`. Writing directly to the host bind mount is far slower on
   Windows (Docker Desktop round-trips every small write to the host): one 209 MB capture produced 1.8 GB of logs in ~3.3
@@ -116,13 +115,30 @@ A small curated ODVA vendor-ID table is included for common IDs (checked against
   Native mode records message kinds (`labels`). Addresses are the zero-based addresses on the wire, as Zeek reports them. For
   DNP3, ICSNPP logs object type names (for example "Single-bit Binary Input") and index ranges, not group/variation numbers.
   DNP3 `sampleValues` are empty except for the operation type of a control block. The master is taken from the ICSNPP object
-  logs when they exist, otherwise it is the TCP originator.
+  logs when they exist (the sender of a request, the receiver of a reply); otherwise it is the side not on port 20000, so an
+  outstation that opened the connection is still the server.
+- **A capture with only generic traffic stays thin.** If the capture holds no Modbus/DNP3/S7/ENIP payload, or the protocol runs on a
+  non-standard port Zeek's analyzer does not try, `conn.log` is all Zeek has: the host is `unknown`, or, on a well-known industrial
+  port, **port-inferred** (detection basis `ZEEK_PORT`, flow `portHint`). That is a hint about what the port is usually for, shown
+  as such; it never becomes a decoded protocol, and no operation table appears. Only a capture that contains the protocol's
+  traffic can give ICSNPP something to log.
+- **Every ICSNPP log the reader uses has now been checked against real rows** (`src/test/resources/zeek` and
+  `src/test/resources/real/zeek`, provenance in `src/test/resources/real/PROVENANCE.md`): modbus, modbus_detailed, the
+  mask-write, read-write and device-identification logs, dnp3, dnp3_objects, dnp3_control, enip, cip, cip_io, cip_identity,
+  s7comm, s7comm_read_szl, s7comm_upload_download, s7comm_known_devices, s7comm_plus and cotp. The real runs corrected three
+  columns (`s7comm_plus.log` has `opcode_name`, `s7comm_upload_download.log` has `function_name`, `cip.log` ids are hex strings). A
+  field the reader does not find still just leaves that detail out. Only the ICSNPP packages in the image (modbus, dnp3, enip, s7comm)
+  were run; the opt-in `ICSNPP_EXTRA` analyzers were not. Reply-to-request pairing for S7 (pdu_reference), CIP (sequence count) and ENIP (sender
+  context) is a heuristic: unconnected CIP messages share sequence 0, so there a status can land on a neighbouring request.
+- **DNP3 `iin` byte order is confirmed.** The reader takes Zeek's `iin` as IIN1 in the high byte and IIN2 in the low byte. For all
+  53 replies of `dnp3_test_data_part1.pcap` Zeek's number equals Wireshark's `dnp3.al.iin` (tshark 4.4.19; 0x1000 is "need time",
+  0x8000 "device restart").
 - **Scan filtering.** A TCP connection whose SYN was never answered and that carried no data (native), or whose Zeek `conn_state`
-  is `S0`, `REJ`, `RSTOS0`, `SH`, or `RSTO` with no bytes exchanged, is a *scan attempt*: counted in `scanAttempts`, not drawn
-  unless `--keep-scans`. UDP has no handshake, so UDP scans are not recognised. Native and Zeek count slightly differently
+  is `S0`, `REJ`, `RSTOS0`, `SH`, or `RSTO` with no bytes exchanged, is a *scan attempt*: counted in `scanAttempts` and kept as a flow
+  (`--drop-scans` leaves it out; the console hides it by default). UDP has no handshake, so UDP scans are not recognised. Native and Zeek count slightly differently
   (a SYN-ACK followed by a reset counts only in Zeek's `RSTO` rule), so a merged flow keeps the larger number. To stay bounded,
   the scan table holds 100,000 targets; further attempts are counted in the total (`source.zeek.scanAttemptsUncounted`), but
-  attach to no flow. A host that only answered scan probes is not an asset.
+  attach to no flow. A host that only answered scan probes, or only sent a SYN, is a seen-only asset tagged `probe-like` (docs/retention-audit.md).
 - **Direction of undecoded flows is a guess.** For `unknown` flows the client is the SYN sender; with no SYN in the capture, and
   for UDP, the side with the higher port number. In native mode a host pair only draws an edge when both hosts are assets, which
   needs an ARP sender or a decoded message; with Zeek every host in `conn.log` is an asset.

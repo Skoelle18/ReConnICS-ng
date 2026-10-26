@@ -58,7 +58,7 @@ test('background refresh', async (t) => {
       setHidden(app, false);
       const main = app.$('#main > *');
       captures = [cap('late', 'running')];
-      await waitFor(() => app.$('#n-queue').textContent === '1', 'chrome (sidebar counts) still updates');
+      await waitFor(() => app.$('#tree-capture-count').textContent === '1', 'chrome (capture count) still updates');
       assert.ok(main.isConnected, 'the main pane was not replaced');
     } finally { await stop(app); }
   });

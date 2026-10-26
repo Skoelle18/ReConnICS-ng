@@ -48,10 +48,11 @@ allowed page can look but not change anything.
 |---|---|---|
 | `POST` | `/api/v1/captures?name=FILE` | Queue a capture (`application/octet-stream` body, up to 4 GiB). `202` with the queue entry; `409` for a file already queued (same SHA-256). |
 | `GET` | `/api/v1/captures` | Queue in order: `state` `queued`/`running`/`done`/`failed`, `summary` (frames, protocols, identity fields), `diff` (`new`, `changed`, `notSeen`), `exit`/`error` when failed. |
-| `DELETE` | `/api/v1/captures/{id}` | Remove a queued or failed capture. |
+| `DELETE` | `/api/v1/captures/{id}` | Remove a queued or failed capture (204), or a merged one (200, JSON `assetsDropped`, `assetsKeptSeenElsewhere`, `assetsKeptWithEdits`): the inventory is rebuilt without it, so assets another capture also saw stay, assets only it saw go unless a person edited them, and the PCAP and its analysis are deleted. Logged in the change log. |
 | `GET` | `/api/v1/inventory` | `{inventory, rank, site, flows, captureAssets}`: the [`inventory.json`](inventory.md) document for all merged captures plus human edits, record ids in fix-first order, site fields per id, the observed conversations (`flows`, see [`data-contract.md`](data-contract.md#flows)) summed over the merged captures, and the merged capture id → asset ids each capture contributed. Flows carry a `captures` array with the ids that reported them. |
 | `PATCH` | `/api/v1/assets/{id}` | Set `criticality` (`critical`/`high`/`medium`/`low`), `asset_number`, `location`, `logging`, `user_accounts` (comma-separated), `zone`, `owner`, `lifecycle`, `purdue` (`0`-`3.5`), `validated` (boolean, validator only). `""` clears. Returns the change-log entries written. |
 | `GET` | `/api/v1/changes` | Change log, newest first (captures merged, edits, index swaps). |
+| `GET` | `/api/v1/engines` | The open-source components this machine has: `[{id, name, url, licence, kind, optional, role, status: {state, via, version, detail}}]`. Detection starts a few processes, so the answer is cached for 20 s. Capture entries carry the same per-capture states in `summary.tools`. See [`foss-components.md`](foss-components.md). |
 | `POST` | `/api/v1/index[?dry=1]` | New index as the body, signature in `X-Index-Signature`. Verified against `--pubkey` first (`403` if it fails); `dry=1` only reports its metadata, otherwise it replaces the served index and re-matches. |
 | `GET` | `/api/v1/export/{inventory.json,inventory.csv,report.html}` | The inventory outputs for the current site. |
 

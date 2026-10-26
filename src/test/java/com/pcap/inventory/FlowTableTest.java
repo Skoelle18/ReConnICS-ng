@@ -96,13 +96,14 @@ class FlowTableTest {
     @Test
     void mergingZeekFlowsIntoNativeOnesDoesNotDoubleCount() {
         FlowTable nat = new FlowTable();
-        nat.flow("10.0.0.5", "10.0.0.9", "unknown", "502/tcp").messages(4).traffic(8, 100).seen(2_000_000L).labelCount("Modbus FC3", 4).scanAttempts(2).source("native");
+        nat.flow("10.0.0.5", "10.0.0.9", "unknown", "502/tcp").messages(4).traffic(8, 100).seen(1_700_000_002_000_000L).labelCount("Modbus FC3", 4).scanAttempts(2).source("native");
         nat.flow("10.0.0.5", "10.0.0.7", "snmp", "161/udp").message("SNMP GetResponse").source("native");
         FlowTable zk = new FlowTable();
         // Zeek calls the same conversation the other way round, names the protocol, and has the whole connection's counters
-        zk.flow("10.0.0.9", "10.0.0.5", "modbus", "502/tcp").messages(6).traffic(40, 900).seen(1_000_000L).seen(9_000_000L)
+        zk.flow("10.0.0.9", "10.0.0.5", "modbus", "502/tcp").messages(6).traffic(40, 900).seen(1_700_000_001_000_000L).seen(1_700_000_009_000_000L)
                 .labelCount("Modbus FC3", 6).labelCount("Modbus FC16", 1).operation("FC3 read holding registers", "read", null, 0L, 10L, 6, List.of(1)).scanAttempts(1).source("zeek");
         zk.flow("10.0.0.5", "10.0.0.11", "http", "80/tcp").messages(3).source("zeek");
+        zk.flow("10.0.0.9", "10.0.0.5", "modbus", "502/tcp").directed(700, 200);          // Zeek's originator 10.0.0.9 sent 700, 10.0.0.5 sent 200
         nat.mergeFrom(zk);
         var l = nat.toList(true);
         assertEquals(3, l.size(), l.toString());
@@ -112,17 +113,45 @@ class FlowTableTest {
         assertEquals(6L, mb.get("messages"), "the larger count, not 10");
         assertEquals(40L, mb.get("packets"));
         assertEquals(900L, mb.get("bytes"));
+        assertEquals(200L, mb.get("bytesToServer"), "Zeek called the conversation the other way round: what 10.0.0.5 sent is the native client-to-server");
+        assertEquals(700L, mb.get("bytesToClient"));
         assertEquals(2L, mb.get("scanAttempts"), "the larger of 2 and 1");
         assertEquals(6L, ((Map<?, ?>) mb.get("labels")).get("Modbus FC3"), "the larger per label, not the sum");
         assertEquals(1L, ((Map<?, ?>) mb.get("labels")).get("Modbus FC16"));
-        assertEquals("1970-01-01T00:00:01Z", mb.get("firstSeen"));
-        assertEquals("1970-01-01T00:00:09Z", mb.get("lastSeen"));
+        assertEquals("2023-11-14T22:13:21Z", mb.get("firstSeen"));
+        assertEquals("2023-11-14T22:13:29Z", mb.get("lastSeen"));
         assertEquals(1, ((List<?>) mb.get("operations")).size());
         assertEquals("zeek+native", mb.get("source"));
         assertEquals("native", l.stream().filter(f -> "snmp".equals(f.get("protocol"))).findFirst().orElseThrow().get("source"));
         assertEquals("zeek", l.stream().filter(f -> "http".equals(f.get("protocol"))).findFirst().orElseThrow().get("source"));
         // the renamed flow is still findable under its new protocol
         assertSame(nat.flow("10.0.0.5", "10.0.0.9", "modbus", "502/tcp"), nat.match("10.0.0.9", "10.0.0.5", "502/tcp"));
+    }
+
+    @Test
+    void operationStatusesAndUnitsAggregateAndAPortHintNeverOutlivesAnIdentifiedProtocol() {
+        FlowTable t = new FlowTable();
+        var f = t.flow("a", "b", "modbus", "502/tcp");
+        f.operation("FC3 read holding registers", "read", null, 1L, 2L, 7L, 2, List.of(), Map.of("ok", 2L));
+        f.operation("FC3 read holding registers", "read", null, 1L, 2L, 7L, 1, List.of(), Map.of("exception: illegal data address", 1L, "ok", 1L));
+        f.operation("FC3 read holding registers", "read", null, 1L, 2L, 8L, 1, List.of(), null);
+        var ops = (List<?>) t.toList().get(0).get("operations");
+        assertEquals(2, ops.size(), "the unit is part of the row's identity");
+        @SuppressWarnings("unchecked") var u7 = (Map<String, Object>) ops.get(0);
+        assertEquals(7L, u7.get("unit"));
+        assertEquals(3L, u7.get("count"));
+        assertEquals(Map.of("ok", 3L, "exception: illegal data address", 1L), u7.get("statuses"));
+        @SuppressWarnings("unchecked") var u8 = (Map<String, Object>) ops.get(1);
+        assertFalse(u8.containsKey("statuses"));
+
+        FlowTable n = new FlowTable();
+        n.flow("a", "b", "unknown", "502/tcp").portHint("modbus").messages(1);
+        assertEquals("modbus", n.toList().get(0).get("portHint"));
+        FlowTable z = new FlowTable();
+        z.flow("b", "a", "modbus", "502/tcp").messages(1);
+        n.mergeFrom(z);
+        assertEquals("modbus", n.toList().get(0).get("protocol"));
+        assertFalse(n.toList().get(0).containsKey("portHint"), "once dissected, the hint is gone");
     }
 
     @Test

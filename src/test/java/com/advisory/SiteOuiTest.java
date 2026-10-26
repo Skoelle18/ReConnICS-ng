@@ -9,7 +9,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** The Site inventory runs the bundled ICS OUI table: a MAC-derived vendor, LOW, never a match basis. */
+/** The Site inventory runs the bundled OUI tables (curated ICS list over the IEEE MA-L registry): a MAC-derived vendor, LOW, never a match basis. */
 class SiteOuiTest {
     @TempDir Path tmp;
 
@@ -34,6 +34,8 @@ class SiteOuiTest {
         assertEquals("Phoenix Contact GmbH & Co. KG", Site.OUI.get("00A045"));
         assertEquals("Moxa Technologies Corp., Ltd.", Site.OUI.get("0090E8"));
         assertEquals("WAGO Kontakttechnik GmbH", Site.OUI.get("0030DE"));
-        assertTrue(Site.OUI.size() > 100 && Site.OUI.size() < 200, "ICS vendors only, not the whole registry");
+        assertEquals("Siemens AG", Site.OUI.get("001B1B"), "the curated ICS name wins over the registry's \"Siemens AG,\"");
+        assertEquals("Cisco Systems, Inc", Site.OUI.get("00000C"), "the full MA-L registry is bundled too, so IT hosts get a NIC maker");
+        assertTrue(Site.OUI.size() > 30_000, "scripts/update-oui.py refreshes it");
     }
 }

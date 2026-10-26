@@ -38,13 +38,21 @@ final class Site {
      * It fills vendor_oui (LOW) and never feeds advisory matching.
      */
     static final Map<String, String> OUI = loadBundledOui();
+    /** The optional data files of other projects (Wireshark manuf, Nmap data files), found on this machine at start-up; see com.pcap.tools.ReferenceData. */
+    private final com.pcap.tools.ReferenceData.Loaded reference;
+    /** OUI table including the optional data files, and which table each added prefix came from. */
+    private final Map<String, String> ouiAll, ouiSources;
 
     private static Map<String, String> loadBundledOui() {
-        try (InputStream in = Site.class.getResourceAsStream("/oui-ics.csv")) {
-            return in == null ? null : Inventory.loadOui(AdvisoryIndex.utf8(in.readAllBytes()));
-        } catch (IOException e) {
-            return null;                                     // no OUI fallback; everything else still works
+        Map<String, String> m = new HashMap<>();
+        for (String res : List.of("/oui-ics.csv", "/oui-ma-l.csv")) {      // curated ICS names first: putIfAbsent keeps them over the registry's
+            try (InputStream in = Site.class.getResourceAsStream(res)) {
+                if (in != null) Inventory.loadOui(AdvisoryIndex.utf8(in.readAllBytes())).forEach(m::putIfAbsent);
+            } catch (IOException e) {
+                // a missing table only means fewer NIC makers; everything else still works
+            }
         }
+        return m.isEmpty() ? null : m;
     }
 
     static final long MAX_PCAP = 4L << 30;
@@ -68,11 +76,15 @@ final class Site {
     /** Built inventory; null = stale. Cleared whenever a capture is merged or removed, an edit is saved or the index changes. */
     private Inventory cached;
     private List<Object> cachedFlows = List.of();    // conversations of the merged captures; built together with `cached`
+    private List<Object> cachedGroups = List.of(), cachedMacs = List.of();   // broadcast / multicast destinations and the Ethernet view of the merged captures
+    private List<Object> cachedImages = List.of();                           // images extracted from HTTP bodies, whose files are in <id>.images/
+    private Map<String, Object> cachedImageSummary = Map.of();
     /** Capture id -> inventory record ids it contributed; built with `cached`, so the UI can hide one capture's nodes. */
     private Map<String, List<String>> cachedCaptureAssets = new LinkedHashMap<>();
-    static final int MAX_FLOWS = 5_000, MAX_LABELS = 8, MAX_OPERATIONS = 50, MAX_SAMPLES = 8;
+    static final int MAX_FLOWS = 5_000, MAX_LABELS = 8, MAX_OPERATIONS = 50, MAX_SAMPLES = 8, MAX_STATUSES = 6;
     static final int MAX_CAPTURE_ASSETS = 5_000, MAX_FLOW_CAPTURES = 64;
-    private static final Set<String> FLOW_SOURCES = Set.of("zeek", "native", "zeek+native"), OP_ACCESS = Set.of("read", "write", "control", "other");
+    private static final List<String> FLOW_ENGINES = List.of("zeek", "native", "tshark");
+    private static final Set<String> OP_ACCESS = Set.of("read", "write", "control", "other");
     private AdvisoryMatcher matcher;                // for matcherFor; the index is immutable once loaded
     private AdvisoryIndex matcherFor;
 
@@ -85,6 +97,13 @@ final class Site {
         this.insecure = insecure;
         this.index = index;
         this.verified = index.verified;
+        this.reference = com.pcap.tools.ReferenceData.load(com.pcap.tools.Env.system());
+        com.pcap.inventory.PortHints.useSupplement(reference.services());          // names for ports the built-in table lacks, when an Nmap install exists
+        Map<String, String> all = new HashMap<>(OUI == null ? Map.of() : OUI);
+        reference.macNames().forEach(all::putIfAbsent);                             // the bundled IEEE table first: only prefixes it lacks come from the data files
+        this.ouiAll = all.isEmpty() ? null : all;
+        this.ouiSources = new HashMap<>();
+        reference.macSources().forEach((k, v) -> { if (OUI == null || !OUI.containsKey(k)) ouiSources.put(k, v); });
         Path e = dir.resolve("edits.json");
         if (Files.exists(e)) Json.obj(Json.parse(Files.readString(e))).forEach((k, v) -> edits.put(k, new TreeMap<>(Json.obj(v))));
         try (var files = Files.list(captureDir)) {
@@ -156,12 +175,46 @@ final class Site {
         return l;
     }
 
-    synchronized void removeCapture(String id) throws IOException {
+    /**
+     * Removes one capture. A merged one takes its contribution with it, because the inventory is rebuilt from the
+     * remaining captures: an asset also seen in another capture stays (only this capture's provenance goes), an asset
+     * seen nowhere else is dropped unless a person edited it (edits are never deleted, so it stays with just those
+     * fields). Returns what happened for a merged capture, null for a queued or failed one (nothing was merged).
+     */
+    synchronized Map<String, Object> removeCapture(String id, String actor) throws IOException {
         var c = find(id);
-        if (!Set.of("queued", "failed").contains(c.get("state"))) throw new Conflict("only queued or failed captures can be removed");
+        boolean done = "done".equals(c.get("state"));
+        if (!done && !Set.of("queued", "failed").contains(c.get("state"))) throw new Conflict("only merged, queued or failed captures can be removed");
+        List<String> mine = List.of();
+        if (done) {
+            inventory();                                          // refreshes cachedCaptureAssets
+            mine = cachedCaptureAssets.getOrDefault(id, List.of());
+        }
         captures.remove(c);
         cached = null;
         for (String ext : List.of(".pcap", ".json", ".obs.json")) Files.deleteIfExists(captureDir.resolve(id + ext));
+        com.pcap.tools.Exec.deleteTree(imageDir(id));                 // the images this capture's web traffic carried go with it
+        if (!done) return null;
+        Set<String> after = inventory().records.stream().map(r -> r.id).collect(java.util.stream.Collectors.toSet());
+        Set<String> elsewhere = new HashSet<>();
+        cachedCaptureAssets.values().forEach(elsewhere::addAll);
+        List<String> dropped = new ArrayList<>(), kept = new ArrayList<>(), edited = new ArrayList<>();
+        for (String a : mine) {
+            if (!after.contains(a)) dropped.add(a);
+            else if (elsewhere.contains(a)) kept.add(a);
+            else edited.add(a);                                   // nothing else saw it: only a human edit keeps it
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("removed", id);
+        out.put("file", c.get("file"));
+        out.put("assetsDropped", (double) dropped.size());
+        out.put("assetsKeptSeenElsewhere", (double) kept.size());
+        out.put("assetsKeptWithEdits", (double) edited.size());
+        String src = "capture " + id;
+        int budget = MAX_MERGE_LOG;
+        for (String a : dropped) if (budget-- > 0) log(actor, a, "(asset)", "", "removed with " + c.get("file"), src);
+        log(actor, "(site)", "capture", "", c.get("file") + " removed: " + Json.write(out), src);
+        return out;
     }
 
     private Map<String, Object> find(String id) {
@@ -181,8 +234,9 @@ final class Site {
             saveQuietly(c);
         }
         try {
-            var result = new AnalysisService().analyze(captureDir.resolve(id + ".pcap"), false,
-                    new com.pcap.service.AnalysisOptions(false, false).withEngine(com.pcap.service.AnalysisOptions.Engine.valueOf(System.getProperty("reconics.engine", "AUTO")), null, null));   // Zeek when installed, else native; -Dreconics.engine=NATIVE to skip Zeek
+            var opts = new com.pcap.service.AnalysisOptions(false, true).withEngine(com.pcap.service.AnalysisOptions.Engine.valueOf(System.getProperty("reconics.engine", "AUTO")), null, null);
+            if (!"off".equals(System.getProperty("reconics.images"))) opts = opts.withImageDir(imageDir(id));          // -Dreconics.images=off: keep no images
+            var result = new AnalysisService().analyze(captureDir.resolve(id + ".pcap"), false, opts);   // Zeek when installed, else native; -Dreconics.engine=NATIVE to skip Zeek
             String obs = result.document() == null ? "{\"assets\":[]}" : new com.pcap.output.IngestJsonWriter().mapper().writeValueAsString(result.document());
             var r = result.report();
             Map<String, Object> summary = new LinkedHashMap<>();
@@ -193,12 +247,43 @@ final class Site {
             summary.put("protocols", new TreeMap<>(r.protocolCandidates()));
             summary.put("identityFields", (double) r.identityFieldsDecoded());
             summary.put("devices", (double) r.assets().size());
+            summary.put("tools", toolsSummary(result.document()));
             synchronized (this) { merged(c, id, obs, summary); }
         } catch (PcapException e) {
             fail(c, 4, e.getMessage());
         } catch (Exception | StackOverflowError e) {
             fail(c, 5, "analysis failed: " + e.getClass().getSimpleName());
         }
+    }
+
+    /** Which open-source tools ran for one capture (document source.tools), reduced to short strings for the capture queue and the Engines panel. */
+    static List<Object> toolsSummary(com.pcap.output.IngestModels.Document d) {
+        List<Object> out = new ArrayList<>();
+        if (d == null || d.source == null || !(d.source.get("tools") instanceof List<?> l)) return out;
+        for (Object o : l) {
+            if (!(o instanceof Map<?, ?> m) || out.size() >= 32) continue;
+            Map<String, Object> e = new LinkedHashMap<>();
+            for (String k : List.of("id", "name", "state", "via", "version", "detail")) if (m.get(k) instanceof String s) e.put(k, Inventory.clean(s, 300));
+            if (e.containsKey("id")) out.add(e);
+        }
+        return out;
+    }
+
+    private long enginesAt;
+    private List<Map<String, Object>> enginesCache;
+
+    /**
+     * Every open-source component with what this machine has (found / not installed / data file / reference), for the Engines panel.
+     * Looked up again at most every 20 s: detection starts a few processes.
+     */
+    synchronized List<Map<String, Object>> engines() {
+        long now = System.currentTimeMillis();
+        if (enginesCache == null || now - enginesAt > 20_000) {
+            var rows = new ArrayList<>(com.pcap.tools.Engines.report(com.pcap.tools.Env.system()));
+            enginesCache = List.copyOf(rows);
+            enginesAt = now;
+        }
+        return enginesCache;
     }
 
     /** Writes the observations, marks the entry done and logs what the merge changed. Caller holds the lock. */
@@ -251,8 +336,15 @@ final class Site {
      */
     synchronized Map<String, Object> addPosted(List<Object> assets, String actor) throws IOException { return addPosted(assets, List.of(), actor); }
 
-    synchronized Map<String, Object> addPosted(List<Object> assets, List<Object> flows, String actor) throws IOException {
-        String obs = Json.write(flows.isEmpty() ? Map.of("assets", assets) : Map.of("assets", assets, "flows", flows));
+    synchronized Map<String, Object> addPosted(List<Object> assets, List<Object> flows, String actor) throws IOException { return addPosted(assets, flows, List.of(), List.of(), actor); }
+
+    synchronized Map<String, Object> addPosted(List<Object> assets, List<Object> flows, List<Object> groups, List<Object> macs, String actor) throws IOException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("assets", assets);
+        if (!flows.isEmpty()) body.put("flows", flows);
+        if (!groups.isEmpty()) body.put("groups", groups);
+        if (!macs.isEmpty()) body.put("macs", macs);
+        String obs = Json.write(body);
         byte[] bytes = obs.getBytes(StandardCharsets.UTF_8);
         String hex;
         try { hex = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)); }
@@ -311,15 +403,23 @@ final class Site {
     synchronized Inventory inventory() throws IOException {
         if (cached != null) return cached;
         List<Object> all = new ArrayList<>();
-        Map<String, Map<String, Object>> flows = new LinkedHashMap<>();
+        Map<String, Map<String, Object>> flows = new LinkedHashMap<>(), groups = new LinkedHashMap<>(), macs = new LinkedHashMap<>();
         Map<String, List<String>> captureAssets = new LinkedHashMap<>();
+        List<Object> images = new ArrayList<>();
+        Map<String, Object> imageSummary = new LinkedHashMap<>();
         for (var c : captures) {
             if (!"done".equals(c.get("state"))) continue;
             Path p = captureDir.resolve(c.get("id") + ".obs.json");
             if (!Files.exists(p)) continue;
             var doc = Json.obj(Json.parse(Files.readString(p)));
+            try { com.pcap.inventory.HostClassifier.apply(Json.arr(doc.get("flows")), Json.arr(doc.get("assets"))); }   // also names captures analyzed before it existed
+            catch (RuntimeException e) { /* an odd shape in untrusted input: merge the document as it is */ }
             all.addAll(Json.arr(doc.get("assets")));
             addFlows(flows, doc.get("flows"), String.valueOf(c.get("id")));
+            addGroups(groups, doc.get("groups"));
+            addMacs(macs, doc.get("macs"));
+            addImages(images, String.valueOf(c.get("id")), doc.get("images"));
+            addImageSummary(imageSummary, Json.obj(doc.get("source")).get("images"));
             List<String> ids = assetIds(doc);
             if (!ids.isEmpty()) captureAssets.put(String.valueOf(c.get("id")), ids);
         }
@@ -337,11 +437,15 @@ final class Site {
             });
             if (e.size() > (slash >= 0 ? 2 : 1)) all.add(e);
         });
-        Inventory inv = Inventory.build(Json.write(Map.of("assets", all)), OUI);
+        Inventory inv = Inventory.build(Json.write(Map.of("assets", all)), ouiAll, ouiSources);
         AdvisoryIndex idx = index;
         if (matcherFor != idx) { matcher = new AdvisoryMatcher(Inventory.sanitize(idx)); matcherFor = idx; }
         inv.match(idx.meta, matcher, verified);
         cachedFlows = flowList(flows.values());
+        cachedGroups = List.copyOf(groups.values());
+        cachedMacs = macList(macs.values());
+        cachedImages = List.copyOf(images);
+        cachedImageSummary = imageSummary;
         cachedCaptureAssets = recordIds(captureAssets, inv);
         return cached = inv;
     }
@@ -426,8 +530,9 @@ final class Site {
                 if (!k.isEmpty() && (labels.size() < MAX_LABELS || labels.containsKey(k)))
                     labels.merge(k, count(l.getValue()), (a, b) -> (double) a + (double) b);
             }
+            if (f.get("portHint") instanceof String ph && ph.matches("[a-z0-9][a-z0-9._+-]{0,31}")) m.put("portHint", ph);
             if (f.get("transport") instanceof String t && (t.equals("tcp") || t.equals("udp"))) m.put("transport", t);
-            for (String k : List.of("packets", "bytes", "scanAttempts")) {
+            for (String k : List.of("packets", "bytes", "bytesToServer", "bytesToClient", "scanAttempts")) {
                 double n = count(f.get(k));
                 if (n > 0) m.merge(k, n, (a, b) -> Math.min(1e12, (double) a + (double) b));
             }
@@ -437,11 +542,15 @@ final class Site {
                 Instant old = m.get(k) instanceof String os ? instant(os) : null;
                 if (old == null || (k.equals("firstSeen") ? t.isBefore(old) : t.isAfter(old))) m.put(k, t.toString());
             }
-            if (f.get("source") instanceof String src && FLOW_SOURCES.contains(src)) {
+            if (f.get("source") instanceof String src) {
                 String was = m.get("source") instanceof String x ? x : "";
-                boolean zeek = src.contains("zeek") || was.contains("zeek"), nat = src.contains("native") || was.contains("native");
-                m.put("source", zeek && nat ? "zeek+native" : zeek ? "zeek" : "native");
+                List<String> engines = new ArrayList<>();
+                for (String e : FLOW_ENGINES) if (src.contains(e) || was.contains(e)) engines.add(e);       // the engines that saw it, joined: zeek+native+tshark
+                if (!engines.isEmpty()) m.put("source", String.join("+", engines));
             }
+            if (f.get("portHintSource") instanceof String ps && ps.matches("[a-z0-9._-]{1,32}")) m.put("portHintSource", ps);
+            if (f.get("note") instanceof String nt && !m.containsKey("note") && !Inventory.clean(nt, 400).isEmpty()) m.put("note", Inventory.clean(nt, 400));   // why an ICS decode was rejected; the first capture's wording stays
+            mergeEvidence(m, f);
             // Provenance is the capture that produced the flow, never something an untrusted posted payload can set.
             if (!Objects.toString(captureId, "").isEmpty()) {
                 @SuppressWarnings("unchecked")
@@ -450,6 +559,67 @@ final class Site {
             }
             mergeOperations(m, f.get("operations"));
         }
+    }
+
+    private static final int MAX_CLASSIFIERS = 4, MAX_ALERTS = 10, MAX_COMMUNITY_IDS = 3;
+    private static final Set<String> CLASSIFIER_TOOLS = Set.of("ndpi", "tshark");
+
+    /**
+     * What other tools said about a conversation, merged across captures: a label per tool (the first one wins), alerts summed
+     * by (kind, sid, signature) and kept most severe first, Community IDs as a set. Untrusted like the rest of a posted payload.
+     */
+    @SuppressWarnings("unchecked")
+    private static void mergeEvidence(Map<String, Object> m, Map<String, Object> f) {
+        List<Object> cls = (List<Object>) m.computeIfAbsent("classifiedBy", k -> new ArrayList<Object>());
+        for (Object o : Json.arr(f.get("classifiedBy"))) {
+            var c = Json.obj(o);
+            if (!(c.get("tool") instanceof String t) || !CLASSIFIER_TOOLS.contains(t) || !(c.get("protocol") instanceof String p) || cls.size() >= MAX_CLASSIFIERS) continue;
+            if (cls.stream().anyMatch(x -> t.equals(Json.obj(x).get("tool")))) continue;
+            Map<String, Object> e = new LinkedHashMap<>();
+            e.put("tool", t);
+            if (c.get("version") instanceof String v && !Inventory.clean(v, 40).isEmpty()) e.put("version", Inventory.clean(v, 40));
+            String proto = Inventory.clean(p, 48);
+            if (proto.isEmpty()) continue;
+            e.put("protocol", proto);
+            e.put("confidence", c.get("confidence") instanceof String cf && Set.of("HIGH", "MEDIUM", "LOW").contains(cf) ? cf : "LOW");
+            e.put("basis", c.get("basis") instanceof String b && Set.of("dpi", "dissector").contains(b) ? b : "dpi");
+            cls.add(e);
+        }
+        if (cls.isEmpty()) m.remove("classifiedBy");
+        List<Object> alerts = (List<Object>) m.computeIfAbsent("alerts", k -> new ArrayList<Object>());
+        for (Object o : Json.arr(f.get("alerts"))) {
+            var a = Json.obj(o);
+            if (!(a.get("signature") instanceof String sg) || !"suricata".equals(a.get("tool"))) continue;
+            String sig = Inventory.clean(sg, 120), kind = "anomaly".equals(a.get("kind")) ? "anomaly" : "alert";
+            if (sig.isEmpty()) continue;
+            Double sid = a.get("sid") instanceof Double ? count(a.get("sid")) : null;
+            Map<String, Object> hit = null;
+            for (Object x : alerts) {
+                var xm = (Map<String, Object>) x;
+                if (sig.equals(xm.get("signature")) && kind.equals(xm.get("kind")) && Objects.equals(sid, xm.get("sid"))) hit = xm;
+            }
+            if (hit != null) { hit.put("count", Math.min(1e12, (double) hit.get("count") + Math.max(1, count(a.get("count"))))); continue; }
+            Map<String, Object> e = new LinkedHashMap<>();
+            e.put("tool", "suricata");
+            if (a.get("version") instanceof String v && !Inventory.clean(v, 40).isEmpty()) e.put("version", Inventory.clean(v, 40));
+            e.put("kind", kind);
+            if (sid != null && sid > 0) e.put("sid", sid);
+            e.put("signature", sig);
+            if (a.get("category") instanceof String c && !Inventory.clean(c, 64).isEmpty()) e.put("category", Inventory.clean(c, 64));
+            double sev = a.get("severity") instanceof Double d && d >= 1 && d <= 4 ? d : 3;
+            e.put("severity", sev);
+            e.put("count", Math.max(1, count(a.get("count"))));
+            alerts.add(e);
+        }
+        alerts.sort(Comparator.comparingDouble((Object x) -> (double) ((Map<String, Object>) x).get("severity"))
+                .thenComparing((x, y) -> Double.compare((double) ((Map<String, Object>) y).get("count"), (double) ((Map<String, Object>) x).get("count"))));
+        while (alerts.size() > MAX_ALERTS) alerts.remove(alerts.size() - 1);
+        if (alerts.isEmpty()) m.remove("alerts");
+        List<Object> ids = (List<Object>) m.computeIfAbsent("communityIds", k -> new ArrayList<Object>());
+        for (Object o : Json.arr(f.get("communityIds"))) {
+            if (o instanceof String id && id.matches("[A-Za-z0-9+/=:]{4,64}") && ids.size() < MAX_COMMUNITY_IDS && !ids.contains(id)) ids.add(id);
+        }
+        if (ids.isEmpty()) m.remove("communityIds");
     }
 
     /** Operations are held as a keyed map while captures merge ({@link #flowList} turns them back into the array). */
@@ -462,9 +632,10 @@ final class Site {
             fn = Inventory.clean(fn, 64);
             if (fn.isEmpty()) continue;
             String access = op.get("access") instanceof String a && OP_ACCESS.contains(a) ? a : "other";
-            String obj = op.get("object") instanceof String ob ? Inventory.clean(ob, 32) : "";
+            String obj = op.get("object") instanceof String ob ? Inventory.clean(ob, 64) : "";
+            Double unit = op.get("unit") instanceof Double u && u >= 0 && u <= 65535 ? count(u) : null;
             Double addr = op.get("address") instanceof Double ? count(op.get("address")) : null, qty = op.get("quantity") instanceof Double ? count(op.get("quantity")) : null;
-            String key = fn + '|' + access + '|' + obj + '|' + addr + '|' + qty;
+            String key = fn + '|' + access + '|' + obj + '|' + addr + '|' + qty + '|' + unit;
             var e = ops.get(key);
             if (e == null) {
                 if (ops.size() >= MAX_OPERATIONS) continue;
@@ -473,10 +644,18 @@ final class Site {
                 if (!obj.isEmpty()) e.put("object", obj);
                 if (addr != null) e.put("address", addr);
                 if (qty != null) e.put("quantity", qty);
+                if (unit != null) e.put("unit", unit);
                 e.put("count", 0.0);
                 ops.put(key, e);
             }
             e.put("count", Math.min(1e12, (double) e.get("count") + Math.max(1, count(op.get("count")))));
+            Map<String, Object> st = (Map<String, Object>) e.computeIfAbsent("statuses", k -> new LinkedHashMap<String, Object>());
+            for (var sv : Json.obj(op.get("statuses")).entrySet()) {
+                String k = Inventory.clean(sv.getKey(), 64);
+                if (!k.isEmpty() && count(sv.getValue()) > 0 && (st.size() < MAX_STATUSES || st.containsKey(k)))
+                    st.merge(k, count(sv.getValue()), (a, b) -> Math.min(1e12, (double) a + (double) b));
+            }
+            if (st.isEmpty()) e.remove("statuses");
             List<Object> samples = (List<Object>) e.computeIfAbsent("sampleValues", k -> new ArrayList<Object>());
             for (Object v : Json.arr(op.get("sampleValues"))) {
                 if (samples.size() >= MAX_SAMPLES) break;
@@ -502,7 +681,164 @@ final class Site {
 
     private static Instant instant(Object o) {
         if (!(o instanceof String s) || s.length() > 40) return null;
-        try { return Instant.parse(s); } catch (java.time.format.DateTimeParseException e) { return null; }
+        try {
+            Instant t = Instant.parse(s);
+            return com.pcap.util.Timestamps.usable(Math.multiplyExact(t.getEpochSecond(), 1_000_000L)) ? t : null;       // epoch 0 or a far-future sentinel is "no time", not a date
+        } catch (java.time.format.DateTimeParseException | ArithmeticException e) { return null; }
+    }
+
+    static final int MAX_GROUPS = 2_048, MAX_MACS = 20_000, MAX_SENDERS = 200, MAX_MAC_IPS = 50;
+    private static final java.util.regex.Pattern MAC_RE = java.util.regex.Pattern.compile("^[0-9a-f]{2}(:[0-9a-f]{2}){5}$");
+    private static final java.util.regex.Pattern IP_RE = java.util.regex.Pattern.compile("^[0-9]{1,3}(\\.[0-9]{1,3}){3}$");
+
+    private static void addStrings(Map<String, Object> m, String key, Object src, int max, java.util.function.Predicate<String> ok) {
+        @SuppressWarnings("unchecked") List<Object> have = (List<Object>) m.computeIfAbsent(key, k -> new ArrayList<Object>());
+        for (Object o : Json.arr(src)) {
+            if (have.size() >= max) break;
+            if (o instanceof String v && v.length() <= 64 && ok.test(v) && !have.contains(v)) have.add(v);
+        }
+    }
+
+    private static void widen(Map<String, Object> m, Map<String, Object> from) {
+        for (String k : List.of("firstSeen", "lastSeen")) {
+            Instant t = instant(from.get(k));
+            if (t == null) continue;
+            Instant old = m.get(k) instanceof String os ? instant(os) : null;
+            if (old == null || (k.equals("firstSeen") ? t.isBefore(old) : t.isAfter(old))) m.put(k, t.toString());
+        }
+    }
+
+    /** Broadcast / multicast destinations across captures: counts add, senders and ports union. Untrusted like the flows. */
+    private static void addGroups(Map<String, Map<String, Object>> into, Object list) {
+        for (Object o : Json.arr(list)) {
+            var g = Json.obj(o);
+            if (!(g.get("address") instanceof String a) || !IP_RE.matcher(a).matches() || !(g.get("kind") instanceof String kind) || !(kind.equals("broadcast") || kind.equals("multicast"))) continue;
+            var m = into.get(a);
+            if (m == null) {
+                if (into.size() >= MAX_GROUPS) continue;
+                m = new LinkedHashMap<>();
+                m.put("address", a); m.put("kind", kind);
+                if (g.get("scope") instanceof String sc && !Inventory.clean(sc, 60).isEmpty()) m.put("scope", Inventory.clean(sc, 60));
+                m.put("packets", 0.0); m.put("bytes", 0.0);
+                into.put(a, m);
+            }
+            for (String k : List.of("packets", "bytes")) m.put(k, Math.min(1e12, (double) m.get(k) + count(g.get(k))));
+            addStrings(m, "senders", g.get("senders"), MAX_SENDERS, v -> IP_RE.matcher(v).matches());
+            addStrings(m, "ports", g.get("ports"), 16, v -> v.matches("[a-z0-9/]{1,16}"));
+            addStrings(m, "protocols", g.get("protocols"), 8, v -> v.matches("[a-z0-9][a-z0-9._+-]{0,31}"));
+            widen(m, g);
+        }
+    }
+
+    // ------------------------------------------------------------------ images from HTTP bodies
+
+    static final int MAX_IMAGES_LISTED = 200;
+    private static final java.util.regex.Pattern CAPTURE_ID = java.util.regex.Pattern.compile("^c[0-9]{4,9}$"), SHA_RE = java.util.regex.Pattern.compile("^[0-9a-f]{64}$"),
+            IMAGE_NAME = java.util.regex.Pattern.compile("^[A-Za-z0-9._-]{1,48}$");
+    private static final Map<String, String> IMAGE_EXT = Map.of("png", "png", "gif", "gif", "jpeg", "jpg", "webp", "webp", "ico", "ico");
+
+    Path imageDir(String id) { return captureDir.resolve(id + ".images"); }
+
+    /**
+     * The stored file of one extracted image, or null. Both parts are matched against fixed patterns, the capture must exist, and the
+     * path is built from them only, so no request text reaches the file system. The extension (and with it the Content-Type) is
+     * whichever one the extractor wrote after checking the bytes.
+     */
+    synchronized Path imageFile(String id, String sha) {
+        if (id == null || sha == null || !CAPTURE_ID.matcher(id).matches() || !SHA_RE.matcher(sha).matches()) return null;
+        if (captures.stream().noneMatch(c -> c.get("id").equals(id))) return null;
+        for (String ext : IMAGE_EXT.values()) {
+            Path f = imageDir(id).resolve(sha + "." + ext);
+            if (Files.isRegularFile(f, LinkOption.NOFOLLOW_LINKS)) return f;
+        }
+        return null;
+    }
+
+    /** Image metadata from one capture's document: untrusted like everything in it, and listed only while the file is still there. */
+    private void addImages(List<Object> into, String capture, Object list) {
+        for (Object o : Json.arr(list)) {
+            if (into.size() >= MAX_IMAGES_LISTED) return;
+            var m = Json.obj(o);
+            if (!(m.get("host") instanceof String host) || !IP_RE.matcher(host).matches() || !(m.get("sha256") instanceof String sha) || !SHA_RE.matcher(sha).matches()
+                    || !(m.get("kind") instanceof String kind) || !IMAGE_EXT.containsKey(kind)
+                    || !Files.isRegularFile(imageDir(capture).resolve(sha + "." + IMAGE_EXT.get(kind)), LinkOption.NOFOLLOW_LINKS)) continue;
+            Map<String, Object> e = new LinkedHashMap<>();
+            e.put("capture", capture); e.put("host", host); e.put("sha256", sha); e.put("kind", kind);
+            e.put("bytes", count(m.get("bytes")));
+            if (m.get("name") instanceof String n && IMAGE_NAME.matcher(n).matches()) e.put("name", n);
+            e.put("source", "tshark");
+            into.add(e);
+        }
+    }
+
+    /** source.images of every capture added up: what was kept, and the bodies that were not images, counted per server so none is silent. */
+    @SuppressWarnings("unchecked")
+    private static void addImageSummary(Map<String, Object> into, Object src) {
+        var s = Json.obj(src);
+        if (s.isEmpty()) return;
+        String state = s.get("state") instanceof String st ? st : "";
+        into.merge(state.equals("ran") ? "ran" : state.equals("failed") ? "failed" : "notRun", 1.0, (a, b) -> (double) a + (double) b);
+        if (!state.equals("ran") && s.get("reason") instanceof String r && !into.containsKey("reason")) into.put("reason", Inventory.clean(r, 200));
+        for (String k : List.of("extracted", "duplicates", "nonImageNotExtracted")) into.merge(k, count(s.get(k)), (a, b) -> Math.min(1e12, (double) a + (double) b));
+        var by = (Map<String, Object>) into.computeIfAbsent("nonImageByHost", k -> new LinkedHashMap<String, Object>());
+        for (var e : Json.obj(s.get("nonImageByHost")).entrySet())
+            if (IP_RE.matcher(e.getKey()).matches() && (by.size() < 256 || by.containsKey(e.getKey()))) by.merge(e.getKey(), count(e.getValue()), (a, b) -> Math.min(1e12, (double) a + (double) b));
+        var not = (Map<String, Object>) into.computeIfAbsent("notExtracted", k -> new LinkedHashMap<String, Object>());
+        for (String k : List.of("tooLarge", "overCap", "notAnImage")) {
+            double v = count(Json.obj(s.get("notExtracted")).get(k));
+            if (v > 0) not.merge(k, v, (a, b) -> Math.min(1e12, (double) a + (double) b));
+        }
+    }
+
+    /** The Ethernet view across captures: frame counts add, the IPs behind a MAC union. */
+    @SuppressWarnings("unchecked")
+    private static void addMacs(Map<String, Map<String, Object>> into, Object list) {
+        for (Object o : Json.arr(list)) {
+            var e = Json.obj(o);
+            if (!(e.get("mac") instanceof String mac) || !MAC_RE.matcher(mac).matches()) continue;
+            var m = into.get(mac);
+            if (m == null) {
+                if (into.size() >= MAX_MACS) continue;
+                m = new LinkedHashMap<>();
+                m.put("mac", mac);
+                for (String k : List.of("frames", "framesTo", "groupFrames", "ipCount", "toIpCount")) m.put(k, 0.0);
+                m.put("etherTypes", new LinkedHashMap<String, Object>());
+                into.put(mac, m);
+            }
+            for (String k : List.of("frames", "framesTo", "groupFrames")) m.put(k, Math.min(1e12, (double) m.get(k) + count(e.get(k))));
+            addStrings(m, "ips", e.get("ips"), MAX_MAC_IPS, v -> IP_RE.matcher(v).matches());
+            addStrings(m, "toIps", e.get("toIps"), MAX_MAC_IPS, v -> IP_RE.matcher(v).matches());
+            for (String k : List.of("ipCount", "toIpCount")) m.put(k, Math.max((double) m.get(k), count(e.get(k))));
+            var types = (Map<String, Object>) m.get("etherTypes");
+            for (var t : Json.obj(e.get("etherTypes")).entrySet()) {
+                String k = Inventory.clean(t.getKey(), 32);
+                if (!k.isEmpty() && (types.size() < 12 || types.containsKey(k))) types.merge(k, count(t.getValue()), (a, b) -> Math.min(1e12, (double) a + (double) b));
+            }
+        }
+    }
+
+    /** Busiest MAC first, with the inference notes re-run over the merged view and the NIC maker from the OUI tables. */
+    private List<Object> macList(Collection<Map<String, Object>> merged) {
+        List<Map<String, Object>> l = new ArrayList<>();
+        for (var m : merged) {
+            Map<String, Object> c = new LinkedHashMap<>(m);
+            c.put("ipCount", Math.max((double) m.get("ipCount"), (double) ((List<?>) m.getOrDefault("ips", List.of())).size()));
+            c.put("toIpCount", Math.max((double) m.get("toIpCount"), (double) ((List<?>) m.getOrDefault("toIps", List.of())).size()));
+            for (String k : List.of("framesTo", "groupFrames", "toIpCount")) if ((double) c.get(k) == 0) c.remove(k);
+            l.add(c);
+        }
+        l.sort((a, b) -> Double.compare(count(b.get("frames")) + count(b.get("framesTo")), count(a.get("frames")) + count(a.get("framesTo"))));
+        com.pcap.inventory.MacView.annotate(l);
+        for (var c : l) {
+            String mac = (String) c.get("mac");
+            if (ouiAll == null || (Integer.parseInt(mac.substring(0, 2), 16) & 3) != 0) continue;       // group or locally administered: no maker
+            String hex = mac.replace(":", "").toUpperCase(Locale.ROOT);
+            for (int digits : new int[]{9, 7, 6}) {
+                String org = ouiAll.get(hex.substring(0, digits));
+                if (org != null && !org.isEmpty()) { c.put("vendor", org); break; }
+            }
+        }
+        return List.copyOf(l);
     }
 
     private static double count(Object o) { return o instanceof Double d && Double.isFinite(d) ? Math.max(0, Math.min(d, 1e12)) : 0; }
@@ -520,6 +856,10 @@ final class Site {
         m.put("rank", InventoryReport.rank(inv).stream().map(r -> r.id).toList());
         m.put("site", site);
         m.put("flows", cachedFlows);
+        m.put("groups", cachedGroups);
+        m.put("macs", cachedMacs);
+        m.put("images", cachedImages);
+        m.put("imageSummary", cachedImageSummary);
         m.put("captureAssets", cachedCaptureAssets);
         return m;
     }

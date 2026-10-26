@@ -72,36 +72,11 @@ public final class ZeekRunner {
     }
 
     private Optional<Path> onPath(String name) {
-        for (String dir : path.split(java.io.File.pathSeparator)) {
-            if (dir.isBlank()) {
-                continue;
-            }
-            // extensions first: Docker Desktop ships an extensionless shell script "docker" beside docker.exe that Windows cannot launch
-            for (String ext : new String[]{".exe", ".cmd", ".bat", ""}) {
-                Path p = Path.of(dir).resolve(name + ext);
-                if (Files.isRegularFile(p) && Files.isExecutable(p)) {
-                    return Optional.of(p);
-                }
-            }
-        }
-        return Optional.empty();
+        return com.pcap.tools.Exec.onPath(path, name);
     }
 
     private boolean imagePresent(String dockerExe) {
-        try {
-            Process p = new ProcessBuilder(List.of(dockerExe, "image", "inspect", IMAGE))
-                    .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
-            if (!p.waitFor(15, TimeUnit.SECONDS)) {
-                p.destroyForcibly();
-                return false;
-            }
-            return p.exitValue() == 0;
-        } catch (IOException e) {
-            return false;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return false;
-        }
+        return com.pcap.tools.Exec.imagePresent(dockerExe, IMAGE);
     }
 
     /** Runs Zeek on {@code pcap}; the log directory is a new temp directory the caller deletes ({@link #deleteTree}). */

@@ -68,3 +68,27 @@ Wireshark protocol dissectors (packet-s7comm*.c, packet-enip.c, packet-cip.c, pa
   Source:  https://github.com/wireshark/wireshark, GPL-2.0-or-later
   Used as a reference for protocol field layouts only, both for the parser and for the independent truth decoder.
   No Wireshark source code is copied into this project.
+
+------------------------------------------------------------------------------------------------------------------
+OPTIONAL OPEN-SOURCE COMPONENTS (run as separate programs; nothing below is bundled or linked)
+------------------------------------------------------------------------------------------------------------------
+ReConICS-ng works with only Zeek, and with nothing installed in --engine native mode. When the tools below are installed on the
+machine (or built into the reconics-tools / reconics-zeek Docker images by the user), the site console and the analyze command
+use them, and say so in the output (source.tools). They only ever read capture files. Details: docs/foss-components.md.
+
+Zeek (https://zeek.org)                     BSD-3-Clause (LBNL / ICSI). Primary engine.
+CISA ICSNPP (https://github.com/cisagov/icsnpp)   BSD-3-Clause. Credit: CISA ICSNPP / Battelle Energy Alliance.
+                                            Modbus, DNP3, EtherNet/IP+CIP and S7comm Zeek analyzers.
+Wireshark: tshark, capinfos (https://www.wireshark.org)   GPL-2.0-or-later. Capture check and fallback conversations.
+Wireshark "manuf" data file                 GPL-2.0-or-later. Read from the user's Wireshark install, never copied here.
+Suricata (https://suricata.io)              GPL-2.0, Open Information Security Foundation. Alerts and anomalies as evidence.
+Emerging Threats Open rules                 Fetched by suricata-update when the user builds docker/tools; BSD for most rules, some GPLv2.
+                                            Not stored in this repository.
+nDPI (https://github.com/ntop/nDPI)         LGPL-3.0, ntop. ndpiReader classifies conversations nothing else identified.
+p0f v3 (https://lcamtuf.coredump.cx/p0f3/)  LGPL-2.1, Michal Zalewski. Passive OS fingerprints.
+Nmap data files nmap-mac-prefixes, nmap-services   Nmap Public Source License. Read from the user's Nmap install; never copied here.
+                                            No Nmap scan, probe or OS detection is run: ReConICS-ng is passive only.
+IEEE OUI registry (MA-L)                    IEEE public registry. Bundled as src/main/resources/oui-ma-l.csv.
+
+Lineage (credited for the idea, no code used): GRASSMARLIN (NSA, archived; a GUI over Wireshark for ICS network mapping),
+Malcolm (CISA; Zeek + Suricata + Arkime suite), Arkime (Apache-2.0).

@@ -33,6 +33,10 @@ public final class CliCommand {
             printVersion(out);
             return ExitCode.OK;
         }
+        if (first.equals("engines")) {
+            out.print(com.pcap.tools.Engines.table(com.pcap.tools.Env.system()));
+            return ExitCode.OK;
+        }
         if (first.equals("analyze")) {
             tokens.remove(0);
             return runAnalyze(tokens);
@@ -54,10 +58,12 @@ public final class CliCommand {
         boolean formatJson = false;
         String post = null;
         boolean icsOnly = false;
-        boolean keepScans = false;
+        boolean keepScans = true;      // scan-only conversations are kept (retain everything observed); --drop-scans opts out
         AnalysisOptions.Engine engine = null;
         Path zeekLogs = null;
         java.time.Duration zeekTimeout = null;
+        AnalysisOptions.Tools tools = null;
+        Path imagesDir = null;
 
         for (int i = 0; i < tokens.size(); i++) {
             String t = tokens.get(i);
@@ -69,6 +75,7 @@ public final class CliCommand {
                 case "--force", "-f" -> force = true;
                 case "--ics-only" -> icsOnly = true;
                 case "--keep-scans" -> keepScans = true;
+                case "--drop-scans" -> keepScans = false;
                 case "--engine" -> {
                     if (i + 1 >= tokens.size()) {
                         err.println("error: --engine requires native, zeek or auto");
@@ -80,6 +87,21 @@ public final class CliCommand {
                         err.println("error: --engine must be native, zeek or auto");
                         return ExitCode.USAGE;
                     }
+                }
+                case "--tools" -> {
+                    String v = i + 1 < tokens.size() ? tokens.get(++i).toLowerCase(Locale.ROOT) : "";
+                    if (!v.equals("auto") && !v.equals("off")) {
+                        err.println("error: --tools must be auto or off");
+                        return ExitCode.USAGE;
+                    }
+                    tools = AnalysisOptions.Tools.valueOf(v.toUpperCase(Locale.ROOT));
+                }
+                case "--images-dir" -> {
+                    if (i + 1 >= tokens.size()) {
+                        err.println("error: --images-dir requires a directory");
+                        return ExitCode.USAGE;
+                    }
+                    imagesDir = Path.of(tokens.get(++i));
                 }
                 case "--zeek-logs" -> {
                     if (i + 1 >= tokens.size()) {
@@ -148,7 +170,7 @@ public final class CliCommand {
         if (zeekLogs != null && engine == null) {
             engine = AnalysisOptions.Engine.ZEEK;                    // pointing at logs is asking for the Zeek engine
         }
-        AnalysisOptions options = new AnalysisOptions(icsOnly, keepScans, engine, zeekLogs, zeekTimeout);
+        AnalysisOptions options = new AnalysisOptions(icsOnly, keepScans, engine, zeekLogs, zeekTimeout, tools, imagesDir);
         return new AnalyzeCommand(input, output, force, verbose, formatJson, post, options, out, err).run();
     }
 
@@ -159,6 +181,7 @@ public final class CliCommand {
         ps.println("  java -jar reconnics-ng.jar --help");
         ps.println("  java -jar reconnics-ng.jar --version");
         ps.println("  java -jar reconnics-ng.jar analyze <file.pcap> [options]");
+        ps.println("  java -jar reconnics-ng.jar engines   (which open-source tools are installed, with versions)");
         ps.println("  java -jar reconnics-ng.jar keygen|build-index|match|serve|inventory ...  (advisory side)");
         ps.println();
         ps.println("Options:");
@@ -169,11 +192,15 @@ public final class CliCommand {
         ps.println("      --post <url>      POST ingest JSON to a loopback ingest API, e.g.");
         ps.println("                        http://127.0.0.1:8088/api/v1/assets (see 'serve')");
         ps.println("      --ics-only        Only decoded ICS protocols as edges; no unknown-protocol host pairs");
-        ps.println("      --keep-scans      Also draw edges for conversations that only saw scan attempts");
+        ps.println("      --keep-scans      Edges for conversations that only saw scan attempts (the default; kept so nothing observed is dropped)");
+        ps.println("      --images-dir DIR  Keep the images web servers sent (PNG, GIF, JPEG, WebP, ICO by magic bytes; never SVG) in DIR as <sha256>.<ext>; needs tshark or the tools image");
+        ps.println("      --drop-scans      Leave scan-only conversations out of the flows (they are still counted in source.scanAttempts)");
         ps.println("                        (connections whose handshake never completed); default: counted only");
         ps.println("      --engine <e>      native (default): the built-in decoders only, nothing to install");
         ps.println("                        zeek: also run Zeek + ICSNPP and merge (error if Zeek is missing)");
         ps.println("                        auto: Zeek when available, else native with a note on stderr");
+        ps.println("      --tools <t>       auto: also run the optional FOSS tools that are installed (tshark, Suricata, nDPI, p0f;");
+        ps.println("                        PATH or the reconics-tools Docker image); off: none. Default: auto, except with --engine native");
         ps.println("      --zeek-logs <dir> Read Zeek logs already produced for this capture; Zeek is not run");
         ps.println("      --zeek-timeout <s> Stop a Zeek run after this many seconds (default 1800)");
         ps.println("  -v, --verbose         Diagnostic logging on stderr (includes stack traces)");

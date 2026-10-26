@@ -54,7 +54,7 @@ class IngestSchemaValidatorTest {
                   "firstSeen":"2015-10-22T09:00:01Z","lastSeen":"2015-10-22T10:00:00.250Z",
                   "labels":{"FC3":1100,"FC16":100},
                   "operations":[{"function":"FC3 read holding registers","access":"read","address":40001,"quantity":10,
-                                 "count":1100,"sampleValues":[12,0,7]},
+                                 "count":1100,"sampleValues":[12,0,7],"unit":1,"statuses":{"ok":1100}},
                                 {"function":"FC1 READ","access":"read","object":"g30v1","count":3,"sampleValues":["on"]}],
                   "scanAttempts":0,"source":"zeek+native"}]""").isEmpty());
         assertTrue(flowErrors("""
@@ -78,6 +78,7 @@ class IngestSchemaValidatorTest {
         assertTrue(flowErrors("[" + base + "\"operations\":[{\"function\":\"FC3\",\"access\":\"delete\"}]}]").stream().anyMatch(e -> e.contains("access")));
         assertTrue(flowErrors("[" + base + "\"operations\":[{\"access\":\"read\"}]}]").stream().anyMatch(e -> e.contains("function")));
         assertTrue(flowErrors("[" + base + "\"operations\":[{\"function\":\"FC3\",\"sampleValues\":[1,2,3,4,5,6,7,8,9]}]}]").stream().anyMatch(e -> e.contains("sampleValues")));
+        assertTrue(flowErrors("[" + base + "\"operations\":[{\"function\":\"FC3\",\"statuses\":{\"ok\":-1}}]}]").stream().anyMatch(e -> e.contains("statuses")));
         String many = String.join(",", java.util.Collections.nCopies(51, "{\"function\":\"FC3\"}"));
         assertTrue(flowErrors("[" + base + "\"operations\":[" + many + "]}]").stream().anyMatch(e -> e.contains("operations exceeds")));
     }
@@ -88,9 +89,28 @@ class IngestSchemaValidatorTest {
         java.util.Set<String> documented = new java.util.TreeSet<>();
         schema.get("properties").fieldNames().forEachRemaining(documented::add);
         var t = new com.pcap.inventory.FlowTable();
-        t.flow("10.0.0.1", "10.0.0.2", "modbus", "502/tcp").message("Modbus FC=0x3").traffic(2, 20).seen(1_445_504_401_000_000L)
-                .scanAttempts(1).source("zeek").operation("FC3", "read", "g1v1", 1L, 2L, 1, List.of(1));
-        java.util.Set<String> written = new java.util.TreeSet<>(t.toList(true).get(0).keySet());
+        java.util.Set<String> written2 = new java.util.TreeSet<>();
+        t.flow("10.0.0.1", "10.0.0.2", "modbus", "502/tcp").message("Modbus FC=0x3").traffic(2, 20).directed(12, 8).seen(1_445_504_401_000_000L)
+                .scanAttempts(1).source("zeek").portHint("modbus").operation("FC3", "read", "g1v1", 1L, 2L, 7L, 1, List.of(1), java.util.Map.of("ok", 1L));
+        t.flow("10.0.0.1", "10.0.0.2", "unknown", "502/tcp").portHint("modbus")      // the hint is written only on an undecoded flow
+                .classifiedBy("ndpi", "4.2", "TLS", "MEDIUM", "dpi").alert("suricata", "7.0", "alert", 2000001L, "TEST", "cat", 2, 1).communityId("1:x=");
+        var maps = t.toList(true);
+        // portHintSource is added by HostClassifier on a hint that came from a data file, not by FlowTable
+        com.pcap.inventory.PortHints.useSupplement(java.util.Map.of("9/tcp", "discard"));
+        try {
+            t.flow("10.0.0.1", "10.0.0.3", "unknown", "9/tcp");
+            var withSource = t.toList(true);
+            com.pcap.inventory.HostClassifier.apply(withSource, List.of());
+            written2.addAll(withSource.get(2).keySet());
+        } finally {
+            com.pcap.inventory.PortHints.useSupplement(null);
+        }
+        java.util.Set<String> written = new java.util.TreeSet<>(maps.get(1).keySet());
+        written.addAll(maps.get(0).keySet());
+        var rejected = new com.pcap.inventory.FlowTable();                              // note: only on a flow whose ICS decode was rejected
+        rejected.reject(rejected.flow("10.0.0.1", "10.0.0.4", "modbus", "443/tcp"), "ICS decode rejected: test");
+        written.addAll(rejected.toList(true).get(0).keySet());
+        written.addAll(written2);
         assertEquals(documented, written);
         var op = schema.get("properties").get("operations").get("items").get("properties");
         java.util.Set<String> opDoc = new java.util.TreeSet<>();

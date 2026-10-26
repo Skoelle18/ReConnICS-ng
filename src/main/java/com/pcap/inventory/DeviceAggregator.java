@@ -25,10 +25,10 @@ public final class DeviceAggregator {
         }
         observationCount++;
         switch (obs.detectionBasis()) {
-            case PORT_HEURISTIC -> portOnlyCount++;
+            case PORT_HEURISTIC, ZEEK_PORT -> portOnlyCount++;
             case HEADER_VALIDATED -> headerValidatedCount++;
             case MESSAGE_DECODED -> messageDecodedCount++;
-            case ZEEK_CONN, ZEEK_SOFTWARE, ZEEK_ICSNPP -> zeekCount++;
+            case ZEEK_CONN, ZEEK_SOFTWARE, ZEEK_ICSNPP, TSHARK_CONV -> zeekCount++;
         }
         CandidateDevice device = matcher.match(obs);
         if (device == null) {

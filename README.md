@@ -4,6 +4,48 @@ Passive OT asset inventory from classic PCAP captures. CLI-only Java 21 applicat
 
 **Not** a scanner. No packets are sent. Results are passive observations and may be incomplete or spoofed.
 
+## Quick start: the full console (Zeek + ICSNPP + all open-source engines)
+
+This is the best version of the UI. The other sections below are options and details; you do not need them to get started.
+
+You need JDK 21+, Maven 3.9+ and **Docker Desktop running** (Windows, macOS or Linux). Do the first two steps once.
+
+```bash
+# 1. Build the jar
+mvn -q clean package -DskipTests
+
+# 2. Build the two engine images (needs network once, then they run offline; about 1.3 GB and 0.5 GB)
+docker build -t reconics-zeek  docker/zeek      # Zeek + the ICSNPP Modbus, DNP3, EtherNet/IP and S7comm parsers
+docker build -t reconics-tools docker/tools     # tshark, Suricata, nDPI, p0f
+
+# 3. Start the console (a fresh --data folder gives you an empty site; reuse a folder to keep your captures)
+java -jar target/reconnics-ng.jar serve --index data/index.json --pubkey keys/index-signing.pub --data data/site-mine
+```
+
+Then open <http://127.0.0.1:8088/>, click the **upload** icon in the right-hand tool strip and drop in one or more `.pcap` /
+`.pcapng` files. Each capture runs through Zeek + ICSNPP, then tshark, Suricata, nDPI and p0f, and takes about 20 seconds (most of that
+is Docker starting). When it shows `done` you get:
+
+- the **graph** with every host the capture shows, including hosts that were only pinged or only sent a SYN ("seen only"),
+  with broadcast and multicast addresses available behind the **Hidden by default** facet;
+- click a node for its attributes, advisories, conversations, DHCP and web-server facts and the images its web server sent;
+- click an edge for protocol, bytes in each direction, rate, message kinds, the operations table (function, address, values,
+  outcome) and any Suricata or nDPI evidence;
+- the **Engines** screen (`#/engines`) for which tools ran on each capture, and the **Ethernet** screen for MAC addresses.
+
+If it does not look like that:
+
+| Symptom | Fix |
+|---|---|
+| Only generic "unknown" edges, no operations table | Docker is not running or the `reconics-zeek` image is missing. Start Docker Desktop, run step 2, upload again. |
+| Engines screen shows tools as "not installed" | The `reconics-tools` image is missing, or Docker was not running when the capture ran. |
+| `advisory index signature INVALID` | `keys/index-signing.pub` does not match the signed `data/index.json`. `git pull`, or run `java -jar target/reconnics-ng.jar verify --index data/index.json --pubkey keys/index-signing.pub`. |
+| Old UI after pulling new code | Re-run step 1 and restart `serve`. The UI is packaged inside the jar. |
+| Port 8088 already in use | Stop the old console first (the new one cannot start on the same port). |
+
+No Docker? The console still works with the built-in decoders only (`-Dreconics.engine=NATIVE` forces this): you get the graph and
+message kinds, but no operations table and none of the extra engines.
+
 ## Prerequisites
 
 - JDK 21+ (developed/tested with newer OpenJDK; `--release 21`)
@@ -76,7 +118,8 @@ parsers read the same capture. The native decoders always run too, and the two r
 | `--zeek-logs DIR` | Read JSON logs you already produced for this capture; Zeek is not run (implies `--engine zeek`). |
 | `--zeek-timeout SECONDS` | Stop a Zeek run after this long (default 1800). |
 | `--ics-only` | No edges for traffic that is not a decoded ICS protocol. |
-| `--keep-scans` | Also draw edges for conversations that only ever saw scan attempts (default: counted in `scanAttempts`, not drawn). |
+| `--images-dir DIR` | Keep the images web servers sent (PNG, GIF, JPEG, WebP, ICO by magic bytes; never SVG) in `DIR` as `<sha256>.<ext>`, at most 24 per capture and 2 MiB each; needs tshark or the tools image and tools enabled. The console does this by default (`-Dreconics.images=off` turns it off) and shows thumbnails on the web server's asset page; the files are deleted with the capture. |
+| `--drop-scans` | Leave out flows that only ever saw scan attempts (default: kept, with `scanAttempts`; the console hides them behind a toggle). `--keep-scans` is accepted and is the default. |
 
 Zeek is run from an argument list (never a shell) in a fresh empty directory, reads the capture and nothing else, and its output
 is treated as untrusted input: every field is length-capped and validated, and a bad line is skipped and counted
@@ -125,8 +168,8 @@ java -jar target/reconnics-ng.jar analyze capture.pcap --engine zeek
 ```
 
 The analyzer finds the image by name and runs `docker run --rm --network none` with the capture's folder mounted read-only, so the
-built image works offline. *The Dockerfile follows the steps verified natively, but the image itself could not be built in the
-Linux environment this was developed in (no Docker daemon), so treat the first `docker build` as a test.*
+built image works offline. The image has been built and run on Windows 10 / Docker Desktop (25 Oct 2026): about 1.3 GB, 1 min 17 s
+cold, Zeek 8.0.9 with the four ICSNPP packages, and `ZeekIntegrationTest` passes against it.
 
 ### Demo: a DNP3 and a Modbus capture in the console
 
@@ -141,6 +184,40 @@ done
 
 With `--engine auto` and no Zeek installed the same commands still work: you get the edges, message kinds and rates, but no operations
 table.
+
+## Open-source engines (optional)
+
+ReConICS-ng wraps existing open-source tools instead of rewriting them. Zeek + ICSNPP stay the primary engine. Each tool below is
+**optional**: it is used only when it is found (on `PATH`, or in the `reconics-tools` Docker image), the product works with only Zeek,
+and a missing tool shows up as "not installed", never as an error. Everything stays passive: a tool is only given the capture file.
+
+| Tool | What it adds | Shown as |
+|---|---|---|
+| Wireshark `tshark` + `capinfos` | frame-count sanity check; conversations Zeek and the native decoders missed | flow `source: tshark`, `classifiedBy` (dissector name) |
+| Suricata (`-r`, `eve.json`) | alerts and protocol anomalies on a conversation | flow and asset `alerts` (evidence, not a decode) |
+| nDPI (`ndpiReader`) | a label for conversations still unknown after Zeek and the port hints | `classifiedBy`, LOW/MEDIUM confidence |
+| p0f v3 | passive OS guess per host | asset `os`, LOW |
+| Wireshark `manuf`, Nmap `nmap-mac-prefixes`, `nmap-services` (data files only) | more MAC vendors (incl. 28/36-bit blocks), more port names | `vendor_oui` evidence, `portHintSource` |
+| Zeek `community-id` | the same flow ID Suricata uses | flow `communityIds` |
+
+```bash
+java -jar target/reconnics-ng.jar engines                    # which of these this machine has, with versions
+java -jar target/reconnics-ng.jar analyze cap.pcap --tools off    # Zeek/native only, no other tool started
+docker build -t reconics-tools docker/tools                  # tshark, Suricata + ET Open rules, nDPI, p0f in one image (Windows-friendly)
+```
+
+The console has an **Engines** screen (`#/engines`) with each tool's state, version, licence and which captures used it, and small
+source badges next to attribute evidence. What each tool is used for, how it is invoked, what was not adopted (for example Nmap's
+active OS detection) and what has only been unit-tested: [`docs/foss-components.md`](docs/foss-components.md). Licences: [`NOTICE`](NOTICE).
+
+## Credits
+
+Built on: [Zeek](https://zeek.org) and the CISA [ICSNPP](https://github.com/cisagov/icsnpp) analyzers (BSD-3-Clause),
+[Wireshark](https://www.wireshark.org) (GPL-2.0-or-later), [Suricata](https://suricata.io) (GPL-2.0), [nDPI](https://github.com/ntop/nDPI)
+(LGPL-3.0), [p0f](https://lcamtuf.coredump.cx/p0f3/) (LGPL-2.1), data files of [Nmap](https://nmap.org) (Nmap Public Source License)
+and the IEEE OUI registry. The idea of a GUI over existing network tools follows
+[GRASSMARLIN](https://github.com/nsacyber/GRASSMARLIN); [Malcolm](https://github.com/cisagov/Malcolm) and [Arkime](https://arkime.com)
+are the related full-stack projects. No code of any of them is copied into this repository.
 
 ## Example summary
 
@@ -179,6 +256,8 @@ Passive PCAP results may be incomplete or spoofed.
 - [`docs/data-contract.md`](docs/data-contract.md) — confidence/evidence mapping
 - [`docs/limitations.md`](docs/limitations.md) — supported vs unsupported
 - [`docs/ethics.md`](docs/ethics.md) — passive-only rules
+- [`docs/ui-tour.md`](docs/ui-tour.md) — screenshot tour of every console screen
+- [`docs/foss-components.md`](docs/foss-components.md) — open-source tools wrapped, licences, what was not adopted
 - [`docs/examples/assets.json`](docs/examples/assets.json) — sanitized example payload
 
 ## End-to-end

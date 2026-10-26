@@ -20,6 +20,12 @@ public final class IngestModels {
         public List<Asset> assets;
         /** Directed client-to-server conversations ({@code client, server, protocol, port, messages, labels}); absent when none were seen. */
         public List<Map<String, Object>> flows;
+        /** Broadcast and multicast destinations with their senders: nodes that are not assets. Absent when the capture had none. */
+        public List<Map<String, Object>> groups;
+        /** The Ethernet view: one entry per MAC with frame counts and the IPs seen behind it. Absent when the capture had no Ethernet frames. */
+        public List<Map<String, Object>> macs;
+        /** Images web servers sent, kept by their magic bytes ({@code host, sha256, kind, bytes, name, source}); absent when none were extracted. */
+        public List<Map<String, Object>> images;
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -41,6 +47,10 @@ public final class IngestModels {
         public Object serial;
         /** Device type for role derivation: {@code cip:0xNN} or {@code s7:<module type>}. */
         public Object deviceType;
+        /** Operating system guess (p0f, LOW): a field object like vendor, but never feeds the advisory match. */
+        public Object os;
+        /** Alerts / anomalies a tool raised on this host's traffic: {@code {value: [text], confidence, evidence}} naming the tool. */
+        public Object alerts;
         public Map<String, Object> attributes;
     }
 

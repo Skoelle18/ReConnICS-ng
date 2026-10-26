@@ -99,6 +99,8 @@ class SiteServerTest {
         var up = send("POST", "/api/v1/captures?name=Hall%20B%20%26%20C.pcap", "application/octet-stream", acmePcap("1.9"));
         assertEquals(202, up.statusCode(), up.body());
         assertEquals("Hall B & C.pcap", Json.obj(Json.parse(up.body())).get("file"));
+        // let the queued analysis finish: it writes into the temp site dir, which JUnit deletes when the test returns
+        waitFor((String) Json.obj(Json.parse(up.body())).get("id"));
     }
 
     @Test
@@ -242,6 +244,41 @@ class SiteServerTest {
         assertEquals(List.of("x"), Json.arr(write.get("sampleValues")), "only numbers and strings are kept as samples");
     }
 
+    // operation unit and statuses add up across captures; a port hint survives only in a clean form
+    @Test
+    void operationStatusesUnitsAndPortHintsMerge() throws Exception {
+        String one = """
+                {"assets":[{"ip":"10.0.0.9"}],"flows":[
+                  {"client":"10.0.0.5","server":"10.0.0.9","protocol":"modbus","port":"502/tcp","messages":4,
+                   "operations":[{"function":"FC3 read holding registers","access":"read","unit":7,"count":4,"statuses":{"ok":3,"exception: illegal data address":1}},
+                                 {"function":"FC3 read holding registers","access":"read","unit":8,"count":1}]},
+                  {"client":"10.0.0.5","server":"10.0.0.10","protocol":"unknown","port":"20000/tcp","messages":2,"portHint":"dnp3"},
+                  {"client":"10.0.0.5","server":"10.0.0.11","protocol":"unknown","port":"9/tcp","messages":2,"portHint":"<script>"}]}
+                """;
+        String two = """
+                {"assets":[{"ip":"10.0.0.9"}],"flows":[{"client":"10.0.0.5","server":"10.0.0.9","protocol":"modbus","port":"502/tcp","messages":2,
+                   "operations":[{"function":"FC3 read holding registers","access":"read","unit":7,"count":2,"statuses":{"ok":2,"unanswered":1,"<b>x":-5,"a":1,"b":1,"c":1,"d":1,"e":1}}]}]}
+                """;
+        assertEquals(200, send("POST", "/api/v1/assets", "application/json", one.getBytes(StandardCharsets.UTF_8)).statusCode());
+        assertEquals(200, send("POST", "/api/v1/assets", "application/json", two.getBytes(StandardCharsets.UTF_8)).statusCode());
+        var flows = Json.arr(Json.obj(Json.parse(get("/api/v1/inventory").body())).get("flows"));
+        var mb = flows.stream().map(Json::obj).filter(f -> "modbus".equals(f.get("protocol"))).findFirst().orElseThrow();
+        var ops = Json.arr(mb.get("operations"));
+        assertEquals(2, ops.size(), "unit 7 and unit 8 stay separate rows");
+        var u7 = Json.obj(ops.get(0));
+        assertEquals(7.0, u7.get("unit"));
+        assertEquals(6.0, u7.get("count"));
+        var st = Json.obj(u7.get("statuses"));
+        assertEquals(5.0, st.get("ok"));
+        assertEquals(1.0, st.get("exception: illegal data address"));
+        assertTrue(st.size() <= 6, "capped at 6 outcomes: " + st);
+        assertFalse(st.containsKey("<b>x"), "a negative count adds nothing");
+        assertNull(Json.obj(ops.get(1)).get("statuses"));
+        var hint = flows.stream().map(Json::obj).filter(f -> "20000/tcp".equals(f.get("port"))).findFirst().orElseThrow();
+        assertEquals("dnp3", hint.get("portHint"));
+        assertNull(flows.stream().map(Json::obj).filter(f -> "9/tcp".equals(f.get("port"))).findFirst().orElseThrow().get("portHint"));
+    }
+
     // the UI can tell which capture contributed which node and edge, without reading the observations files
     @Test
     void captureProvenanceMapsAssetsAndFlows() throws Exception {
@@ -298,6 +335,39 @@ class SiteServerTest {
         assertEquals("x.pcap", cap.get("file"), "path parts stripped from the upload name");
         assertEquals(204, send("DELETE", "/api/v1/captures/" + id, null, null).statusCode());
         assertEquals(415, send("POST", "/api/v1/captures", "text/plain", "x".getBytes()).statusCode());
+    }
+
+    @Test
+    void removingAMergedCaptureDropsOnlyWhatItAloneContributed() throws Exception {
+        String a = (String) Json.obj(Json.parse(send("POST", "/api/v1/captures?name=a.pcap", "application/octet-stream", acmePcap("1.9", "10.10.1.10")).body())).get("id");
+        assertEquals("done", waitFor(a).get("state"));
+        String b = (String) Json.obj(Json.parse(send("POST", "/api/v1/captures?name=b.pcap", "application/octet-stream", acmePcap("2.1", "10.10.1.11")).body())).get("id");
+        assertEquals("done", waitFor(b).get("state"));
+        assertEquals(200, send("PATCH", "/api/v1/assets/10.10.1.11", "application/json", "{\"criticality\":\"high\"}".getBytes(StandardCharsets.UTF_8)).statusCode());
+
+        var r = send("DELETE", "/api/v1/captures/" + a, null, null, "X-Actor", "R. Analyst");
+        assertEquals(200, r.statusCode(), r.body());
+        var out = Json.obj(Json.parse(r.body()));
+        assertEquals(1.0, out.get("assetsDropped"), "10.10.1.10 was only in a.pcap");
+        assertEquals(1.0, out.get("assetsKeptSeenElsewhere"), "the PLC is also in b.pcap");
+        var inv = Json.obj(Json.parse(get("/api/v1/inventory").body()));
+        var ids = Json.arr(Json.obj(inv.get("inventory")).get("assets")).stream().map(x -> Json.obj(x).get("id")).toList();
+        assertFalse(ids.contains("10.10.1.10"));
+        assertTrue(ids.containsAll(List.of("10.10.1.31", "10.10.1.11")));
+        assertEquals(List.of(b), Json.obj(inv.get("captureAssets")).keySet().stream().toList(), "a.pcap provenance is gone, b.pcap's stays");
+        assertFalse(Files.exists(tmp.resolve("site/captures/" + a + ".pcap")));
+        assertEquals(404, send("DELETE", "/api/v1/captures/" + a, null, null).statusCode());
+
+        // b.pcap alone saw 10.10.1.11, but a person edited it: the edit is not deleted, so the asset stays
+        out = Json.obj(Json.parse(send("DELETE", "/api/v1/captures/" + b, null, null).body()));
+        assertEquals(1.0, out.get("assetsDropped"));
+        assertEquals(1.0, out.get("assetsKeptWithEdits"));
+        inv = Json.obj(Json.parse(get("/api/v1/inventory").body()));
+        ids = Json.arr(Json.obj(inv.get("inventory")).get("assets")).stream().map(x -> Json.obj(x).get("id")).toList();
+        assertEquals(List.of("10.10.1.11"), ids);
+        assertEquals("high", Json.obj(asset(inv, "10.10.1.11").get("criticality")).get("value"));
+        assertTrue(Json.arr(Json.parse(get("/api/v1/changes").body())).stream().map(Json::obj)
+                .anyMatch(c -> "(site)".equals(c.get("asset")) && c.get("to").toString().contains("removed")), "the removal is in the change log");
     }
 
     @Test
@@ -373,5 +443,92 @@ class SiteServerTest {
             String line = new String(in.readNBytes(12), StandardCharsets.ISO_8859_1);
             return Integer.parseInt(line.substring(9, 12));
         }
+    }
+
+    // evidence from the optional tools: engines join, labels and alerts merge across captures and hostile shapes are dropped
+    @Test
+    void toolEvidenceOnFlowsMergesAcrossCapturesAndHostileValuesAreDropped() throws Exception {
+        String one = """
+                {"assets":[{"ip":"10.0.0.9"}],"flows":[
+                  {"client":"10.0.0.5","server":"10.0.0.9","protocol":"unknown","port":"45123/tcp","messages":4,"source":"tshark",
+                   "portHintSource":"nmap-services","communityIds":["1:abc=","1:abc=","<x>"],
+                   "note":"ICS decode rejected: 5 messages decoded as Modbus on 45123/tcp",
+                   "classifiedBy":[{"tool":"ndpi","version":"4.2","protocol":"TLS","confidence":"MEDIUM","basis":"dpi"},
+                                   {"tool":"evil","protocol":"x","confidence":"HIGH"}],
+                   "alerts":[{"tool":"suricata","version":"7.0","kind":"alert","sid":2000001,"signature":"TEST rule","severity":2,"count":3}]}]}
+                """;
+        String two = """
+                {"assets":[{"ip":"10.0.0.9"}],"flows":[
+                  {"client":"10.0.0.5","server":"10.0.0.9","protocol":"unknown","port":"45123/tcp","messages":2,"source":"zeek",
+                   "classifiedBy":[{"tool":"ndpi","protocol":"HTTP","confidence":"HIGH"},{"tool":"tshark","protocol":"opc-ua","confidence":"MEDIUM","basis":"dissector"}],
+                   "alerts":[{"tool":"suricata","kind":"alert","sid":2000001,"signature":"TEST rule","severity":2,"count":2},
+                             {"tool":"suricata","kind":"anomaly","signature":"anomaly: x","severity":9},{"tool":"nobody","signature":"s"}]}]}
+                """;
+        assertEquals(200, send("POST", "/api/v1/assets", "application/json", one.getBytes(StandardCharsets.UTF_8)).statusCode());
+        assertEquals(200, send("POST", "/api/v1/assets", "application/json", two.getBytes(StandardCharsets.UTF_8)).statusCode());
+        var flows = Json.arr(Json.obj(Json.parse(get("/api/v1/inventory").body())).get("flows"));
+        assertEquals(1, flows.size(), flows.toString());
+        var f = Json.obj(flows.get(0));
+        assertEquals("zeek+tshark", f.get("source"), "engines are joined in a fixed order");
+        assertEquals("nmap-services", f.get("portHintSource"));
+        assertEquals("ICS decode rejected: 5 messages decoded as Modbus on 45123/tcp", f.get("note"), "the reason a decode was rejected survives the merge");
+        assertEquals(List.of("1:abc="), Json.arr(f.get("communityIds")), "duplicates and unsafe ids are dropped");
+        var cls = Json.arr(f.get("classifiedBy"));
+        assertEquals(2, cls.size(), cls.toString());
+        assertEquals("TLS", Json.obj(cls.get(0)).get("protocol"), "the first label of a tool wins");
+        assertEquals("tshark", Json.obj(cls.get(1)).get("tool"));
+        var alerts = Json.arr(f.get("alerts"));
+        assertEquals(2, alerts.size(), alerts.toString());
+        var rule = Json.obj(alerts.get(0));
+        assertEquals("TEST rule", rule.get("signature"));
+        assertEquals(5.0, rule.get("count"), "the same rule adds up across captures");
+        assertEquals(3.0, Json.obj(alerts.get(1)).get("severity"), "an out-of-range severity becomes the default");
+    }
+
+    @Test
+    void extractedImagesAreListedServedAsInertBytesAndDeletedWithTheirCapture() throws Exception {
+        String id = (String) Json.obj(Json.parse(send("POST", "/api/v1/captures?name=web.pcap", "application/octet-stream", acmePcap("1.9")).body())).get("id");
+        assertEquals("done", waitFor(id).get("state"));
+        byte[] png = com.pcap.tools.HttpImagesTestBytes.PNG;
+        String sha = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(png));
+        String svgSha = "a".repeat(64), noFileSha = "b".repeat(64);
+        Path dir = Files.createDirectories(tmp.resolve("site/captures/" + id + ".images"));
+        Files.write(dir.resolve(sha + ".png"), png);
+        Files.writeString(dir.resolve(svgSha + ".svg"), "<svg onload=alert(1)/>");          // an extension the extractor never writes: never served
+        Path obs = tmp.resolve("site/captures/" + id + ".obs.json");
+        var doc = Json.obj(Json.parse(Files.readString(obs)));
+        doc.put("images", List.of(
+                Map.of("host", "10.10.1.31", "sha256", sha, "kind", "png", "bytes", 16.0, "name", "logo.png", "source", "tshark"),
+                Map.of("host", "<script>", "sha256", sha, "kind", "png", "bytes", 16.0),                       // not an address
+                Map.of("host", "10.10.1.31", "sha256", noFileSha, "kind", "png", "bytes", 16.0),               // its file is gone
+                Map.of("host", "10.10.1.31", "sha256", svgSha, "kind", "svg", "bytes", 20.0)));                // not a kept kind
+        var src = new java.util.LinkedHashMap<String, Object>(Json.obj(doc.get("source")));
+        src.put("images", Map.of("state", "ran", "extracted", 1.0, "nonImageNotExtracted", 3.0, "nonImageByHost", Map.of("10.10.1.31", 3.0)));
+        doc.put("source", src);
+        Files.writeString(obs, Json.write(doc));
+        assertEquals(200, send("PATCH", "/api/v1/assets/10.10.1.31", "application/json", "{\"zone\":\"Cell 1\"}".getBytes(StandardCharsets.UTF_8)).statusCode());   // rebuilds the cached inventory
+
+        var inv = Json.obj(Json.parse(get("/api/v1/inventory").body()));
+        var listed = Json.arr(inv.get("images"));
+        assertEquals(1, listed.size(), "only the well-formed entry whose file is on disk");
+        assertEquals(id, Json.obj(listed.get(0)).get("capture"));
+        assertEquals(3.0, Json.obj(inv.get("imageSummary")).get("nonImageNotExtracted"));
+
+        var r = http.send(HttpRequest.newBuilder(URI.create(base + "/api/v1/captures/" + id + "/images/" + sha)).build(), HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(200, r.statusCode());
+        assertArrayEquals(png, r.body());
+        var h = r.headers();
+        assertEquals("image/png", h.firstValue("Content-Type").orElse(""));
+        assertEquals("nosniff", h.firstValue("X-Content-Type-Options").orElse(""));
+        assertEquals("default-src 'none'; sandbox", h.firstValue("Content-Security-Policy").orElse(""));
+        assertEquals("same-origin", h.firstValue("Cross-Origin-Resource-Policy").orElse(""));
+
+        for (String bad : List.of(id + "/images/" + noFileSha, id + "/images/" + svgSha, id + "/images/" + sha.toUpperCase(), id + "/images/..%2F" + sha,
+                id + "/images/" + sha.substring(1), "c9999/images/" + sha, "..%2F" + id + "/images/" + sha, id + "/images/")) {
+            assertEquals(404, get("/api/v1/captures/" + bad).statusCode(), bad);
+        }
+        assertEquals(200, send("DELETE", "/api/v1/captures/" + id, null, null).statusCode());
+        assertFalse(Files.exists(dir), "the images go with the capture");
+        assertEquals(404, get("/api/v1/captures/" + id + "/images/" + sha).statusCode());
     }
 }

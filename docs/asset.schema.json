@@ -104,6 +104,19 @@
         }
       ]
     },
+    "alerts": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "$ref": "#/$defs/listField"
+        }
+      ]
+    },
     "os": {
       "oneOf": [
         {

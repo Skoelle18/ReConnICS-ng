@@ -104,6 +104,7 @@ final class InventoryReport {
             c.put("missing", r.missing);
             a.put("completeness", c);
             if (!r.alerts.isEmpty()) a.put("alerts", r.alerts);
+            r.extra.forEach((k, v) -> { if (!k.equals("seenRole")) a.put(k, v); });
             if (r.match != null) {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("level", r.match.level());

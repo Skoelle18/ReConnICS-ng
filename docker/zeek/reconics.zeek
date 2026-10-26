@@ -12,6 +12,10 @@ redef LogAscii::json_timestamps = JSON::TS_EPOCH;
 @load policy/protocols/conn/known-hosts
 @load policy/protocols/conn/known-services
 
+# Community ID v1 (the open flow hash of Corelight's zeek-community-id, a policy script in Zeek 8) as conn.log's community_id.
+# Suricata writes the same ID (eve.json community_id), so a conversation can be followed from one tool to the other.
+@load policy/protocols/conn/community-id-logging
+
 # software.log: HTTP Server / SSH / FTP banners. Spoofable text; the reader never lets it name an exact model.
 # (In Zeek 8 these detectors are policy scripts; the base protocol scripts alone write no software.log.)
 @load base/frameworks/software

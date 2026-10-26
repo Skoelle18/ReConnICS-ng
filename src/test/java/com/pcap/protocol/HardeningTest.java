@@ -69,7 +69,11 @@ class HardeningTest {
                 false).document();
         assertEquals("00:80:63:00:00:90", asset(doc, "10.0.1.90").mac);
         assertEquals("00:80:f4:00:00:05", asset(doc, "10.0.1.5").mac);
-        assertEquals(2, doc.assets.size(), doc.assets.stream().map(a -> a.id).toList().toString());
+        // the probe's target and the VRRP address are retained too, as seen-only; the 0.0.0.0 probe sender has no address, so it is in the MAC view only
+        assertEquals(4, doc.assets.size(), doc.assets.stream().map(a -> a.id).toList().toString());
+        assertEquals(Boolean.TRUE, asset(doc, "10.0.1.6").attributes.get("seenOnly"));
+        assertNull(asset(doc, "10.0.1.254").mac, "a virtual router MAC is not bound to the address");
+        assertTrue(doc.macs.stream().anyMatch(m -> "00:80:f4:00:00:06".equals(m.get("mac"))), "the probe sender stays visible by MAC");
     }
 
     @Test

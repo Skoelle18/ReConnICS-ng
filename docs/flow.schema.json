@@ -13,6 +13,8 @@
     "messages": {"$ref": "#/$defs/count"},
     "packets": {"$ref": "#/$defs/count"},
     "bytes": {"$ref": "#/$defs/count"},
+    "bytesToServer": {"$ref": "#/$defs/count", "description": "Payload bytes the client sent to the server. Absent when the engine that saw the flow does not tell the directions apart."},
+    "bytesToClient": {"$ref": "#/$defs/count", "description": "Payload bytes the server sent back to the client."},
     "firstSeen": {"type": "string", "format": "date-time"},
     "lastSeen": {"type": "string", "format": "date-time"},
     "labels": {
@@ -29,7 +31,14 @@
         "properties": {
           "function": {"type": "string", "maxLength": 64},
           "access": {"enum": ["read", "write", "control", "other"]},
-          "object": {"type": "string", "maxLength": 32, "description": "DNP3 object group/variation, for example g30v1"},
+          "object": {"type": "string", "maxLength": 64, "description": "A name Zeek logs: DNP3 object or control block type, Modbus diagnostics sub-function, S7 SZL list or block, CIP class and attribute"},
+          "unit": {"$ref": "#/$defs/count", "description": "Modbus unit id behind a gateway"},
+          "statuses": {
+            "type": "object",
+            "maxProperties": 6,
+            "description": "How the calls ended, label to count: ok, exception: <name>, unanswered, iin: <flag>, status: <name>",
+            "additionalProperties": {"$ref": "#/$defs/count"}
+          },
           "address": {"$ref": "#/$defs/count"},
           "quantity": {"$ref": "#/$defs/count"},
           "count": {"$ref": "#/$defs/count"},
@@ -41,8 +50,47 @@
         }
       }
     },
+    "portHint": {"type": "string", "maxLength": 32, "description": "Only on protocol unknown: the protocol the server port usually carries. Port-inferred, not dissected."},
     "scanAttempts": {"$ref": "#/$defs/count"},
-    "source": {"enum": ["zeek", "native", "zeek+native"]}
+    "source": {"type": "string", "pattern": "^(zeek|native|tshark)(\\+(zeek|native|tshark))*$", "description": "Engines that saw the conversation, joined by +: zeek, native, tshark (a conversation only tshark saw, from the optional Wireshark fallback)"},
+    "note": {"type": "string", "maxLength": 400, "description": "Present when an ICS decode was rejected and the flow went back to unknown: what was decoded and why another tool's classification outweighs it. See docs/foss-components.md, Modbus decodes that another tool contradicts."},
+    "portHintSource": {"type": "string", "maxLength": 32, "description": "Present only when portHint came from a data file instead of the built-in table: nmap-services (Nmap's port list, read from an Nmap install)"},
+    "communityIds": {"type": "array", "maxItems": 3, "items": {"type": "string", "maxLength": 64}, "description": "Community ID v1 of the first connections Zeek saw on this conversation (policy/protocols/conn/community-id-logging). Suricata writes the same ID, so a person can pivot between the tools."},
+    "classifiedBy": {
+      "type": "array",
+      "maxItems": 4,
+      "description": "What other open-source tools called a conversation that is still protocol unknown after Zeek, the native decoders and the port hints. A label with a confidence, never a decoded protocol: the flow's protocol stays unknown.",
+      "items": {
+        "type": "object",
+        "required": ["tool", "protocol", "confidence"],
+        "properties": {
+          "tool": {"enum": ["ndpi", "tshark"]},
+          "version": {"type": "string", "maxLength": 40},
+          "protocol": {"type": "string", "maxLength": 48, "description": "The tool's own name for it: an nDPI protocol such as TLS.Google, or the last Wireshark dissector (mapped to the PortHints names where one exists)"},
+          "confidence": {"enum": ["HIGH", "MEDIUM", "LOW"]},
+          "basis": {"enum": ["dpi", "dissector"], "description": "dpi: nDPI deep-packet inspection; dissector: Wireshark's dissector chain (frame.protocols)"}
+        }
+      }
+    },
+    "alerts": {
+      "type": "array",
+      "maxItems": 10,
+      "description": "Suricata rule matches and protocol anomalies on this conversation, most severe first. Evidence that something looked wrong; not a decoded protocol and not proof of compromise.",
+      "items": {
+        "type": "object",
+        "required": ["tool", "kind", "signature"],
+        "properties": {
+          "tool": {"const": "suricata"},
+          "version": {"type": "string", "maxLength": 40},
+          "kind": {"enum": ["alert", "anomaly"]},
+          "sid": {"$ref": "#/$defs/count"},
+          "signature": {"type": "string", "maxLength": 120},
+          "category": {"type": "string", "maxLength": 64},
+          "severity": {"type": "integer", "minimum": 1, "maximum": 4, "description": "Suricata severity; 1 is the most severe"},
+          "count": {"$ref": "#/$defs/count"}
+        }
+      }
+    }
   },
   "$defs": {
     "count": {"type": "integer", "minimum": 0}

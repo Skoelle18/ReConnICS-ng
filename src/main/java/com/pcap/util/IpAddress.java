@@ -55,6 +55,30 @@ public final class IpAddress implements Comparable<IpAddress> {
         return !value.equals("0.0.0.0") && !value.equals("255.255.255.255") && first < 224 && first != 0;
     }
 
+    /** 255.255.255.255, the limited broadcast. */
+    public boolean isLimitedBroadcast() {
+        return !ipv6 && value.equals("255.255.255.255");
+    }
+
+    /** 224.0.0.0/4. */
+    public boolean isMulticast() {
+        if (ipv6) {
+            return false;
+        }
+        int first = Integer.parseInt(value.substring(0, value.indexOf('.')));
+        return first >= 224 && first < 240;
+    }
+
+    /** 0.0.0.0: the "this host" source of a DHCP discover or an ARP probe. */
+    public boolean isUnspecified() {
+        return !ipv6 && value.equals("0.0.0.0");
+    }
+
+    /** {@code broadcast}, {@code multicast} or null: an address several hosts listen on, never one host. */
+    public String groupKind() {
+        return isLimitedBroadcast() ? "broadcast" : isMulticast() ? "multicast" : null;
+    }
+
     public String value() {
         return value;
     }

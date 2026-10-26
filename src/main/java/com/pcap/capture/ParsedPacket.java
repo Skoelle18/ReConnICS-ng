@@ -26,6 +26,7 @@ public final class ParsedPacket {
     private final long tcpSeq;
     private final int tcpFlags;
     private final boolean arp;
+    private final int arpOp, icmpType, icmpCode, wireLength;
 
     private ParsedPacket(Builder b) {
         this.frameNumber = b.frameNumber;
@@ -48,11 +49,34 @@ public final class ParsedPacket {
         this.tcpSeq = b.tcpSeq;
         this.tcpFlags = b.tcpFlags;
         this.arp = b.arp;
+        this.arpOp = b.arpOp;
+        this.icmpType = b.icmpType;
+        this.icmpCode = b.icmpCode;
+        this.wireLength = b.wireLength;
     }
 
     /** ARP request/reply: srcMac/srcIp are the ARP sender hardware/protocol addresses. */
     public boolean isArp() {
         return arp;
+    }
+
+    /** ARP operation (1 request, 2 reply), or -1. */
+    public int arpOp() {
+        return arpOp;
+    }
+
+    /** ICMP type and code of an IPv4 ICMP message (first two bytes of the IP payload), or -1. */
+    public int icmpType() {
+        return icmpType;
+    }
+
+    public int icmpCode() {
+        return icmpCode;
+    }
+
+    /** Bytes of the frame as captured. */
+    public int wireLength() {
+        return wireLength;
     }
 
     public static final int TCP_FIN = 0x01;
@@ -86,6 +110,11 @@ public final class ParsedPacket {
         b.dstPort = dstPort;
         b.tcpSeq = tcpSeq;
         b.tcpFlags = tcpFlags;
+        b.arp = arp;
+        b.arpOp = arpOp;
+        b.icmpType = icmpType;
+        b.icmpCode = icmpCode;
+        b.wireLength = wireLength;
         return b.payload(data, offset, length).status(status, detail).build();
     }
 
@@ -195,6 +224,7 @@ public final class ParsedPacket {
         private long tcpSeq = -1;
         private int tcpFlags;
         private boolean arp;
+        private int arpOp = -1, icmpType = -1, icmpCode = -1, wireLength;
 
         private Builder(long frameNumber, long timestampMicros) {
             this.frameNumber = frameNumber;
@@ -253,6 +283,22 @@ public final class ParsedPacket {
 
         public Builder arp(boolean v) {
             arp = v;
+            return this;
+        }
+
+        public Builder arpOp(int v) {
+            arpOp = v;
+            return this;
+        }
+
+        public Builder icmp(int type, int code) {
+            icmpType = type;
+            icmpCode = code;
+            return this;
+        }
+
+        public Builder wireLength(int v) {
+            wireLength = v;
             return this;
         }
 

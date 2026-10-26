@@ -20,24 +20,29 @@ public final class FlowTable {
     static final int MAX_LABELS = 8;
     public static final int MAX_OPERATIONS = 50;
     public static final int MAX_SAMPLES = 8;
+    /** Distinct outcome labels kept per operation row. */
+    public static final int MAX_STATUSES = 6;
     private static final java.util.regex.Pattern DROP = java.util.regex.Pattern.compile(
             "\\s+(\\(|(unit|txn|objects|code|items|session|status|index|ret|rosctr|param|data|len|count|link)=).*$");
 
     private static final java.util.regex.Pattern HEX_FC = java.util.regex.Pattern.compile("Modbus FC=0x([0-9a-f]{1,2})( exception)?");
 
-    /** One row of {@code operations}: what was asked of the server, aggregated over (function, address, quantity). */
+    /** One row of {@code operations}: what was asked of the server, aggregated over (function, object, address, quantity, status). */
     public static final class Operation {
         final String function, access, object;
-        final Long address, quantity;
+        final Long address, quantity, unit;
         long count;
         final List<Object> samples = new ArrayList<>();
+        /** How the calls ended (label to count): "ok", "exception: illegal data address", "unanswered", a DNP3 status or IIN flag. */
+        final Map<String, Long> statuses = new LinkedHashMap<>();
 
-        Operation(String function, String access, String object, Long address, Long quantity) {
+        Operation(String function, String access, String object, Long address, Long quantity, Long unit) {
             this.function = function;
             this.access = access;
             this.object = object;
             this.address = address;
             this.quantity = quantity;
+            this.unit = unit;
         }
 
         Map<String, Object> toMap() {
@@ -53,7 +58,13 @@ public final class FlowTable {
             if (quantity != null) {
                 m.put("quantity", quantity);
             }
+            if (unit != null) {
+                m.put("unit", unit);
+            }
             m.put("count", count);
+            if (!statuses.isEmpty()) {
+                m.put("statuses", statuses);
+            }
             if (!samples.isEmpty()) {
                 m.put("sampleValues", samples);
             }
@@ -65,8 +76,16 @@ public final class FlowTable {
         final String client, server, port, transport;
         String protocol;
         long messages, packets, bytes, scanAttempts;
+        /** Payload bytes client to server and server to client; 0 when the engine that saw the flow does not tell the directions apart. */
+        long toServer, toClient;
         long firstMicros = Long.MAX_VALUE, lastMicros = Long.MIN_VALUE;
-        String source;
+        String source, portHint, note;
+        /** Names other FOSS tools gave this conversation ({@code tool, version?, protocol, confidence, basis}); never a decoded protocol. */
+        final List<Map<String, Object>> classifiedBy = new ArrayList<>();
+        /** Suricata alerts and anomalies on this conversation ({@code tool, version?, kind, sid?, signature, category?, severity, count}). */
+        final List<Map<String, Object>> alerts = new ArrayList<>();
+        /** Community ID v1 of the connections Zeek saw here: the same flow id Suricata writes, to pivot between tools. */
+        final java.util.Set<String> communityIds = new java.util.LinkedHashSet<>();
         final Map<String, Long> labels = new LinkedHashMap<>();
         final Map<String, Operation> operations = new LinkedHashMap<>();
 
@@ -106,8 +125,16 @@ public final class FlowTable {
             return this;
         }
 
+        /** The two directions of the bytes already counted by {@link #traffic}. */
+        public Flow directed(long toServerBytes, long toClientBytes) {
+            toServer += Math.max(0, toServerBytes);
+            toClient += Math.max(0, toClientBytes);
+            return this;
+        }
+
+        /** Widens first/last seen; a time that is not a real clock reading (epoch 0, unset, or the "none" sentinel) is ignored: unknown time, not 1970. */
         public Flow seen(long micros) {
-            if (micros > 0) {
+            if (com.pcap.util.Timestamps.usable(micros)) {
                 firstMicros = Math.min(firstMicros, micros);
                 lastMicros = Math.max(lastMicros, micros);
             }
@@ -124,20 +151,100 @@ public final class FlowTable {
             return this;
         }
 
-        /** Adds {@code n} calls of one operation; new (function, address, quantity) rows stop at {@link #MAX_OPERATIONS}. */
+        /** A port-inferred protocol name for a flow nothing decoded ({@code protocol} "unknown"); never set on a decoded flow. */
+        public Flow portHint(String hint) {
+            portHint = hint;
+            return this;
+        }
+
+        public static final int MAX_CLASSIFIERS = 4, MAX_ALERTS = 10, MAX_COMMUNITY_IDS = 3;
+
+        /** Records the label another tool gave this conversation; one entry per tool, the first label wins. */
+        public Flow classifiedBy(String tool, String version, String protocol, String confidence, String basis) {
+            if (tool == null || protocol == null || protocol.isEmpty() || classifiedBy.size() >= MAX_CLASSIFIERS
+                    || classifiedBy.stream().anyMatch(c -> tool.equals(c.get("tool")))) {
+                return this;
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("tool", tool);
+            if (version != null && !version.isEmpty()) {
+                m.put("version", version);
+            }
+            m.put("protocol", protocol.length() > 48 ? protocol.substring(0, 48) : protocol);
+            m.put("confidence", confidence);
+            m.put("basis", basis);
+            classifiedBy.add(m);
+            return this;
+        }
+
+        /** Adds an alert; the list keeps the {@link #MAX_ALERTS} most severe (severity 1 is the highest), then the most frequent. */
+        public Flow alert(String tool, String version, String kind, long sid, String signature, String category, int severity, long count) {
+            if (signature == null || signature.isEmpty()) {
+                return this;
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("tool", tool);
+            if (version != null && !version.isEmpty()) {
+                m.put("version", version);
+            }
+            m.put("kind", kind);
+            if (sid > 0) {
+                m.put("sid", sid);
+            }
+            m.put("signature", signature.length() > 120 ? signature.substring(0, 120) : signature);
+            if (category != null && !category.isEmpty()) {
+                m.put("category", category.length() > 64 ? category.substring(0, 64) : category);
+            }
+            m.put("severity", severity);
+            m.put("count", Math.max(1, count));
+            alerts.add(m);
+            alerts.sort((x, y) -> {
+                int c = Integer.compare((int) x.get("severity"), (int) y.get("severity"));
+                return c != 0 ? c : Long.compare((long) y.get("count"), (long) x.get("count"));
+            });
+            while (alerts.size() > MAX_ALERTS) {
+                alerts.remove(alerts.size() - 1);
+            }
+            return this;
+        }
+
+        public Flow communityId(String id) {
+            if (id != null && !id.isEmpty() && id.length() <= 64 && communityIds.size() < MAX_COMMUNITY_IDS) {
+                communityIds.add(id);
+            }
+            return this;
+        }
+
         public Flow operation(String function, String access, String object, Long address, Long quantity, long n, List<?> values) {
+            return operation(function, access, object, address, quantity, null, n, values, null);
+        }
+
+        /**
+         * Adds {@code n} calls of one operation; new (function, object, address, quantity, unit) rows stop at {@link #MAX_OPERATIONS}.
+         * {@code statuses} (label to count, may be null) says how the calls ended.
+         */
+        public Flow operation(String function, String access, String object, Long address, Long quantity, Long unit, long n,
+                              List<?> values, Map<String, Long> statuses) {
             if (function == null || function.isEmpty()) {
                 return this;
             }
-            String key = function + '|' + access + '|' + object + '|' + address + '|' + quantity;
+            String key = function + '|' + access + '|' + object + '|' + address + '|' + quantity + '|' + unit;
             Operation o = operations.get(key);
             if (o == null) {
                 if (operations.size() >= MAX_OPERATIONS) {
                     return this;
                 }
-                operations.put(key, o = new Operation(function, access, object, address, quantity));
+                operations.put(key, o = new Operation(function, access, object, address, quantity, unit));
             }
             o.count += Math.max(1, n);
+            if (statuses != null) {
+                for (Map.Entry<String, Long> e : statuses.entrySet()) {
+                    String k = e.getKey();
+                    if (k != null && !k.isEmpty() && e.getValue() > 0 && (o.statuses.size() < MAX_STATUSES || o.statuses.containsKey(k))) {
+                        o.statuses.merge(k.length() > 64 ? k.substring(0, 64) : k, e.getValue(), Long::sum);
+                    }
+                }
+            }
             if (values != null) {
                 for (Object v : values) {
                     if (o.samples.size() >= MAX_SAMPLES) {
@@ -156,6 +263,9 @@ public final class FlowTable {
             if (z.packets > 0) {
                 packets = z.packets;
                 bytes = z.bytes;
+                boolean flipped = z.client.equals(server) && !z.client.equals(client);          // the other engine called the same conversation the other way round
+                toServer = flipped ? z.toClient : z.toServer;
+                toClient = flipped ? z.toServer : z.toClient;
             }
             if (z.lastMicros >= z.firstMicros) {
                 seen(z.firstMicros).seen(z.lastMicros);
@@ -166,8 +276,55 @@ public final class FlowTable {
                     labels.merge(l, n, into ? Math::max : Long::sum);
                 }
             });
-            z.operations.values().forEach(o -> operation(o.function, o.access, o.object, o.address, o.quantity, o.count, o.samples));
+            z.operations.values().forEach(o -> operation(o.function, o.access, o.object, o.address, o.quantity, o.unit, o.count, o.samples, o.statuses));
+            if (portHint == null) {
+                portHint = z.portHint;
+            }
+            z.communityIds.forEach(this::communityId);
             scanAttempts = into ? Math.max(scanAttempts, z.scanAttempts) : scanAttempts + z.scanAttempts;
+        }
+
+        public String protocolName() {
+            return protocol;
+        }
+
+        public String client() {
+            return client;
+        }
+
+        public String server() {
+            return server;
+        }
+
+        public String port() {
+            return port;
+        }
+
+        /** The port-inferred protocol name, or null. */
+        public String portHintName() {
+            return portHint;
+        }
+
+        public java.util.Set<String> communityIdsView() {
+            return java.util.Collections.unmodifiableSet(communityIds);
+        }
+
+        /**
+         * True when everything this flow decoded as Modbus was an exception reply: at least one label, every label an exception,
+         * no operation that ended "ok", and room left in the label table (a full table may have dropped a normal message).
+         */
+        public boolean onlyExceptions() {
+            return !labels.isEmpty() && labels.size() < MAX_LABELS && labels.keySet().stream().allMatch(k -> k.contains(" exception"))
+                    && operations.values().stream().noneMatch(o -> o.statuses.containsKey("ok"));
+        }
+
+        /** Decoded messages the labels account for (the flow's {@code messages} may also count packets another engine saw). */
+        public long labelledMessages() {
+            return labels.values().stream().mapToLong(Long::longValue).sum();
+        }
+
+        public boolean hasClassifier(String tool) {
+            return classifiedBy.stream().anyMatch(c -> tool.equals(c.get("tool")));
         }
 
         public long messageCount() {
@@ -195,11 +352,20 @@ public final class FlowTable {
             if (bytes > 0) {
                 m.put("bytes", bytes);
             }
+            if (toServer > 0) {
+                m.put("bytesToServer", toServer);
+            }
+            if (toClient > 0) {
+                m.put("bytesToClient", toClient);
+            }
             if (lastMicros >= firstMicros) {
                 m.put("firstSeen", iso(firstMicros));
                 m.put("lastSeen", iso(lastMicros));
             }
             m.put("labels", labels);
+            if (portHint != null && "unknown".equals(protocol)) {
+                m.put("portHint", portHint);
+            }
             if (!operations.isEmpty()) {
                 List<Map<String, Object>> ops = new ArrayList<>();
                 operations.values().forEach(o -> ops.add(o.toMap()));
@@ -210,6 +376,18 @@ public final class FlowTable {
             }
             if (source != null) {
                 m.put("source", source);
+            }
+            if (note != null) {
+                m.put("note", note);
+            }
+            if (!classifiedBy.isEmpty()) {
+                m.put("classifiedBy", classifiedBy);
+            }
+            if (!alerts.isEmpty()) {
+                m.put("alerts", alerts);
+            }
+            if (!communityIds.isEmpty()) {
+                m.put("communityIds", new ArrayList<>(communityIds));
             }
             return m;
         }
@@ -296,6 +474,11 @@ public final class FlowTable {
         return flows.size();
     }
 
+    /** Every flow in creation order (live objects: a caller may annotate them). */
+    public java.util.Collection<Flow> all() {
+        return flows.values();
+    }
+
     private static String keyOf(Flow f) {
         return f.client + '>' + f.server + '>' + f.protocol + '>' + f.port;
     }
@@ -331,6 +514,27 @@ public final class FlowTable {
             n.absorb(z, true);
             n.source = "zeek+native";
         }
+    }
+
+    /**
+     * An ICS decode that independent evidence contradicts: the flow stays in the table as {@code unknown} (never dropped), its
+     * decode labels and operations are removed and {@code note} says what was rejected and why. A flow already there under
+     * the new name (same direction, port, {@code unknown}) takes the counts instead.
+     */
+    public void reject(Flow f, String note) {
+        flows.remove(keyOf(f));
+        f.protocol = "unknown";
+        f.labels.clear();
+        f.operations.clear();
+        f.note = note;
+        Flow same = flows.get(keyOf(f));
+        if (same == null) {
+            flows.put(keyOf(f), f);
+            return;
+        }
+        same.absorb(f, false);
+        same.note = note;
+        byPair.get(pairKey(f.client, f.server, f.port)).remove(f);
     }
 
     public void add(String client, String server, String protocol, String port, String detail) {

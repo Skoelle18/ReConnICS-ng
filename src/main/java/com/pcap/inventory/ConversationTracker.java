@@ -19,7 +19,7 @@ import java.util.Map;
  * the scan table may grow with them, so both are capped and the overflow is only counted.
  *
  * <p>ponytail: the client side is the SYN sender; with no SYN in the capture (mid-stream) or for UDP it is a guess: the
- * higher port number is the client. UDP has no handshake, so UDP scans are not recognised.
+ * side on a port the built-in port table names is the server, else the higher port number is the client. UDP has no handshake, so UDP scans are not recognised.
  */
 public final class ConversationTracker {
     static final int MAX_LIVE = 100_000;
@@ -30,8 +30,9 @@ public final class ConversationTracker {
         final int portA, portB;
         final boolean udp;
         int synFrom;                 // 1 = A sent the SYN, 2 = B sent it, 0 = not seen
-        boolean synAck;
-        long packets, bytes, dataPackets, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
+        boolean synAck, ackA, ackB, rstA, rstB;     // ack*: a packet with ACK and no SYN came from that side; rst*: a RST came from that side
+        long pktsA, pktsB;
+        long packets, bytes, bytesA, bytesB, dataPackets, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
 
         Conn(String ipA, int portA, String ipB, int portB, boolean udp) {
             this.ipA = ipA;
@@ -44,7 +45,7 @@ public final class ConversationTracker {
 
     private static final class Agg {
         String client, server, port;
-        long messages, packets, bytes, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
+        long messages, packets, bytes, toServer, toClient, first = Long.MAX_VALUE, last = Long.MIN_VALUE;
     }
 
     private final Map<String, Conn> live = new LinkedHashMap<>(1024, 0.75f, true) {
@@ -61,6 +62,13 @@ public final class ConversationTracker {
     private final Map<String, Agg> done = new LinkedHashMap<>();
     private final Map<String, long[]> scans = new LinkedHashMap<>();
     private long scanAttempts, scanAttemptsUncounted;
+    private NetworkObserver observer;
+
+    /** Where the connections that did not go anywhere (unanswered SYN, handshake without a final ACK, UDP nobody answered) are reported as facts about their hosts. */
+    public ConversationTracker observer(NetworkObserver o) {
+        this.observer = o;
+        return this;
+    }
 
     public void observe(ParsedPacket p) {
         if (p.srcIp().isEmpty() || p.dstIp().isEmpty() || (!p.hasTcp() && !p.hasUdp()) || p.srcPort() <= 0 || p.dstPort() <= 0) {
@@ -81,18 +89,42 @@ public final class ConversationTracker {
             live.put(key, c);
         }
         c.packets++;
+        if (srcIsA) {
+            c.pktsA++;
+        } else {
+            c.pktsB++;
+        }
         c.bytes += Math.max(0, p.payloadLength());
+        if (srcIsA) {
+            c.bytesA += Math.max(0, p.payloadLength());
+        } else {
+            c.bytesB += Math.max(0, p.payloadLength());
+        }
         if (p.payloadLength() > 0) {
             c.dataPackets++;
         }
         long t = p.timestampMicros();
-        if (t > 0) {
+        if (com.pcap.util.Timestamps.usable(t)) {
             c.first = Math.min(c.first, t);
             c.last = Math.max(c.last, t);
         }
         if (p.hasTcp()) {
             int f = p.tcpFlags();
             boolean syn = (f & ParsedPacket.TCP_SYN) != 0, ack = (f & ParsedPacket.TCP_ACK) != 0;
+            if (ack && !syn) {
+                if (srcIsA) {
+                    c.ackA = true;
+                } else {
+                    c.ackB = true;
+                }
+            }
+            if ((f & ParsedPacket.TCP_RST) != 0) {
+                if (srcIsA) {
+                    c.rstA = true;
+                } else {
+                    c.rstB = true;
+                }
+            }
             if (syn && !ack && c.synFrom == 0) {
                 c.synFrom = srcIsA ? 1 : 2;
             } else if (syn && ack) {
@@ -104,12 +136,26 @@ public final class ConversationTracker {
         }
     }
 
+    /**
+     * No SYN seen (mid-stream capture) or UDP: the side on a port the built-in table names (44818, 502, 102, ...) is the server, so a
+     * capture that starts mid-conversation agrees with Zeek, which logs the same ICS conversation with the right side as server.
+     * Otherwise, or when both or neither port is known, the higher port is the client.
+     */
+    private static boolean guessAIsClient(Conn c) {
+        String t = c.udp ? "/udp" : "/tcp";
+        boolean aKnown = PortHints.builtin(c.portA + t).isPresent(), bKnown = PortHints.builtin(c.portB + t).isPresent();
+        return aKnown != bKnown ? bKnown : c.portA >= c.portB;
+    }
+
     private void close(Conn c) {
-        boolean aIsClient = c.synFrom != 0 ? c.synFrom == 1 : c.portA >= c.portB;
+        boolean aIsClient = c.synFrom != 0 ? c.synFrom == 1 : guessAIsClient(c);
         String client = aIsClient ? c.ipA : c.ipB, server = aIsClient ? c.ipB : c.ipA;
         int serverPort = aIsClient ? c.portB : c.portA;
         String port = serverPort + (c.udp ? "/udp" : "/tcp");
         String key = client + '>' + server + '>' + port;
+        if (observer != null) {
+            report(c, aIsClient, client, server, port);
+        }
         if (!c.udp && c.synFrom != 0 && !c.synAck && c.dataPackets == 0) {
             scanAttempts++;
             long[] n = scans.get(key);
@@ -135,8 +181,27 @@ public final class ConversationTracker {
         a.messages += c.dataPackets;
         a.packets += c.packets;
         a.bytes += c.bytes;
+        a.toServer += aIsClient ? c.bytesA : c.bytesB;
+        a.toClient += aIsClient ? c.bytesB : c.bytesA;
         a.first = Math.min(a.first, c.first);
         a.last = Math.max(a.last, c.last);
+    }
+
+    /** Facts about the two hosts of a connection that went nowhere; the connection itself still becomes (or stays out of) a flow as before. */
+    private void report(Conn c, boolean aIsClient, String client, String server, String port) {
+        boolean serverRst = aIsClient ? c.rstB : c.rstA, clientAck = aIsClient ? c.ackA : c.ackB;
+        if (c.udp) {
+            if ((aIsClient ? c.pktsB : c.pktsA) == 0) {
+                observer.tag(client, "udp-unreplied:" + port, 1);
+            }
+        } else if (c.synFrom != 0 && c.dataPackets == 0) {
+            if (!c.synAck) {
+                observer.tag(client, (serverRst ? "syn-refused:" : "syn-unanswered:") + port, 1);
+                observer.tag(server, "syn-target:" + port, 1);
+            } else if (!clientAck) {
+                observer.tag(client, "handshake-incomplete:" + port, 1);
+            }
+        }
     }
 
     /**
@@ -160,7 +225,8 @@ public final class ConversationTracker {
                 }
                 FlowTable.Flow f = table.flow(a.client, a.server, "unknown", a.port);
                 if (f != null) {
-                    f.messages(a.messages).traffic(a.packets, a.bytes).source("native");
+                    f.messages(a.messages).traffic(a.packets, a.bytes).directed(a.toServer, a.toClient).source("native");
+                    f.portHint(PortHints.builtin(a.port).map(PortHints.Hint::name).orElse(null));
                     f.seen(a.first).seen(a.last);
                 }
             }

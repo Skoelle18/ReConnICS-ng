@@ -276,7 +276,7 @@ public final class ProtocolDetector {
                 (s ? p.srcPort() : p.dstPort()) + (p.hasUdp() ? "/udp" : "/tcp"));
         if (flow != null) {
             // packets and bytes cover the counted messages only (a reassembled message is one unit), not the whole connection
-            flow.message(msg.detail()).seen(p.timestampMicros()).traffic(1, Math.max(0, p.payloadLength())).source("native");
+            flow.message(msg.detail()).seen(p.timestampMicros()).traffic(1, Math.max(0, p.payloadLength())).directed(s ? 0 : p.payloadLength(), s ? p.payloadLength() : 0).source("native");
         }
     }
 

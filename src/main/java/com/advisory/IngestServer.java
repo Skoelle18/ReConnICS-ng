@@ -155,9 +155,11 @@ final class IngestServer {
                 if (tooLong(ex, Site.MAX_PCAP)) { error(ex, 413, "capture too large"); return true; }
                 send(ex, 202, Json.write(site.addCapture(ex.getRequestBody(), query(ex, "name"), actor)));
             } else if (method.equals("DELETE") && path.startsWith("/api/v1/captures/")) {
-                site.removeCapture(path.substring("/api/v1/captures/".length()));
-                send(ex, 204, null);
-            } else if (method.equals("GET") && path.equals("/api/v1/inventory")) send(ex, 200, Json.write(site.inventoryJson()));
+                var gone = site.removeCapture(path.substring("/api/v1/captures/".length()), actor);
+                if (gone == null) send(ex, 204, null);
+                else send(ex, 200, Json.write(gone));              // a merged capture: what left the inventory and what stayed
+            } else if (method.equals("GET") && path.startsWith("/api/v1/captures/") && path.contains("/images/")) image(ex, path);
+            else if (method.equals("GET") && path.equals("/api/v1/inventory")) send(ex, 200, Json.write(site.inventoryJson()));
             else if (method.equals("PATCH") && path.startsWith("/api/v1/assets/")) {
                 if (!contentType(ex, "application/json")) { error(ex, 415, "Content-Type must be application/json"); return true; }
                 if (tooLong(ex, 64 << 10)) { error(ex, 413, "request body too large"); return true; }
@@ -167,7 +169,8 @@ final class IngestServer {
                 try { doc = Json.parse(AdvisoryIndex.utf8(b)); } catch (IllegalArgumentException e) { error(ex, 400, "body is not valid JSON"); return true; }
                 if (!(doc instanceof Map)) { error(ex, 400, "body must be an object"); return true; }
                 send(ex, 200, Json.write(Map.of("changes", site.edit(path.substring("/api/v1/assets/".length()), Json.obj(doc), actor, role))));
-            } else if (method.equals("GET") && path.equals("/api/v1/changes")) send(ex, 200, Json.write(site.changes()));
+            } else if (method.equals("GET") && path.equals("/api/v1/engines")) send(ex, 200, Json.write(site.engines()));
+            else if (method.equals("GET") && path.equals("/api/v1/changes")) send(ex, 200, Json.write(site.changes()));
             else if (method.equals("GET") && path.equals("/api/v1/index")) send(ex, 200, Json.write(site.indexMeta()));
             else if (method.equals("POST") && path.equals("/api/v1/index")) {
                 if (!contentType(ex, "application/octet-stream")) { error(ex, 415, "Content-Type must be application/octet-stream"); return true; }
@@ -278,8 +281,34 @@ final class IngestServer {
             } catch (IllegalArgumentException e) { reason = e.getMessage(); }   // Asset.from messages are fixed text (field names only)
             if (rejected.size() < 1000) rejected.add(Map.of("index", (double) i, "reason", reason));
         }
-        if (site != null && !ok.isEmpty()) site.addPosted(ok, doc instanceof List ? List.of() : Json.arr(Json.obj(doc).get("flows")), actor(ex));   // the UI reads only the Site inventory
+        if (site != null && !ok.isEmpty()) site.addPosted(ok, doc instanceof List ? List.of() : Json.arr(Json.obj(doc).get("flows")), doc instanceof List ? List.of() : Json.arr(Json.obj(doc).get("groups")),
+                doc instanceof List ? List.of() : Json.arr(Json.obj(doc).get("macs")), actor(ex));   // the UI reads only the Site inventory
         send(ex, rejected.isEmpty() ? 200 : 207, Json.write(Map.of("accepted", (double) accepted, "rejected", rejected)));
+    }
+
+    private static final Map<String, String> IMAGE_TYPES = Map.of("png", "image/png", "gif", "image/gif", "jpg", "image/jpeg", "webp", "image/webp", "ico", "image/x-icon");
+
+    /**
+     * {@code GET /api/v1/captures/{id}/images/{sha256}}: one image taken from the capture's HTTP traffic, as inert bytes. The type is fixed from the
+     * extension the extractor wrote after checking the magic bytes, never from anything the server sent, and the response forbids sniffing,
+     * scripts, framing and cross-origin use.
+     */
+    private void image(HttpExchange ex, String path) throws IOException {
+        String[] p = path.substring("/api/v1/captures/".length()).split("/images/", -1);
+        java.nio.file.Path f = p.length == 2 ? site.imageFile(p[0], p[1]) : null;
+        String name = f == null ? "" : f.getFileName().toString();
+        String type = IMAGE_TYPES.get(name.substring(name.lastIndexOf('.') + 1));
+        if (f == null || type == null) { error(ex, 404, "no such image"); return; }
+        var h = ex.getResponseHeaders();
+        h.set("Content-Type", type);
+        h.set("X-Content-Type-Options", "nosniff");
+        h.set("Content-Security-Policy", "default-src 'none'; sandbox");
+        h.set("Cross-Origin-Resource-Policy", "same-origin");
+        h.set("Content-Disposition", "inline; filename=\"" + name + "\"");
+        byte[] b = java.nio.file.Files.readAllBytes(f);
+        ex.sendResponseHeaders(200, b.length);
+        ex.getResponseBody().write(b);
+        ex.getResponseBody().flush();
     }
 
     private static void error(HttpExchange ex, int code, String msg) throws IOException {
