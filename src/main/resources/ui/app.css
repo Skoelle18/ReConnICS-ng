@@ -43,12 +43,9 @@ button, input, select { font: inherit; color: inherit; }
 .node:focus-visible .disc { stroke-width: 3; }
 .nlabel { fill: var(--ink); font-size: var(--nfs, 12px); dominant-baseline: hanging; stroke: var(--ground); stroke-width: var(--lsw, 4px); stroke-linejoin: round; pointer-events: none; }
 #graph.no-elabels .elabel { display: none; }
-.labels-off .nlabel, .labels-off .elabel { display: none; }
-.labels-off .node:hover .nlabel, .labels-off .node:focus-visible .nlabel { display: inline; }
 .edge .epath { stroke: #C5CCD6; stroke-linecap: round; pointer-events: none; }
 .edge.flow { cursor: pointer; outline: none; }
 .edge .ehit { stroke: transparent; stroke-width: 14px; pointer-events: stroke; }
-.edge:hover .elabel, .edge:focus-visible .elabel { display: inline; }
 .edge.flow:hover .epath, .edge.flow:focus-visible .epath { filter: brightness(1.35); stroke-opacity: 1; }
 .edge.flow:focus-visible .ehit { stroke: rgba(255, 255, 255, .18); }
 .edge.scan .epath { stroke-dasharray: 2 4; }

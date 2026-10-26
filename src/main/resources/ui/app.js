@@ -32,7 +32,7 @@ const SITE_DEFAULTS = { lifecycle: 'In service' };
 
 const S = { engines: null, inv: null, rank: [], site: {}, flows: [], caps: [], changes: [], index: null, search: '', level: 'ALL', purdueFilter: null, kevOnly: false, unvalOnly: false,
   openCap: null, openAdv: null, tab: 'attrs', editing: false, staged: null,
-  color: 'role', showAdv: false, showLabels: false, layout: 'force', path: null, pathPick: false, pathStart: null,
+  color: 'role', showAdv: true, layout: 'force', path: null, pathPick: false, pathStart: null,
   hideUnknown: false, hideScans: true, hideSeenOnly: false, hideDecommissioned: true, showGroups: false, groups: [], macs: [], images: [], imageSummary: {}, protoOff: new Set(),
   capAssets: {}, assetCaps: new Map(), capOff: new Set(), inventoryGroupMac: false, bulkSelected: new Set(), macExpanded: new Set(),
   findingsTab: 'advisories', advisorySearch: '', reviewSearch: '', logSearch: '', dataTab: 'captures' };
@@ -299,9 +299,10 @@ function filterPanel() {
       hiddenClasses().map((c) => h('div', { class: 'row small' },
         on(c.hidden ? 'Show' : 'Hide', !c.hidden, c.flip), h('span', {}, c.label + ': ' + c.n), h('span', { class: 'muted' }, c.n === 0 ? 'none' : c.hidden ? 'hidden, kept in the inventory' : 'shown')))),
     group('Colour nodes by', on('Role', S.color === 'role', () => { S.color = 'role'; }), on('Advisory risk', S.color === 'risk', () => { S.color = 'risk'; })),
+    group('Advisories on the graph', on(S.showAdv ? 'Shown (EXACT, PROBABLE)' : 'Hidden', S.showAdv, () => { S.showAdv = !S.showAdv; })),
     doneCaps().length ? group('Captures on the graph', doneCaps().map((c) => on(c.file, !S.capOff.has(c.id), () => toggleCapture(c.id))))
       : group('Captures on the graph', h('span', { class: 'muted small' }, 'No merged captures yet')),
-    info('Protocols, KEV only, labels, advisories and layout are the chips above the graph. Reset filters is in the graph tools. Capture buttons hide or show everything that capture contributed.'));
+    info('Protocols, KEV only and layout are the chips above the graph. Reset filters is in the graph tools. Capture buttons hide or show everything that capture contributed.'));
   if (had >= 0) p.querySelectorAll('button')[had].focus();
 }
 /** Compact always-visible graph chips from the console reference; detailed facets stay in the filter popover. */
@@ -313,8 +314,6 @@ function graphControls() {
     if (S.protoOff.has(p)) S.protoOff.delete(p); else S.protoOff.add(p);
   }, PROTO_COLOR[p])));
   layout.replaceChildren(toggle('KEV only', S.kevOnly, () => { S.kevOnly = !S.kevOnly; }),
-    toggle('Labels', S.showLabels, () => { S.showLabels = !S.showLabels; }),
-    toggle('Advisories', S.showAdv, () => { S.showAdv = !S.showAdv; }),
     toggle('Force', S.layout === 'force', () => { S.layout = 'force'; relayoutSoon(); }),
     toggle('Purdue', S.layout === 'purdue', () => { S.layout = 'purdue'; relayoutSoon(); }));
 }
@@ -333,7 +332,7 @@ function focusCapture(id) {
 function resetView() {
   S.search = ''; S.level = 'ALL'; S.purdueFilter = null; S.kevOnly = false; S.unvalOnly = false;
   S.hideUnknown = false; S.hideScans = true; S.hideSeenOnly = false; S.hideDecommissioned = true; S.showGroups = false; S.protoOff = new Set(); S.capOff = new Set();
-  S.color = 'role'; S.showAdv = false; S.showLabels = false; S.layout = 'force'; S.path = null; S.pathPick = false; S.pathStart = null; S.openCap = null; S.openAdv = null;
+  S.color = 'role'; S.showAdv = true; S.layout = 'force'; S.path = null; S.pathPick = false; S.pathStart = null; S.openCap = null; S.openAdv = null;
   $('q').value = ''; $('start').value = ''; $('target').value = '';
   lastRoute = '';
   if (location.hash && location.hash !== '#/graph') location.hash = '#/graph';
@@ -1486,7 +1485,6 @@ function fitLabels() {
   svg.style.setProperty('--efs', efs + 'px');
   svg.style.setProperty('--lsw', Math.max(4, 4 / k) + 'px');
   svg.classList.toggle('no-elabels', k < EDGE_LABEL_ZOOM);
-  svg.classList.toggle('labels-off', !S.showLabels);
   if (!GR.els) return;
   for (const { e, label } of GR.els.edges) {
     if ((e.len || 0) < e.label.length * 0.62 * efs + 40) label.setAttribute('display', 'none'); else label.removeAttribute('display');

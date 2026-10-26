@@ -107,8 +107,6 @@ test('graph', async (t) => {
   await t.test('gateway units and slots hang off their parent; advisories hang off matched assets', async () => {
     const app = await loadApp({ routes: defaultRoutes(), hash: '#/graph' });
     try {
-      app.$$('#graph-layout button').find((b) => b.textContent === 'Advisories').click();
-      await settle();
       const { edges: es, nodes: ns } = app.get('graphModel()');
       assert.ok(es.some((e) => e.kind === 'unit' && e.from === '10.0.1.30' && e.to === '10.0.1.30/u3'));
       assert.ok(es.some((e) => e.kind === 'unit' && e.from === '10.0.1.10' && e.to === '10.0.1.10/slot0'));
