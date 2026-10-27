@@ -274,7 +274,7 @@ class SiteServerTest {
                    "operations":[{"function":"FC3 read holding registers","access":"read","unit":7,"count":4,"statuses":{"ok":3,"exception: illegal data address":1}},
                                  {"function":"FC3 read holding registers","access":"read","unit":8,"count":1}]},
                   {"client":"10.0.0.5","server":"10.0.0.10","protocol":"unknown","port":"20000/tcp","messages":2,"portHint":"dnp3"},
-                  {"client":"10.0.0.5","server":"10.0.0.11","protocol":"unknown","port":"9/tcp","messages":2,"portHint":"<script>"}]}
+                  {"client":"10.0.0.5","server":"10.0.0.11","protocol":"unknown","port":"54329/tcp","messages":2,"portHint":"<script>"}]}
                 """;
         String two = """
                 {"assets":[{"ip":"10.0.0.9"}],"flows":[{"client":"10.0.0.5","server":"10.0.0.9","protocol":"modbus","port":"502/tcp","messages":2,
@@ -297,7 +297,7 @@ class SiteServerTest {
         assertNull(Json.obj(ops.get(1)).get("statuses"));
         var hint = flows.stream().map(Json::obj).filter(f -> "20000/tcp".equals(f.get("port"))).findFirst().orElseThrow();
         assertEquals("dnp3", hint.get("portHint"));
-        assertNull(flows.stream().map(Json::obj).filter(f -> "9/tcp".equals(f.get("port"))).findFirst().orElseThrow().get("portHint"));
+        assertNull(flows.stream().map(Json::obj).filter(f -> "54329/tcp".equals(f.get("port"))).findFirst().orElseThrow().get("portHint"));
     }
 
     // the UI can tell which capture contributed which node and edge, without reading the observations files
