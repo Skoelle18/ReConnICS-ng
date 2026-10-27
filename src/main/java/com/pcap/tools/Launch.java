@@ -29,7 +29,7 @@ public record Launch(Mode mode, String executable, String tool) {
         List<String> cmd = new ArrayList<>();
         Path abs = pcap == null ? null : pcap.toAbsolutePath().normalize();
         if (mode == Mode.DOCKER) {
-            cmd.addAll(List.of(executable, "run", "--rm", "--network", "none", "--cap-drop", "ALL", "--security-opt", "no-new-privileges"));
+            cmd.addAll(List.of(executable, "run", "--rm", "--name", "reconics-" + tool + "-" + java.util.UUID.randomUUID().toString().substring(0, 8), "--network", "none", "--cap-drop", "ALL", "--security-opt", "no-new-privileges"));
             if (abs != null && abs.getParent() != null) {
                 cmd.addAll(List.of("-v", abs.getParent() + ":/in:ro"));
             }

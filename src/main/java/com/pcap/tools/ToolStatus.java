@@ -11,7 +11,7 @@ import java.util.Map;
  * @param via   {@code native}, {@code docker}, {@code data-file}, {@code zeek-package} or empty
  */
 public record ToolStatus(String id, String state, String via, String version, String detail, Map<String, Object> produced) {
-    public static final java.util.Set<String> STATES = java.util.Set.of("ran", "not-installed", "failed", "skipped", "found", "reference");
+    public static final java.util.Set<String> STATES = java.util.Set.of("ran", "not-installed", "failed", "skipped", "found", "reference", "running");
 
     public ToolStatus {
         version = version == null ? "" : version;

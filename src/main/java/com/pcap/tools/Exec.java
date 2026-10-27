@@ -53,11 +53,29 @@ public final class Exec {
         }
     }
 
+    /**
+     * Killing the {@code docker run} client leaves the container running (and burning CPU) until it ends by itself, so a command
+     * started with {@code --name X} (see {@link Launch#command}) gets {@code docker rm -f X}. Best effort.
+     */
+    static void stopContainer(List<String> cmd) {
+        int i = cmd.indexOf("--name");
+        if (i < 0 || i + 1 >= cmd.size()) {
+            return;
+        }
+        try {
+            new ProcessBuilder(cmd.get(0), "rm", "-f", cmd.get(i + 1)).redirectErrorStream(true)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD).start().waitFor(30, TimeUnit.SECONDS);
+        } catch (IOException | InterruptedException e) {
+            // the container ends by itself in the worst case
+        }
+    }
+
     /** Runs {@code cmd} in {@code cwd}, stdout and stderr to the two files; destroys the process on timeout. */
     public static Done run(List<String> cmd, Path cwd, Path stdout, Path stderr, Duration timeout) throws IOException, InterruptedException {
         Process p = new ProcessBuilder(cmd).directory(cwd.toFile()).redirectOutput(stdout.toFile()).redirectError(stderr.toFile()).start();
         if (!p.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
             p.destroyForcibly();
+            stopContainer(cmd);
             throw new IOException("did not finish within " + timeout.toSeconds() + " s and was stopped");
         }
         return new Done(p.exitValue(), stdout, stderr);
@@ -75,6 +93,7 @@ public final class Exec {
             try {
                 if (!p.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
                     p.destroyForcibly();
+                    stopContainer(cmd);
                 }
             } catch (InterruptedException e) {
                 p.destroyForcibly();

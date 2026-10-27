@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,6 +33,7 @@ import java.util.Optional;
  */
 public final class SuricataAdapter implements Adapter {
     static final int MAX_ALERTS = 20_000, MAX_LINE = 256 * 1024;
+    static final java.time.Duration SLOW_LIMIT = java.time.Duration.ofMinutes(60);
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /**
@@ -59,7 +61,9 @@ public final class SuricataAdapter implements Adapter {
         if (l.mode() == Launch.Mode.NATIVE && yaml != null && !yaml.isBlank()) {
             args.addAll(List.of("-c", yaml));
         }
-        Exec.Done d = Exec.run(l.command(args, pcap, work), work, work.resolve("suricata.out"), work.resolve("suricata.err"), env.timeout());
+        // 2.3 million packets with the full ET Open rule set took over 10 minutes (the tool default), so the limit is longer; it runs beside the rest and, in the console, after the capture is merged
+        Duration limit = env.timeout().compareTo(SLOW_LIMIT) < 0 ? SLOW_LIMIT : env.timeout();
+        Exec.Done d = Exec.run(l.command(args, pcap, work), work, work.resolve("suricata.out"), work.resolve("suricata.err"), limit);
         Path eve = work.resolve("eve.json");
         if (d.exit() != 0 || !Files.isRegularFile(eve)) {
             throw new IOException("suricata failed (exit " + d.exit() + ")" + (d.stderrTail().isEmpty() ? "" : ": " + d.stderrTail()));

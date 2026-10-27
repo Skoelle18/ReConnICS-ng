@@ -47,6 +47,7 @@ public final class AnalysisService {
     private final com.pcap.tools.Env toolEnv;
     private final AtomicBoolean cancelled = new AtomicBoolean(false);
     private Progress progress = Progress.NONE;
+    private boolean deferLate;
     // what the status line (Progress.status) is built from; reset by each analyze()
     private final java.util.concurrent.atomic.AtomicLong frames = new java.util.concurrent.atomic.AtomicLong();
     private volatile boolean nativeDone;
@@ -72,6 +73,15 @@ public final class AnalysisService {
         this.clock = clock;
         this.path = path;
         this.toolEnv = new com.pcap.tools.Env(path, "docker", null, List.of());
+    }
+
+    /**
+     * The console's setting: do not wait for Suricata. When everything else is done and it is still running, the result carries
+     * {@link AnalysisResult#late} and the caller adds its alerts when it finishes. Off (the CLI): every tool is waited for.
+     */
+    public AnalysisService deferLate(boolean on) {
+        this.deferLate = on;
+        return this;
     }
 
     public AnalysisService progress(Progress p) {
@@ -136,8 +146,8 @@ public final class AnalysisService {
             });
         }
         if (options.toolsEnabled()) com.pcap.tools.ToolPipeline.ADAPTERS.forEach(a -> pendingTools.add(a.component().id()));
-        CompletableFuture<List<com.pcap.tools.ToolPipeline.Outcome>> toolsRun = options.toolsEnabled()
-                ? com.pcap.tools.ToolPipeline.start(toolEnv.withTimeout(options.zeekTimeout()), capturePath, line -> {
+        List<CompletableFuture<com.pcap.tools.ToolPipeline.Outcome>> toolsRun = options.toolsEnabled()
+                ? com.pcap.tools.ToolPipeline.startEach(toolEnv.withTimeout(options.zeekTimeout()), capturePath, line -> {
                     progress.log(line);
                     pendingTools.remove(line.substring(0, Math.max(0, line.indexOf(':'))));
                 }) : null;
@@ -193,7 +203,7 @@ public final class AnalysisService {
 
     private AnalysisResult analyzeWith(Path capturePath, boolean verbose, AnalysisOptions options, List<String> notes, boolean useZeek,
                                        ZeekRunner.Engine zeekEngine, CompletableFuture<ZeekRunner.Run> zeekRun, ZeekRunner runner,
-                                       CompletableFuture<List<com.pcap.tools.ToolPipeline.Outcome>> toolsRun)
+                                       List<CompletableFuture<com.pcap.tools.ToolPipeline.Outcome>> toolsRun)
             throws IOException, PcapException {
         NetworkObserver observer = new NetworkObserver();
         ConversationTracker conversations = new ConversationTracker().observer(observer).scanRule(options.scan());
@@ -362,10 +372,37 @@ public final class AnalysisService {
 
             // The optional tools beyond Zeek: their conversations, labels and alerts join the flow table the same way Zeek's did
             progress.step(4);
-            if (toolsRun != null) progress.log("Waiting for the other tools");
-            List<com.pcap.tools.ToolPipeline.Outcome> outcomes = toolsRun != null ? toolsRun.join()
-                    : com.pcap.tools.ToolPipeline.skipped(options.engine() == AnalysisOptions.Engine.NATIVE
-                            ? "not requested: --engine native uses nothing outside the jar (--tools auto to use them)" : "--tools off");
+            List<com.pcap.tools.ToolPipeline.Outcome> outcomes;
+            CompletableFuture<com.pcap.tools.ToolPipeline.Outcome> lateTool = null;
+            if (toolsRun != null) {
+                progress.log("Waiting for the other tools");
+                var adapters = com.pcap.tools.ToolPipeline.ADAPTERS;
+                var got = new com.pcap.tools.ToolPipeline.Outcome[adapters.size()];
+                for (int i = 0; i < got.length; i++) {
+                    if (!(deferLate && adapters.get(i).component().id().equals("suricata"))) {
+                        got[i] = toolsRun.get(i).join();
+                    }
+                }
+                for (int i = 0; i < got.length; i++) {
+                    if (got[i] != null) {
+                        continue;
+                    }
+                    String id = adapters.get(i).component().id();
+                    if (toolsRun.get(i).isDone()) {
+                        got[i] = toolsRun.get(i).join();
+                    } else {
+                        lateTool = toolsRun.get(i);
+                        got[i] = com.pcap.tools.ToolPipeline.running(id);
+                        pendingTools.remove(id);
+                        progress.log(id + " is still running: the capture is merged without it, its alerts are added when it finishes");
+                    }
+                }
+                outcomes = java.util.Arrays.asList(got);
+            } else {
+                outcomes = com.pcap.tools.ToolPipeline.skipped(options.engine() == AnalysisOptions.Engine.NATIVE
+                        ? "not requested: --engine native uses nothing outside the jar (--tools auto to use them)" : "--tools off");
+            }
+            final var lateF = lateTool;
             progress.step(5);
             com.pcap.tools.ToolPipeline.Merged merged = com.pcap.tools.ToolPipeline.mergeFlows(detector.flows(), outcomes, options.icsOnly());
             merged.observations().forEach(aggregator::accept);
@@ -428,7 +465,6 @@ public final class AnalysisService {
             com.pcap.tools.ReferenceData.Loaded ref = options.toolsEnabled() ? com.pcap.tools.ReferenceData.load(toolEnv) : null;
             com.pcap.inventory.PortHints.useSupplement(ref == null ? null : ref.services());   // Nmap's nmap-services, when installed: names for ports the table lacks
             com.pcap.inventory.HostClassifier.apply(doc);        // port hints for undecoded flows, roles for hosts no decoder explained
-            com.pcap.tools.ToolPipeline.applyAssets(doc, outcomes);
             observer.apply(doc, detector.flows());
             for (var o : outcomes) {
                 if ("ran".equals(o.status().state())) {
@@ -436,6 +472,7 @@ public final class AnalysisService {
                 }
             }
             facts.apply(doc);               // every address, group address and MAC the capture showed, as sourced low-confidence facts
+            com.pcap.tools.ToolPipeline.applyAssets(doc, outcomes);   // after every host (including the ones only seen on the wire) is in the document
             if (options.imageDir() != null && options.toolsEnabled()) {          // like the other tools: not with --engine native, which promises nothing outside the jar
                 progress.log("Extracting images from HTTP bodies");
                 var im = com.pcap.tools.HttpImages.extract(toolEnv.withTimeout(options.zeekTimeout()), capturePath, options.imageDir());
@@ -498,8 +535,29 @@ public final class AnalysisService {
                     Instant.parse(draft.executedAtIso()),
                     true,
                     "");
-            return new AnalysisResult(report, doc, notes);
+            Late late = lateF == null ? null : new Late(lateF, o -> {
+                List<com.pcap.tools.ToolPipeline.Outcome> one = List.of(o);
+                com.pcap.tools.ToolPipeline.mergeFlows(detector.flows(), one, options.icsOnly());      // the alerts onto the flow table...
+                com.pcap.tools.ToolPipeline.applyAssets(doc, one);                                     // ...and onto the assets
+                if (doc.flows != null) {                                                               // the document's flows were copied out of the table before the alerts existed
+                    Map<String, Map<String, Object>> byKey = new HashMap<>();
+                    doc.flows.forEach(m -> byKey.put(flowKey(m), m));
+                    for (Map<String, Object> nm : detector.flows().toList(true)) {
+                        Map<String, Object> dm = nm.get("alerts") == null ? null : byKey.get(flowKey(nm));
+                        if (dm != null) {
+                            dm.put("alerts", nm.get("alerts"));
+                        }
+                    }
+                }
+                toolList.replaceAll(m -> o.status().id().equals(m.get("id")) ? o.status().toMap() : m);   // "running" becomes ran / failed
+                return doc;
+            });
+            return new AnalysisResult(report, doc, notes, late);
         }
+    }
+
+    private static String flowKey(Map<String, Object> m) {
+        return m.get("client") + ">" + m.get("server") + ">" + m.get("protocol") + ">" + m.get("port");
     }
 
     private static void take(DeviceObservation o, Map<String, Long> candidates, Map<String, Long> decoded, DeviceAggregator aggregator) {
@@ -538,9 +596,22 @@ public final class AnalysisService {
     }
 
     /** {@code notes}: things the user should hear on stderr that are not errors (for example the --engine auto fallback). */
-    public record AnalysisResult(AnalysisReport report, IngestModels.Document document, List<String> notes) {
-        public AnalysisResult(AnalysisReport report, IngestModels.Document document) {
-            this(report, document, List.of());
+    public record AnalysisResult(AnalysisReport report, IngestModels.Document document, List<String> notes, Late late) {
+        public AnalysisResult(AnalysisReport report, IngestModels.Document document, List<String> notes) {
+            this(report, document, notes, null);
         }
+
+        public AnalysisResult(AnalysisReport report, IngestModels.Document document) {
+            this(report, document, List.of(), null);
+        }
+    }
+
+    /**
+     * A tool that was still running when the analysis ended ({@link #deferLate}): {@code outcome} completes when it does, and
+     * {@code apply} then adds its findings to the result's document (the same object) and returns it. The caller runs {@code apply}
+     * itself, after it has finished reading the document, so nothing changes under it.
+     */
+    public record Late(CompletableFuture<com.pcap.tools.ToolPipeline.Outcome> outcome,
+                       java.util.function.Function<com.pcap.tools.ToolPipeline.Outcome, IngestModels.Document> apply) {
     }
 }

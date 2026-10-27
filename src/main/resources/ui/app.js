@@ -567,11 +567,13 @@ function captures() {
         h('div', { class: 'trow g-cap' + (x.id === S.openCap ? ' sel' : '') },
           h('span', {}, h('span', { class: 'cell-name wrap' }, x.file), h('span', { class: 'muted small' }, fmtSize(x.size) + ' · ' + fmtTime(x.at)
             + (x.state === 'done' ? ' · ' + (S.capAssets[x.id] || []).length + ((S.capAssets[x.id] || []).length === 1 ? ' device' : ' devices') : ''))),
-          h('span', { class: 'row' }, h('span', { class: 'badge st-' + x.state }, stateTxt[x.state]), S.capOff.has(x.id) ? h('span', { class: 'badge lv-NONE' }, 'Hidden') : null),
+          h('span', { class: 'row' }, h('span', { class: 'badge st-' + x.state }, stateTxt[x.state]), x.partial ? h('span', { class: 'badge st-running', title: 'Merged and ready to explore. Suricata is still running; its alerts are added to this capture when it finishes.' }, 'Partial: Suricata running ',
+            h('span', { class: 'mono', 'data-since': x.startedAt }, x.startedAt ? fmtDur(Date.now() - Date.parse(x.startedAt)) : '')) : null, S.capOff.has(x.id) ? h('span', { class: 'badge lv-NONE' }, 'Hidden') : null),
           h('span', {}, x.by),
           h('span', { class: 'small' }, x.state === 'done' && x.diff ? '+' + x.diff.new + ' new · ' + x.diff.changed + ' changed · ' + x.diff.notSeen + ' not seen'
             : x.state === 'failed' ? 'Exit ' + x.exit : x.state === 'running' ? stepText(x) : 'Waiting for the worker',
-            capTook(x) ? h('span', { class: 'muted' }, ' · took ' + capTook(x)) : null),
+            capTook(x) ? h('span', { class: 'muted' }, ' · took ' + capTook(x) + (x.partial ? ' (without Suricata)' : '')) : null,
+            x.lateFinishedAt ? h('span', { class: 'muted' }, ' · Suricata finished ' + fmtDur(Date.parse(x.lateFinishedAt) - Date.parse(x.startedAt)) + ' after start') : null),
           h('span', { class: 'mono small muted', title: x.sha256 }, x.sha256.slice(0, 8) + '…' + x.sha256.slice(-4)),
           h('span', { class: 'row' },
             x.state === 'queued' || x.state === 'failed' ? h('button', { class: 'btn sm', onclick: () => removeCapture(x) }, 'Remove') : null,
@@ -608,7 +610,7 @@ function captures() {
         }) : h('div', { class: 'empty' }, 'No assets recorded for this capture.')) : null) : null,
   ];
 }
-const TOOL_STATE = { ran: ['ok', 'ran'], found: ['ok', 'installed'], reference: ['lv-NONE', 'reference'], skipped: ['lv-NONE', 'skipped'], failed: ['bad', 'failed'], 'not-installed': ['lv-NONE', 'not installed'] };
+const TOOL_STATE = { ran: ['ok', 'ran'], found: ['ok', 'installed'], reference: ['lv-NONE', 'reference'], skipped: ['lv-NONE', 'skipped'], failed: ['bad', 'failed'], running: ['warn', 'running'], 'not-installed': ['lv-NONE', 'not installed'] };
 /** One engine's state for one capture or for this machine: name, state, version. The detail (why it did not run) is the tooltip. */
 function toolBadge(t) {
   const [cls, txt] = TOOL_STATE[t.state] || ['lv-NONE', t.state];
@@ -1632,7 +1634,7 @@ let pollTimer = null, lastSig = '';
 function schedulePoll() {
   clearTimeout(pollTimer); pollTimer = null;
   if (document.hidden) return;
-  const busy = S.caps.some((c) => c.state === 'queued' || c.state === 'running');
+  const busy = S.caps.some((c) => c.state === 'queued' || c.state === 'running' || c.partial);
   pollTimer = setTimeout(() => refresh(true), busy ? POLL.busy : POLL.idle);
 }
 document.addEventListener('visibilitychange', () => { if (document.hidden) { clearTimeout(pollTimer); pollTimer = null; } else refresh(true); });

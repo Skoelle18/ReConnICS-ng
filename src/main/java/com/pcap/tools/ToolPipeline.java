@@ -69,6 +69,25 @@ public final class ToolPipeline {
         return CompletableFuture.supplyAsync(() -> runAll(env, pcap, log), POOL);
     }
 
+    /** One future per adapter, in {@link #ADAPTERS} order, so a caller can leave the slow one running (see {@link #running}). */
+    public static List<CompletableFuture<Outcome>> startEach(Env env, Path pcap, java.util.function.Consumer<String> log) {
+        List<CompletableFuture<Outcome>> fs = new ArrayList<>();
+        for (Adapter a : ADAPTERS) {
+            fs.add(CompletableFuture.supplyAsync(() -> {
+                long t0 = System.nanoTime();
+                Outcome o = runOne(a, env, pcap);
+                log.accept(a.component().id() + ": " + o.status().state() + " in " + (System.nanoTime() - t0) / 1_000_000_000 + " s");
+                return o;
+            }, POOL));
+        }
+        return fs;
+    }
+
+    /** Stands in for a tool that is still running; its findings join the capture later (Suricata only: its alerts are added after the merge). */
+    public static Outcome running(String id) {
+        return new Outcome(new ToolStatus(id, "running", "", "", "still running: its findings are added to this capture when it finishes", null), Findings.empty());
+    }
+
     public static List<Outcome> runAll(Env env, Path pcap) {
         return runAll(env, pcap, s -> { });
     }

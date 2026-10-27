@@ -102,3 +102,18 @@ test('asset alerts row only appears when a tool wrote alerts', async () => {
   const app2 = await loadApp({ routes: defaultRoutes(), hash: '#/asset/' + encodeURIComponent(inv.assets[1].id) });
   try { assert.doesNotMatch(app2.text(), /Suricata alerts/); } finally { app2.close(); }
 });
+
+test('a merged capture whose Suricata is still running is marked partial and keeps polling', async () => {
+  const caps = [{ id: 'c1', file: 'a.pcap', state: 'done', partial: true, size: 10, at: '2026-10-01T00:00:00Z', startedAt: '2026-10-01T00:00:01Z', finishedAt: '2026-10-01T00:03:00Z',
+    by: 'x', sha256: 'a'.repeat(64), diff: { new: 1, changed: 0, notSeen: 0 }, summary: SUMMARY([
+      { id: 'zeek', name: 'Zeek', state: 'ran', via: 'docker', version: '8.0.1' },
+      { id: 'suricata', name: 'Suricata', state: 'running', detail: 'still running' }]) }];
+  const app = await loadApp({ routes: defaultRoutes({ captures: caps }), hash: '#/captures' });
+  try {
+    assert.match(app.text(), /Partial: Suricata running/);
+    assert.match(app.text(), /without Suricata/);
+    app.window.eval("S.openCap = 'c1'; render();");
+    await settle();
+    assert.match(app.text(), /Suricata · running/);
+  } finally { app.close(); }
+});

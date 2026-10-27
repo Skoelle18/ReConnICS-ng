@@ -111,6 +111,7 @@ final class Site {
             for (Path p : files.filter(p -> p.getFileName().toString().matches("c\\d{4,}\\.json")).sorted().toList()) {
                 Map<String, Object> c = new LinkedHashMap<>(Json.obj(Json.parse(Files.readString(p))));
                 if ("running".equals(c.get("state"))) c.put("state", "queued");     // interrupted by a restart
+                if (Boolean.TRUE.equals(c.get("partial"))) interruptedLate(c);
                 captures.add(c);
                 seq = Math.max(seq, Integer.parseInt(p.getFileName().toString().replaceAll("\\D", "")));
             }
@@ -283,7 +284,7 @@ final class Site {
         try {
             var opts = new com.pcap.service.AnalysisOptions(false, true).withEngine(com.pcap.service.AnalysisOptions.Engine.valueOf(System.getProperty("reconics.engine", "AUTO")), null, null);
             if (!"off".equals(System.getProperty("reconics.images"))) opts = opts.withImageDir(imageDir(id));          // -Dreconics.images=off: keep no images
-            var result = new AnalysisService().progress(prog).analyze(captureDir.resolve(id + ".pcap"), false, opts);   // Zeek when installed, else native; -Dreconics.engine=NATIVE to skip Zeek
+            var result = new AnalysisService().progress(prog).deferLate(true).analyze(captureDir.resolve(id + ".pcap"), false, opts);   // Zeek when installed, else native; -Dreconics.engine=NATIVE to skip Zeek
             String obs = result.document() == null ? "{\"assets\":[]}" : new com.pcap.output.IngestJsonWriter().mapper().writeValueAsString(result.document());
             var r = result.report();
             Map<String, Object> summary = new LinkedHashMap<>();
@@ -299,12 +300,54 @@ final class Site {
                 summary.put("zeekLogBytes", lb.doubleValue());
                 summary.put("zeekLargestLog", String.valueOf(z.get("largestLog")));
             }
-            synchronized (this) { progress(c, 7, "Merging into the site inventory"); merged(c, id, obs, summary); progress(c, 8, "Merged"); c.put("finishedAt", Instant.now().toString()); saveQuietly(c); }
+            synchronized (this) {
+                progress(c, 7, "Merging into the site inventory");
+                if (result.late() != null) c.put("partial", true);        // Suricata is still running: explore now, its alerts follow
+                merged(c, id, obs, summary);
+                progress(c, 8, result.late() != null ? "Merged without Suricata, which is still running" : "Merged");
+                c.put("finishedAt", Instant.now().toString());
+                saveQuietly(c);
+            }
+            if (result.late() != null) result.late().outcome().thenAccept(o -> lateMerge(id, result.late(), o));   // after the document above was written: nothing changes under it
         } catch (PcapException e) {
             fail(c, 4, e.getMessage());
         } catch (Exception | StackOverflowError e) {
             fail(c, 5, "analysis failed: " + e.getClass().getSimpleName());
         }
+    }
+
+    /** Suricata finished after its capture was merged: add its alerts to the observations and let the inventory be rebuilt. */
+    @SuppressWarnings("unchecked")
+    private synchronized void lateMerge(String id, com.pcap.service.AnalysisService.Late late, com.pcap.tools.ToolPipeline.Outcome o) {
+        Map<String, Object> c = captures.stream().filter(x -> x.get("id").equals(id)).findFirst().orElse(null);
+        if (c == null || !Boolean.TRUE.equals(c.get("partial"))) return;            // removed while it ran
+        try {
+            var doc = late.apply().apply(o);
+            Files.writeString(captureDir.resolve(id + ".obs.json"), new com.pcap.output.IngestJsonWriter().mapper().writeValueAsString(doc));
+            if (c.get("summary") instanceof Map<?, ?> s) ((Map<String, Object>) s).put("tools", toolsSummary(doc));
+            progress(c, 0, o.status().id() + " finished: " + o.status().state() + (o.status().detail().isEmpty() ? "" : " (" + o.status().detail() + ")"));
+            cached = null;
+        } catch (IOException | RuntimeException e) {
+            progress(c, 0, o.status().id() + " finished but its alerts could not be added: " + e.getClass().getSimpleName());
+        }
+        c.remove("partial");
+        c.put("lateFinishedAt", Instant.now().toString());
+        saveQuietly(c);
+    }
+
+    /** A restart ended the wait for a tool that was still running: say so where the console lists the tools. */
+    @SuppressWarnings("unchecked")
+    private void interruptedLate(Map<String, Object> c) {
+        c.remove("partial");
+        if (c.get("summary") instanceof Map<?, ?> s && s.get("tools") instanceof List<?> l) {
+            for (Object t : l) {
+                if (t instanceof Map<?, ?> m && "running".equals(m.get("state"))) {
+                    ((Map<String, Object>) m).put("state", "failed");
+                    ((Map<String, Object>) m).put("detail", "interrupted by a restart; its alerts were not added");
+                }
+            }
+        }
+        saveQuietly(c);
     }
 
     /** Which open-source tools ran for one capture (document source.tools), reduced to short strings for the capture queue and the Engines panel. */
