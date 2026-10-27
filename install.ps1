@@ -1,11 +1,11 @@
 # ReConnICS-ng installer (Windows PowerShell). One paste does everything:
-#   irm https://raw.githubusercontent.com/UnKnownnPasta/ReConnICS-ng/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/Skoelle18/ReConnICS-ng/main/install.ps1 | iex
 # Inside a clone:  .\install.ps1 [-NoStart]
 # Checks the machine first, clones the repo when run from the pipe, builds the jar and the two engine images,
 # fetches the signed advisory index, then starts the console on http://127.0.0.1:8088/.
 param([switch]$NoStart)
 $ErrorActionPreference = 'Stop'
-$Repo = 'https://github.com/UnKnownnPasta/ReConnICS-ng.git'
+$Repo = 'https://github.com/Skoelle18/ReConnICS-ng.git'
 $NeedGb = 8   # ponytail: estimate (Zeek build layers + tools image + Maven cache); measure and adjust
 
 # Run from the pipe ($PSScriptRoot is empty, no pom.xml here): get the repo, then run its own copy of this script.

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ReConnICS-ng installer (Linux, macOS, Git Bash). One paste does everything:
-#   curl -fsSL https://raw.githubusercontent.com/UnKnownnPasta/ReConnICS-ng/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Skoelle18/ReConnICS-ng/main/install.sh | bash
 # Inside a clone:  ./install.sh [--no-start]   (from the pipe, pass flags with: | bash -s -- --no-start)
 # Checks the machine first, clones the repo when run from the pipe, builds the jar and the two engine images,
 # fetches the signed advisory index, then starts the console on http://127.0.0.1:8088/.
 set -euo pipefail
 
-REPO=https://github.com/UnKnownnPasta/ReConnICS-ng.git
+REPO=https://github.com/Skoelle18/ReConnICS-ng.git
 NEED_GB=8   # ponytail: estimate (Zeek build layers + tools image + Maven cache); measure and adjust
 
 # Run from the pipe ($0 is bash, no pom.xml beside it): get the repo, then run its own copy of this script.

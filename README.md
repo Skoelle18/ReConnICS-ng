@@ -82,13 +82,13 @@ Demo video: _link added with the Black Hat Arsenal submission_.
 ### Linux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/UnKnownnPasta/ReConnICS-ng/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Skoelle18/ReConnICS-ng/main/install.sh | bash
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-irm https://raw.githubusercontent.com/UnKnownnPasta/ReConnICS-ng/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/Skoelle18/ReConnICS-ng/main/install.ps1 | iex
 ```
 
 The command clones the repo into `./ReConnICS-ng` (or inside an existing clone you can run `./install.sh` / `.\install.ps1` directly). It first checks git, Java 21+, Maven, Docker running, free disk (about 8 GB), github.com and port 8088, and lists everything that is missing at once. It then builds the jar and the two Docker images, downloads and verifies the signed advisory index, then starts the console. Pass `--no-start` (`-NoStart` on Windows) to install without starting it: `curl … | bash -s -- --no-start`.

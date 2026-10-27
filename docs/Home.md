@@ -18,6 +18,6 @@ Reference:
 - [ethics.md](ethics.md): passive-only rules
 - [ui-tour.md](ui-tour.md): screenshot tour of every console screen
 - [foss-components.md](foss-components.md): open-source tools wrapped, licences, what was not adopted
-- [Evaluation](https://github.com/UnKnownnPasta/ReConnICS-ng/blob/main/eval/README.md): how detection and identity are measured
+- [Evaluation](https://github.com/Skoelle18/ReConnICS-ng/blob/main/eval/README.md): how detection and identity are measured
 
 This folder is the wiki: to publish it, copy `docs/` into the `ReConnICS-ng.wiki` repository (the GitHub wiki).
