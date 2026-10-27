@@ -1177,7 +1177,7 @@ public final class ZeekLogReader {
         f.source("zeek").seen(micros(n, "ts"));
         if (function != null) {
             f.message("S7 " + function);
-            icsTrace(n, sd.fromClient(), "S7 " + function + opt(" pdu=", pdu));
+            icsTrace(n, sd.fromClient(), "S7 " + function);
         }
         String key = "s|" + uid + '|' + pdu;
         if (sd.fromClient()) {
