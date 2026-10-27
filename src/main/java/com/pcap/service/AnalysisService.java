@@ -46,6 +46,7 @@ public final class AnalysisService {
     private final String path;
     private final com.pcap.tools.Env toolEnv;
     private final AtomicBoolean cancelled = new AtomicBoolean(false);
+    private Progress progress = Progress.NONE;
 
     public AnalysisService() {
         this(Clock.systemUTC());
@@ -65,6 +66,11 @@ public final class AnalysisService {
         this.clock = clock;
         this.path = path;
         this.toolEnv = new com.pcap.tools.Env(path, "docker", null, List.of());
+    }
+
+    public AnalysisService progress(Progress p) {
+        this.progress = p == null ? Progress.NONE : p;
+        return this;
     }
 
     public void cancel() {
@@ -95,6 +101,7 @@ public final class AnalysisService {
                             + ZeekRunner.IMAGE + " Docker image was found (see README, section Zeek engine). "
                             + "Use --engine auto to fall back to the native decoders, or --zeek-logs DIR for logs you already have");
                 }
+                progress.log("Zeek not found: native decoders only");
                 notes.add("--engine auto: Zeek not found (no 'zeek' on PATH, no " + ZeekRunner.IMAGE + " image); using the native decoders only");
                 useZeek = false;
             }
@@ -102,16 +109,21 @@ public final class AnalysisService {
         CompletableFuture<ZeekRunner.Run> zeekRun = null;
         if (useZeek && options.zeekLogs() == null) {
             final ZeekRunner.Engine eng = zeekEngine;
+            progress.log("Zeek + ICSNPP started (" + eng.describe() + ")");
             zeekRun = CompletableFuture.supplyAsync(() -> {
+                long t0 = System.nanoTime();
                 try {
-                    return runner.run(eng, capturePath);
+                    var r = runner.run(eng, capturePath);
+                    progress.log("Zeek + ICSNPP finished its run in " + (System.nanoTime() - t0) / 1_000_000_000 + " s");
+                    return r;
                 } catch (ZeekException e) {
                     throw new CompletionException(e);
                 }
             });
         }
         CompletableFuture<List<com.pcap.tools.ToolPipeline.Outcome>> toolsRun = options.toolsEnabled()
-                ? com.pcap.tools.ToolPipeline.start(toolEnv.withTimeout(options.zeekTimeout()), capturePath) : null;
+                ? com.pcap.tools.ToolPipeline.start(toolEnv.withTimeout(options.zeekTimeout()), capturePath, progress::log) : null;
+        if (toolsRun != null) progress.log("tshark, Suricata, nDPI and p0f started (the ones installed)");
         try {
             return analyzeWith(capturePath, verbose, options, notes, useZeek, zeekEngine, zeekRun, runner, toolsRun);
         } finally {
@@ -140,7 +152,9 @@ public final class AnalysisService {
         long unsupported = 0;
         String captureError = null;
 
+        progress.step(2);
         try (PcapReader reader = PcapReader.open(capturePath)) {
+            progress.log("Reading " + capturePath.getFileName() + " (" + reader.format() + ", link type " + reader.linkType() + ")");
             if (verbose) {
                 LOG.info(() -> "Opened " + capturePath + " format=" + reader.format()
                         + " link=" + reader.linkType());
@@ -164,6 +178,9 @@ public final class AnalysisService {
                 }
                 if (record == null) {
                     break;
+                }
+                if (reader.framesRead() % 100_000 == 0) {
+                    progress.log(reader.framesRead() + " frames decoded");
                 }
                 ParsedPacket parsed;
                 try {
@@ -222,6 +239,7 @@ public final class AnalysisService {
                 }
             }
 
+            progress.log(reader.framesRead() + " frames decoded in total (" + (malformed + truncated) + " malformed or truncated)");
             conversations.mergeInto(detector.flows(), options.icsOnly(), options.keepScans());
             if (!options.icsOnly()) {
                 observer.addFlows(detector.flows());             // ICMP and group-address conversations; --ics-only asks for decoded protocols only
@@ -231,8 +249,10 @@ public final class AnalysisService {
             String zeekVersion = "";
             String zeekHow = "";
             if (useZeek) {
+                progress.step(3);
                 Path logDir;
                 if (zeekRun != null) {
+                    progress.log("Waiting for Zeek + ICSNPP");
                     ZeekRunner.Run run;
                     try {
                         run = zeekRun.join();
@@ -249,7 +269,9 @@ public final class AnalysisService {
                     logDir = options.zeekLogs();
                     zeekHow = "logs from " + logDir;
                 }
+                progress.log("Reading the Zeek and ICSNPP logs");
                 zeek = new ZeekLogReader(options.icsOnly(), options.keepScans()).read(logDir);
+                progress.log("Zeek logs read: " + zeek.flows().size() + " conversations, " + zeek.observations().size() + " host observations");
                 // Zeek's identity, banners and hosts join the native ones through the same aggregator (by IP and MAC); the
                 // resolver prefers a native decoded value over a Zeek one at equal confidence and keeps both as evidence
                 for (DeviceObservation o : zeek.observations()) {
@@ -271,9 +293,12 @@ public final class AnalysisService {
             }
 
             // The optional tools beyond Zeek: their conversations, labels and alerts join the flow table the same way Zeek's did
+            progress.step(4);
+            if (toolsRun != null) progress.log("Waiting for the other tools");
             List<com.pcap.tools.ToolPipeline.Outcome> outcomes = toolsRun != null ? toolsRun.join()
                     : com.pcap.tools.ToolPipeline.skipped(options.engine() == AnalysisOptions.Engine.NATIVE
                             ? "not requested: --engine native uses nothing outside the jar (--tools auto to use them)" : "--tools off");
+            progress.step(5);
             com.pcap.tools.ToolPipeline.Merged merged = com.pcap.tools.ToolPipeline.mergeFlows(detector.flows(), outcomes, options.icsOnly());
             merged.observations().forEach(aggregator::accept);
             for (DeviceObservation o : held) {
@@ -296,7 +321,9 @@ public final class AnalysisService {
                 }
             });
 
+            progress.log("Resolving hosts and identities");
             List<DeviceAggregator.ResolvedAsset> assets = aggregator.resolveAssets();
+            progress.log(assets.size() + " hosts resolved");
             int conflicts = assets.stream().mapToInt(a -> a.identity().conflictCount()).sum();
             Instant now = clock.instant();
 
@@ -329,6 +356,7 @@ public final class AnalysisService {
             }
             var flows = detector.flows().toList(options.keepScans() && !options.icsOnly());
             doc.flows = flows.isEmpty() ? null : flows;
+            progress.step(6);
             com.pcap.tools.ReferenceData.Loaded ref = options.toolsEnabled() ? com.pcap.tools.ReferenceData.load(toolEnv) : null;
             com.pcap.inventory.PortHints.useSupplement(ref == null ? null : ref.services());   // Nmap's nmap-services, when installed: names for ports the table lacks
             com.pcap.inventory.HostClassifier.apply(doc);        // port hints for undecoded flows, roles for hosts no decoder explained
@@ -341,6 +369,7 @@ public final class AnalysisService {
             }
             facts.apply(doc);               // every address, group address and MAC the capture showed, as sourced low-confidence facts
             if (options.imageDir() != null && options.toolsEnabled()) {          // like the other tools: not with --engine native, which promises nothing outside the jar
+                progress.log("Extracting images from HTTP bodies");
                 var im = com.pcap.tools.HttpImages.extract(toolEnv.withTimeout(options.zeekTimeout()), capturePath, options.imageDir());
                 if (!im.images().isEmpty()) {
                     doc.images = im.images().stream().map(com.pcap.tools.HttpImages.Image::toMap).toList();

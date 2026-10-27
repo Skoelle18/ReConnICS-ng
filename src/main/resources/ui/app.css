@@ -409,3 +409,14 @@ main.panel .g-op .badge { white-space:normal; max-width:100%; }
 .search .pop > * { flex: none; }
 #hidden-facet .row { flex-wrap: wrap; overflow: visible; }
 h1 .inf { margin-left: 8px; vertical-align: middle; }
+.steps { display:flex; gap:4px; }
+.steps .seg { flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; color:var(--muted); }
+.steps .seg.done, .steps .seg.now { color:inherit; }
+.steps .bar { height:6px; border-radius:3px; background:var(--none-bg); overflow:hidden; display:block; }
+.steps .seg.done .bar { background:var(--ok); }
+.steps .seg.now .bar { background:linear-gradient(90deg,var(--high-bg) 0,var(--high) 50%,var(--high-bg) 100%) 0 0/200% 100%; animation:seg-run 1.2s linear infinite; }
+.steps .seg span.small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.runlog { margin:0; max-height:220px; overflow:auto; padding:8px 10px; background:var(--field); border-radius:4px; white-space:pre-wrap; word-break:break-word; }
+@keyframes seg-run { to { background-position:-200% 0; } }
+@media (prefers-reduced-motion: reduce) { .steps .seg.now .bar { animation:none; } }
+@media (max-width:700px) { .steps { flex-direction:column; } }

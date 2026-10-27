@@ -514,6 +514,24 @@ async function applyBulkEdit(visibleRows) {
   await refresh();
 }
 
+const stepText = (x) => { const p = x.progress; return p ? 'Step ' + p.step + ' of ' + p.steps.length + ': ' + p.steps[p.step - 1] : 'Starting'; };
+
+/** A running capture: one segment per step (done / current / waiting) and the analysis log as it grows. */
+function progressCard(x) {
+  const p = x.progress;
+  if (!p) return h('div', { class: 'card' }, h('div', { class: 'card-h' }, x.file, h('span', { class: 'badge st-running' }, 'Analyzing')));
+  const pct = Math.round(((p.step - 1) / p.steps.length) * 100);
+  const log = h('pre', { class: 'runlog mono small', tabindex: '0', 'aria-label': 'Analysis log of ' + x.file }, p.log.join('
+'));
+  requestAnimationFrame(() => { log.scrollTop = log.scrollHeight; });
+  return h('div', { class: 'card' },
+    h('div', { class: 'card-h' }, x.file, h('span', { class: 'badge st-running' }, 'Step ' + p.step + ' of ' + p.steps.length + ' · ' + pct + '%')),
+    h('div', { class: 'card-b stack' },
+      h('div', { class: 'steps', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(p.steps.length), 'aria-valuenow': String(p.step - 1), 'aria-valuetext': stepText(x) },
+        p.steps.map((name, i) => h('div', { class: 'seg ' + (i + 1 < p.step ? 'done' : i + 1 === p.step ? 'now' : '') }, h('span', { class: 'bar' }), h('span', { class: 'small' }, name)))),
+      log));
+}
+
 function captures() {
   const pick = h('input', { type: 'file', multiple: true, accept: '.pcap,.pcapng,.cap', class: 'sr', id: 'pick', onchange: (e) => upload([...e.target.files]) });
   const drop = h('div', { class: 'drop', ondragover: (e) => { e.preventDefault(); drop.classList.add('over'); }, ondragleave: () => drop.classList.remove('over'),
@@ -535,14 +553,17 @@ function captures() {
           h('span', { class: 'row' }, h('span', { class: 'badge st-' + x.state }, stateTxt[x.state]), S.capOff.has(x.id) ? h('span', { class: 'badge lv-NONE' }, 'Hidden') : null),
           h('span', {}, x.by),
           h('span', { class: 'small' }, x.state === 'done' && x.diff ? '+' + x.diff.new + ' new · ' + x.diff.changed + ' changed · ' + x.diff.notSeen + ' not seen'
-            : x.state === 'failed' ? 'Exit ' + x.exit : x.state === 'running' ? 'Reading frames…' : 'Waiting for the worker'),
+            : x.state === 'failed' ? 'Exit ' + x.exit : x.state === 'running' ? stepText(x) : 'Waiting for the worker'),
           h('span', { class: 'mono small muted', title: x.sha256 }, x.sha256.slice(0, 8) + '…' + x.sha256.slice(-4)),
           h('span', { class: 'row' },
             x.state === 'queued' || x.state === 'failed' ? h('button', { class: 'btn sm', onclick: () => removeCapture(x) }, 'Remove') : null,
             x.state === 'done' ? h('button', { class: 'btn sm', title: 'Delete this capture and the assets only it contributed', onclick: () => removeCapture(x) }, 'Remove assets') : null,
             x.state === 'done' ? h('button', { class: 'btn sm', onclick: () => { toggleCapture(x.id); render(); } }, S.capOff.has(x.id) ? 'Show' : 'Hide') : null,
             x.state === 'done' || x.state === 'failed' ? h('button', { class: 'btn sm', onclick: () => { S.openCap = x.id; render(); } }, 'Details') : null))))),
+    ...S.caps.filter((x) => x.state === 'running').map(progressCard),
     c ? h('div', { class: 'card' }, h('div', { class: 'card-h' }, c.file, h('span', { class: 'badge st-' + c.state }, stateTxt[c.state])),
+      c.progress && c.progress.log.length ? h('details', { class: 'card-b small' }, h('summary', {}, 'Analysis log (' + c.progress.log.length + ' lines)'), h('pre', { class: 'runlog mono small' }, c.progress.log.join('
+'))) : null,
       c.state === 'done' && c.summary ? h('div', { class: 'card-b facts' },
         c.kind === 'posted' ? fact('Source', 'Assets posted to the ingest API (no capture to re-read)', true) : [
           fact('Frames processed', c.summary.frames.toLocaleString()), fact('Malformed / skipped', c.summary.malformed.toLocaleString()),

@@ -171,8 +171,38 @@ final class Site {
 
     synchronized List<Map<String, Object>> captures() {
         List<Map<String, Object>> l = new ArrayList<>();
-        for (var c : captures) l.add(new LinkedHashMap<>(c));
+        for (var c : captures) {
+            var m = new LinkedHashMap<>(c);
+            if (c.get("progress") instanceof Map<?, ?> p) {          // the worker keeps appending to the log: hand out a copy
+                var pc = new LinkedHashMap<Object, Object>(p);
+                pc.put("log", new ArrayList<Object>((List<?>) p.get("log")));
+                m.put("progress", pc);
+            }
+            l.add(m);
+        }
         return l;
+    }
+
+    static final int PROGRESS_LOG_LINES = 300;
+
+    /**
+     * What the console's capture queue shows while a capture runs: the current step (1..{@code steps}), when it started and a log. {@code step}
+     * 0 only adds {@code line}; steps past the last mean done. Caller holds the lock; the log is kept after the run so a failure can be read.
+     */
+    @SuppressWarnings("unchecked")
+    private static void progress(Map<String, Object> c, int step, String line) {
+        Map<String, Object> p = (Map<String, Object>) c.computeIfAbsent("progress", k -> new LinkedHashMap<String, Object>());
+        p.putIfAbsent("steps", new ArrayList<Object>(List.of(com.pcap.service.Progress.STEPS)));
+        List<Object> log = (List<Object>) p.computeIfAbsent("log", k -> new ArrayList<Object>());
+        if (step > 0) {
+            p.put("step", (double) step);
+            p.put("stepAt", Instant.now().toString());
+            if (step <= com.pcap.service.Progress.STEPS.length && line == null) line = com.pcap.service.Progress.STEPS[step - 1];
+        }
+        if (line != null) {
+            log.add(Instant.now().toString().substring(11, 19) + "  " + Inventory.clean(line, 300));
+            while (log.size() > PROGRESS_LOG_LINES) log.remove(0);
+        }
     }
 
     /**
@@ -231,12 +261,18 @@ final class Site {
             c = captures.stream().filter(x -> x.get("id").equals(id)).findFirst().orElse(null);
             if (c == null || !"queued".equals(c.get("state"))) return;              // removed while waiting
             c.put("state", "running");
+            c.remove("progress");                                                  // a rerun after a restart starts a fresh log
+            progress(c, 1, null);
             saveQuietly(c);
         }
+        var prog = new com.pcap.service.Progress() {
+            public void step(int n) { synchronized (Site.this) { progress(c, n, null); saveQuietly(c); } }
+            public void log(String line) { synchronized (Site.this) { progress(c, 0, line); } }
+        };
         try {
             var opts = new com.pcap.service.AnalysisOptions(false, true).withEngine(com.pcap.service.AnalysisOptions.Engine.valueOf(System.getProperty("reconics.engine", "AUTO")), null, null);
             if (!"off".equals(System.getProperty("reconics.images"))) opts = opts.withImageDir(imageDir(id));          // -Dreconics.images=off: keep no images
-            var result = new AnalysisService().analyze(captureDir.resolve(id + ".pcap"), false, opts);   // Zeek when installed, else native; -Dreconics.engine=NATIVE to skip Zeek
+            var result = new AnalysisService().progress(prog).analyze(captureDir.resolve(id + ".pcap"), false, opts);   // Zeek when installed, else native; -Dreconics.engine=NATIVE to skip Zeek
             String obs = result.document() == null ? "{\"assets\":[]}" : new com.pcap.output.IngestJsonWriter().mapper().writeValueAsString(result.document());
             var r = result.report();
             Map<String, Object> summary = new LinkedHashMap<>();
@@ -248,7 +284,7 @@ final class Site {
             summary.put("identityFields", (double) r.identityFieldsDecoded());
             summary.put("devices", (double) r.assets().size());
             summary.put("tools", toolsSummary(result.document()));
-            synchronized (this) { merged(c, id, obs, summary); }
+            synchronized (this) { progress(c, 7, "Merging into the site inventory"); merged(c, id, obs, summary); progress(c, 8, "Merged"); saveQuietly(c); }
         } catch (PcapException e) {
             fail(c, 4, e.getMessage());
         } catch (Exception | StackOverflowError e) {

@@ -82,17 +82,13 @@ Demo video: _link added with the Black Hat Arsenal submission_.
 ### Linux
 
 ```bash
-git clone https://github.com/UnKnownnPasta/ReConnICS-ng.git
-cd ReConnICS-ng
-./install.sh
+git clone https://github.com/UnKnownnPasta/ReConnICS-ng.git && cd ReConnICS-ng && ./install.sh
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-git clone https://github.com/UnKnownnPasta/ReConnICS-ng.git
-cd ReConnICS-ng
-.\install.ps1
+git clone https://github.com/UnKnownnPasta/ReConnICS-ng.git; cd ReConnICS-ng; .\install.ps1
 ```
 
 The script builds the jar and the two Docker images, downloads and verifies the signed advisory index, then starts the console. Pass `--no-start` (`-NoStart` on Windows) to install without starting it.
@@ -100,7 +96,7 @@ The script builds the jar and the two Docker images, downloads and verifies the 
 ## Usage
 
 1. Open <http://127.0.0.1:8088/>.
-2. Click **Upload PCAP** and drop in one or more `.pcap` / `.pcapng` files.
+2. Click **Upload PCAP** and drop in one or more `.pcap` / `.pcapng` files. A running capture shows its seven steps as a progress bar with the analysis log underneath, live.
 3. When a capture shows `done`, use the graph, Inventory, Findings and Export screens.
 
 To start the console again later:

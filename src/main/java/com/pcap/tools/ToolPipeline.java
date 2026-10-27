@@ -61,13 +61,26 @@ public final class ToolPipeline {
 
     /** Starts every adapter on its own thread; the future completes when all have finished and never fails. */
     public static CompletableFuture<List<Outcome>> start(Env env, Path pcap) {
-        return CompletableFuture.supplyAsync(() -> runAll(env, pcap), POOL);
+        return start(env, pcap, s -> { });
+    }
+
+    /** {@code log} gets one line as each tool finishes (from the tool's own thread). */
+    public static CompletableFuture<List<Outcome>> start(Env env, Path pcap, java.util.function.Consumer<String> log) {
+        return CompletableFuture.supplyAsync(() -> runAll(env, pcap, log), POOL);
     }
 
     public static List<Outcome> runAll(Env env, Path pcap) {
+        return runAll(env, pcap, s -> { });
+    }
+
+    static List<Outcome> runAll(Env env, Path pcap, java.util.function.Consumer<String> log) {
         List<CompletableFuture<Outcome>> fs = new ArrayList<>();
         for (Adapter a : ADAPTERS) {
-            fs.add(CompletableFuture.supplyAsync(() -> runOne(a, env, pcap), POOL));
+            fs.add(CompletableFuture.supplyAsync(() -> {
+                Outcome o = runOne(a, env, pcap);
+                log.accept(a.component().id() + ": " + o.status().state());
+                return o;
+            }, POOL));
         }
         List<Outcome> out = new ArrayList<>();
         fs.forEach(f -> out.add(f.join()));

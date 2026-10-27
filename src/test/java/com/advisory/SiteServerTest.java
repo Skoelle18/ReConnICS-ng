@@ -95,6 +95,15 @@ class SiteServerTest {
     }
 
     @Test
+    void captureQueueReportsStepsAndLog() throws Exception {
+        var up = send("POST", "/api/v1/captures?name=steps.pcap", "application/octet-stream", acmePcap("1.9"));
+        var p = Json.obj(waitFor((String) Json.obj(Json.parse(up.body())).get("id")).get("progress"));
+        assertEquals(8.0, p.get("step"));                                        // one past the last of the 7 steps = merged
+        assertEquals(7, Json.arr(p.get("steps")).size());
+        assertTrue(Json.arr(p.get("log")).stream().anyMatch(l -> l.toString().contains("frames decoded")), String.valueOf(p.get("log")));
+    }
+
+    @Test
     void encodedAmpersandInCaptureNameSurvives() throws Exception {
         var up = send("POST", "/api/v1/captures?name=Hall%20B%20%26%20C.pcap", "application/octet-stream", acmePcap("1.9"));
         assertEquals(202, up.statusCode(), up.body());
@@ -423,6 +432,7 @@ class SiteServerTest {
         assertTrue(send("GET", "/api/v1/export/inventory.csv", null, null, ok, app).headers().firstValue("Access-Control-Allow-Origin").isEmpty());
         var post = send("POST", "/api/v1/captures?name=x.pcap", "application/octet-stream", acmePcap("1.0"), ok, app);
         assertTrue(post.headers().firstValue("Access-Control-Allow-Origin").isEmpty());
+        waitFor((String) Json.obj(Json.parse(post.body())).get("id"));      // the queued capture must finish before the temp site dir is deleted
         var pre = send("OPTIONS", "/api/v1/inventory", null, null, ok, app, "Access-Control-Request-Method", "GET");
         assertTrue(pre.headers().firstValue("Access-Control-Allow-Origin").isEmpty());
     }
