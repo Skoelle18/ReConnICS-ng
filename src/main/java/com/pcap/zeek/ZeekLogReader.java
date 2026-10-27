@@ -788,6 +788,15 @@ public final class ZeekLogReader {
 
     // ------------------------------------------------------------------ modbus
 
+    /** One bubble of an industrial-protocol conversation: '>' from the side that opened the connection, '<' from the other. */
+    private void icsTrace(JsonNode n, boolean fromOrig, String text) {
+        String[] e = endpoints(n);
+        long ts = micros(n, "ts");
+        if (e != null && ts >= 0) {
+            trace(e[0], e[1], e[2], ts, (fromOrig ? "> " : "< ") + text);
+        }
+    }
+
     private boolean modbus(JsonNode n) {
         String o = ip4(text(n, "id.orig_h")), r = ip4(text(n, "id.resp_h"));
         int rp = port(n, "id.resp_p");
@@ -806,6 +815,7 @@ public final class ZeekLogReader {
         // an exception response is named after the function it answers ("Modbus FC3 exception: illegal data address"), not
         // after the raw code ICSNPP could not name ("unknown-131")
         f.message("Modbus " + (fc < 0 ? cap(func, 40) : "FC" + fc) + (exc ? " exception" + (why == null ? "" : ": " + why) : "")).seen(micros(n, "ts")).source("zeek");
+        icsTrace(n, modbusRequestRow(n), "Modbus " + cap(func, 40) + (exc ? " exception" + (why == null ? "" : ": " + why) : ""));
         return true;
     }
 
@@ -1065,6 +1075,7 @@ public final class ZeekLogReader {
             return true;
         }
         f.source("zeek").seen(micros(n, "ts"));
+        icsTrace(n, req != null, "DNP3 " + cap(req != null ? req : rep, 48));
         for (String name : new String[]{req, rep}) {
             if (name != null) {
                 int fc = Dnp3Parser.functionCode(name);
@@ -1166,6 +1177,7 @@ public final class ZeekLogReader {
         f.source("zeek").seen(micros(n, "ts"));
         if (function != null) {
             f.message("S7 " + function);
+            icsTrace(n, sd.fromClient(), "S7 " + function + opt(" pdu=", pdu));
         }
         String key = "s|" + uid + '|' + pdu;
         if (sd.fromClient()) {
@@ -1304,6 +1316,7 @@ public final class ZeekLogReader {
             return true;
         }
         f.source("zeek").seen(micros(n, "ts")).message("EtherNet/IP " + cmd);
+        icsTrace(n, sd.fromClient(), "ENIP " + cap(cmd, 40) + opt(" status=", text(n, "enip_status")));
         String key = ctx == null || ZERO_CONTEXT.matcher(ctx).matches() ? null : "e|" + uid + '|' + ctx;
         if (sd.fromClient()) {
             OpAgg a = stage(sd.client(), sd.server(), "ethernet-ip", portOf(sd, uid, "tcp"), cmd, ZeekNames.enipAccess(cmd), null, null, null, null, List.of(), 1);
@@ -1337,6 +1350,7 @@ public final class ZeekLogReader {
         if (f == null) {
             return true;
         }
+        icsTrace(n, request, "CIP " + cap(service, 48) + opt(" ", text(n, "class_name")) + opt(" status=", text(n, "status")));
         long times = Math.max(1, num(n, "occurrence_count", 1));
         f.source("zeek").seen(micros(n, "ts")).message("CIP " + service);
         String key = "p|" + uid + '|' + idText(n, "cip_sequence_count");
