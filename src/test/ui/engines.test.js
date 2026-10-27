@@ -117,3 +117,20 @@ test('a merged capture whose Suricata is still running is marked partial and kee
     assert.match(app.text(), /Suricata · running/);
   } finally { app.close(); }
 });
+
+test('data files report what they named, and the engines rows no longer claim "named in evidence"', async () => {
+  const caps = [{ id: 'c1', file: 'a.pcap', state: 'done', size: 10, at: '2026-10-01T00:00:00Z', by: 'x', sha256: 'a'.repeat(64), diff: { new: 1, changed: 0, notSeen: 0 }, summary: SUMMARY([]) }];
+  const app = await loadApp({ routes: defaultRoutes({ captures: caps }), hash: '#/engines' });
+  try {
+    app.window.eval(`S.engines = [
+      { id: 'zeek', name: 'Zeek', kind: 'engine', optional: true, url: 'https://zeek.org', licence: 'BSD', role: 'engine', status: { state: 'found', version: '8' } },
+      { id: 'manuf', name: 'Wireshark manuf', kind: 'data', optional: true, url: 'https://x.org', licence: 'GPL', role: 'vendors', status: { state: 'found' } },
+      { id: 'nmap-services', name: 'Nmap nmap-services', kind: 'data', optional: true, url: 'https://x.org', licence: 'NPSL', role: 'ports', status: { state: 'found' } }];
+      S.flows = [{ client: 'a', server: 'b', protocol: 'unknown', port: '9/tcp', portHint: 'discard', portHintSource: 'nmap-services' }]; render();`);
+    await settle();
+    const text = app.text();
+    assert.doesNotMatch(text, /named in evidence/);
+    assert.match(text, /1 port named/);
+    assert.doesNotMatch(text, /0 of 1 captures[\s\S]*0 of 1 captures[\s\S]*0 of 1 captures/, 'data files are not counted as captures that ran them');
+  } finally { app.close(); }
+});

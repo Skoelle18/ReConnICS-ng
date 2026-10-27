@@ -624,15 +624,21 @@ function engines() {
   const done = S.caps.filter((c) => c.state === 'done').length;
   const seen = (id, ok) => S.caps.filter((c) => c.state === 'done' && c.summary && (c.summary.tools || []).some((t) => t.id === id && ok(t))).length;
   const ran = (id) => seen(id, (t) => t.state === 'ran');
-  // "named in evidence": a field's evidence text, or a conversation's alerts / classification, credits this tool.
-  const EV = { zeek: /zeek/i, icsnpp: /icsnpp/i, tshark: /tshark|wireshark/i, suricata: /suricata/i, ndpi: /ndpi/i, p0f: /p0f/i };
-  const inEvidence = (id) => S.flows.some((f) => [].concat(f.alerts || [], f.classifiedBy || []).some((x) => x.tool === id))
-    || assets().some((a) => Object.values(a).some((v) => v && typeof v.evidence === 'string' && EV[id] && EV[id].test(v.evidence)));
+  // Data files are not run per capture: they name things. "Used in" counts what each one named in the merged inventory.
+  const DATA_EVIDENCE = { manuf: 'Wireshark manuf', 'nmap-mac-prefixes': 'Nmap nmap-mac-prefixes', 'ieee-oui': 'IEEE' };
+  const usedIn = (r) => {
+    if (r.kind === 'reference') return '-';
+    if (!done) return 'no captures yet';
+    if (r.kind !== 'data') return ran(r.id) + ' of ' + done + ' captures';
+    if (r.id === 'nmap-services') { const n = S.flows.filter((f) => f.portHintSource === 'nmap-services').length; return n + (n === 1 ? ' port named' : ' ports named'); }
+    const n = assets().filter((a) => a.vendor_oui && typeof a.vendor_oui.evidence === 'string' && a.vendor_oui.evidence.includes(DATA_EVIDENCE[r.id])).length;
+    return n + (n === 1 ? ' device named by its MAC' : ' devices named by their MAC');
+  };
   const step = (on, text) => h('span', { class: 'badge ' + (on ? 'ok' : 'lv-NONE') }, (on ? '✓ ' : '○ ') + text);
   const steps = (r, st) => {
     const found = st.state === 'found' || st.state === 'ran', hint = [st.via, st.detail].filter(Boolean).join(' · ');
     const first = step(found, found ? [st.version, 'installed'].filter(Boolean).join(' · ') : (TOOL_STATE[st.state] || [, st.state])[1]);
-    const later = r.kind === 'engine' || r.kind === 'package' ? [step(ran(r.id) > 0, 'ran'), step(inEvidence(r.id), 'named in evidence')] : [];
+    const later = r.kind === 'engine' || r.kind === 'package' ? [step(ran(r.id) > 0, 'ran')] : [];
     return h('span', { class: 'row steps' }, first, ...later, hint ? h('span', { class: 'inf', tabindex: '0', 'aria-label': 'how it was found' }, 'i', h('span', { class: 'tip' }, hint)) : null);
   };
   const kindTxt = { engine: 'engine', package: 'Zeek package', data: 'data file', reference: 'reference only' };
@@ -641,7 +647,7 @@ function engines() {
       list.map((r) => { const st = r.status || {}; return h('div', { class: 'trow g-eng' },
         h('span', {}, h('a', { class: 'cell-name', href: r.url, target: '_blank', rel: 'noopener noreferrer' }, r.name), h('span', { class: 'muted small' }, (kindTxt[r.kind] || r.kind) + (r.kind === 'reference' ? '' : r.optional ? ', optional' : ', bundled in the jar'))),
         steps(r, st),
-        h('span', { class: 'small' }, r.kind === 'reference' ? '-' : done ? ran(r.id) + ' of ' + done + ' captures' : 'no captures yet'),
+        h('span', { class: 'small' }, usedIn(r)),
         h('span', { class: 'small wrap' }, r.licence), h('span', { class: 'small wrap' }, r.role)); }))) : null;
   return [
     h('div', {}, h('h1', {}, 'Engines', info('ReConnICS-ng wraps existing open-source tools instead of rewriting them. Zeek with the ICSNPP packages is the primary engine; every other tool is optional and used only when it is installed (on PATH, or in the reconics-tools Docker image). Everything is passive: capture files are only read.'))),
