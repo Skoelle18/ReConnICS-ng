@@ -1251,6 +1251,7 @@ public final class ZeekLogReader {
             }
             return true;
         }
+        icsTrace(n, true, "S7 Read SZL" + opt(" ", text(n, "szl_id")) + opt(" ", text(n, "szl_id_name")));
         Long id = null;
         var m = HEX.matcher(text(n, "szl_id") == null ? "" : text(n, "szl_id"));
         if (m.matches()) {
