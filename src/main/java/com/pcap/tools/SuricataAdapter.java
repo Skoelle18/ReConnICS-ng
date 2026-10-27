@@ -44,6 +44,13 @@ public final class SuricataAdapter implements Adapter {
      */
     static final List<String> ARGS = List.of("-r", "{IN}", "-l", "{OUT}", "-k", "none", "--set", "stream.midstream=true");
 
+    /** The setting {@code reconics.suricata.rules}: {@code ics} (default) or {@code full} (all of ET Open); the console's Settings screen sets it. */
+    public static final String RULES_PROPERTY = "reconics.suricata.rules";
+
+    static String rulesFile() {
+        return "full".equals(System.getProperty(RULES_PROPERTY)) ? "/opt/reconics/full.rules" : "/opt/reconics/ics.rules";
+    }
+
     @Override
     public Components component() {
         return Components.byId("suricata");
@@ -57,6 +64,9 @@ public final class SuricataAdapter implements Adapter {
     @Override
     public Result run(Env env, Launch l, Path pcap, Path work) throws IOException, InterruptedException {
         List<String> args = new java.util.ArrayList<>(ARGS);
+        if (l.mode() == Launch.Mode.DOCKER) {
+            args.addAll(List.of("-S", rulesFile()));           // the image's rule sets; a native Suricata keeps its own configuration
+        }
         String yaml = System.getenv("RECONICS_SURICATA_YAML");
         if (l.mode() == Launch.Mode.NATIVE && yaml != null && !yaml.isBlank()) {
             args.addAll(List.of("-c", yaml));

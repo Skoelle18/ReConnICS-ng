@@ -169,6 +169,16 @@ final class IngestServer {
                 try { doc = Json.parse(AdvisoryIndex.utf8(b)); } catch (IllegalArgumentException e) { error(ex, 400, "body is not valid JSON"); return true; }
                 if (!(doc instanceof Map)) { error(ex, 400, "body must be an object"); return true; }
                 send(ex, 200, Json.write(Map.of("changes", site.edit(path.substring("/api/v1/assets/".length()), Json.obj(doc), actor, role))));
+            } else if (method.equals("GET") && path.equals("/api/v1/settings")) send(ex, 200, Json.write(site.settings()));
+            else if (method.equals("PUT") && path.equals("/api/v1/settings")) {
+                if (!contentType(ex, "application/json")) { error(ex, 415, "Content-Type must be application/json"); return true; }
+                if (tooLong(ex, 4 << 10)) { error(ex, 413, "request body too large"); return true; }
+                byte[] b = ex.getRequestBody().readNBytes((4 << 10) + 1);
+                Object doc;
+                try { doc = Json.parse(AdvisoryIndex.utf8(b)); } catch (IllegalArgumentException e) { error(ex, 400, "body is not valid JSON"); return true; }
+                if (!(doc instanceof Map)) { error(ex, 400, "body must be an object"); return true; }
+                try { send(ex, 200, Json.write(site.setSettings(Json.obj(doc), actor))); }
+                catch (IllegalArgumentException e) { error(ex, 400, e.getMessage()); }
             } else if (method.equals("GET") && path.equals("/api/v1/engines")) send(ex, 200, Json.write(site.engines()));
             else if (method.equals("GET") && path.equals("/api/v1/changes")) send(ex, 200, Json.write(site.changes()));
             else if (method.equals("GET") && path.equals("/api/v1/index")) send(ex, 200, Json.write(site.indexMeta()));

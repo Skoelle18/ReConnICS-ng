@@ -105,6 +105,12 @@ final class Site {
         this.ouiAll = all.isEmpty() ? null : all;
         this.ouiSources = new HashMap<>();
         reference.macSources().forEach((k, v) -> { if (OUI == null || !OUI.containsKey(k)) ouiSources.put(k, v); });
+        Path st = dir.resolve("settings.json");
+        if (Files.exists(st)) {
+            String v = String.valueOf(Json.obj(Json.parse(Files.readString(st))).get("suricataRules"));
+            if (SURICATA_RULES.contains(v)) suricataRules = v;
+        }
+        System.setProperty(com.pcap.tools.SuricataAdapter.RULES_PROPERTY, suricataRules);
         Path e = dir.resolve("edits.json");
         if (Files.exists(e)) Json.obj(Json.parse(Files.readString(e))).forEach((k, v) -> edits.put(k, new TreeMap<>(Json.obj(v))));
         try (var files = Files.list(captureDir)) {
@@ -120,6 +126,28 @@ final class Site {
     }
 
     AdvisoryIndex index() { return index; }
+
+    // ------------------------------------------------------------------ settings
+
+    static final Set<String> SURICATA_RULES = Set.of("ics", "full");
+    private String suricataRules = "ics";
+
+    /** Server-side settings (the ones that change what the analysis does): {@code suricataRules} is {@code ics} (default) or {@code full}. */
+    synchronized Map<String, Object> settings() {
+        return new LinkedHashMap<>(Map.of("suricataRules", suricataRules));
+    }
+
+    synchronized Map<String, Object> setSettings(Map<String, Object> in, String actor) throws IOException {
+        if (in.containsKey("suricataRules")) {
+            String v = String.valueOf(in.get("suricataRules"));
+            if (!SURICATA_RULES.contains(v)) throw new IllegalArgumentException("suricataRules must be ics or full");
+            if (!v.equals(suricataRules)) log(actor, "(site)", "setting", "suricataRules " + suricataRules, "suricataRules " + v, "settings");
+            suricataRules = v;
+            System.setProperty(com.pcap.tools.SuricataAdapter.RULES_PROPERTY, v);       // read by the next capture's analysis
+        }
+        writeAtomic(dir.resolve("settings.json"), Json.write(settings()));
+        return settings();
+    }
 
     // ------------------------------------------------------------------ captures
 

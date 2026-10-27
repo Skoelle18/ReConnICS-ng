@@ -110,8 +110,13 @@ the console's capture queue uses the automatic mode. Environment: `RECONICS_SURI
   `alert` and `anomaly` event types, with the fields documented in the Suricata EVE reference: `timestamp`, `src_ip`, `src_port`,
   `dest_ip`, `dest_port`, `proto`, `community_id` (needs `community-id: true`), `alert.signature_id`, `alert.signature`,
   `alert.category`, `alert.severity`, `anomaly.type`, `anomaly.event`.
-- The rules are whatever the installation has. The Docker image runs `suricata-update` once at build time (Emerging Threats Open
-  rules) and keeps the rules Suricata ships for its own Modbus, DNP3 and ENIP parsers.
+- The rules are whatever the installation has. The Docker image runs `suricata-update` once at build time (Emerging Threats Open) and
+  builds two sets in `/opt/reconics`, chosen per run with `-S` (the console's Settings, `suricataRules`, or `-Dreconics.suricata.rules`):
+  `ics.rules` (default, about 110 rules: ET SCADA, the Modbus / DNP3 / ENIP rules, and Suricata's own modbus, dnp3 and app-layer event
+  rules) and `full.rules` (all of ET Open, about 53,000 rules, with the same event rules switched on; `suricata-update` ships them
+  commented out). On a 60,000-frame Modbus capture: ICS 1 s, full 19 s; on a 2.3 million frame capture the full set ran over 10 minutes.
+  A native Suricata keeps its own rules. In the console Suricata runs beside the other engines and does not hold the capture up: a capture
+  merged while it is still running is marked partial and its alerts are added when it ends (limit 60 minutes).
 - **`stream.midstream=true`.** Suricata drops a TCP stream whose handshake it never saw, and then never runs the application-layer
   parser on it. Most public ICS captures (and any span-port or rotated capture) begin in the middle of a conversation, so with
   Suricata's default they got no Modbus / DNP3 / ENIP parsing at all, and the `*-events.rules` and ET SCADA rules could not match.

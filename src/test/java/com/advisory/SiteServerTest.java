@@ -95,6 +95,18 @@ class SiteServerTest {
     }
 
     @Test
+    void suricataRulesSettingDefaultsToIcsPersistsAndRefusesOtherValues() throws Exception {
+        assertEquals("ics", Json.obj(Json.parse(get("/api/v1/settings").body())).get("suricataRules"));
+        var put = send("PUT", "/api/v1/settings", "application/json", "{\"suricataRules\":\"full\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertEquals(200, put.statusCode(), put.body());
+        assertEquals("full", Json.obj(Json.parse(get("/api/v1/settings").body())).get("suricataRules"));
+        assertEquals("full", System.getProperty("reconics.suricata.rules"), "the next capture's analysis reads it");
+        assertEquals(400, send("PUT", "/api/v1/settings", "application/json", "{\"suricataRules\":\"all\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8)).statusCode());
+        send("PUT", "/api/v1/settings", "application/json", "{\"suricataRules\":\"ics\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertEquals("ics", System.getProperty("reconics.suricata.rules"));
+    }
+
+    @Test
     void captureQueueReportsStepsAndLog() throws Exception {
         var up = send("POST", "/api/v1/captures?name=steps.pcap", "application/octet-stream", acmePcap("1.9"));
         var p = Json.obj(waitFor((String) Json.obj(Json.parse(up.body())).get("id")).get("progress"));

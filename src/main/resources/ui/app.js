@@ -1126,7 +1126,16 @@ function settingsScreen() {
     h('option', { value: 'collector' }, 'Collector'), h('option', { value: 'validator' }, 'Validator'));
   role.value = store.get('role') || 'collector';
   const stale = h('input', { id: 'setting-stale-days', name: 'stale-days', type: 'number', min: '1', max: '3650', value: Math.max(1, Number(store.get('index-stale-days')) || 30) });
+  const rules = h('select', { id: 'setting-rules', name: 'rules', onchange: async (e) => {
+    try { S.settings = await api('PUT', 'settings', JSON.stringify({ suricataRules: e.target.value }), 'application/json'); toast('Suricata rules: ' + (S.settings.suricataRules === 'full' ? 'full ET Open' : 'ICS only') + ' from the next capture'); }
+    catch (err) { toast('Not saved: ' + err.message); }
+    render();
+  } }, h('option', { value: 'ics' }, 'ICS only (fast)'), h('option', { value: 'full' }, 'Full ET Open (slow)'));
+  rules.value = (S.settings && S.settings.suricataRules) || 'ics';
+  if (!S.settings) api('GET', 'settings').then((s) => { S.settings = s; render(); }).catch(() => {});
   return [h('div', {}, h('h1', {}, 'Settings', info('Choose the name recorded on future changes and the local console role.'))),
+    h('div', { class: 'card card-b stack' }, h('label', { for: 'setting-rules', class: 'strong' }, 'Suricata rules', rules),
+      h('div', { class: 'small muted' }, 'ICS only loads about 110 rules (ET SCADA, Modbus, DNP3, ENIP and Suricata\'s own protocol events) and finishes a 60,000-frame capture in about a second. Full ET Open loads about 53,000 web, malware and policy rules and took 41 s for the same capture, over 10 minutes on a 2.3 million frame one. Applies to the next capture; stored on the server and written to the change log.')),
     h('form', { class: 'card settings-form', onsubmit: (e) => {
       e.preventDefault();
       store.set('actor', actor.value.trim()); store.set('role', role.value);

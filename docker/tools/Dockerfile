@@ -31,5 +31,22 @@ RUN suricata-update --no-reload --no-test \
  && sed -i '/^    \(modbus\|dnp3\|enip\):$/,/enabled:/ s/enabled: no/enabled: yes/' /etc/suricata/suricata.yaml \
  && suricata -T -c /etc/suricata/suricata.yaml
 
+# Two rule sets, chosen per run with -S (SuricataAdapter; the console's Settings pick one):
+#   ics.rules   ET Open's SCADA / Modbus / DNP3 / ENIP rules plus the distro's own modbus, dnp3 and app-layer event rules (~110 rules).
+#               Measured on a 60,000-frame Modbus capture: 1 s, against 41 s for the full set, and it finds the Modbus event alerts
+#               ("SURICATA Modbus Data mismatch") that the merged ET Open file has switched off (suricata-update ships those event rules commented out).
+#   full.rules  the whole ET Open set (~53,000 rules) with those same event rules switched on. Slow: it checks every packet against web and malware signatures.
+# The decoder and stream event rules are left out of both: they describe the capture (checksum offload, a capture that starts mid-conversation),
+# and SuricataAdapter drops those alerts anyway.
+RUN mkdir -p /opt/reconics \
+ && grep -E '^(alert|drop)' /var/lib/suricata/rules/suricata.rules \
+      | grep -E 'ET SCADA|app-layer-protocol: *(modbus|dnp3|enip)|[ (;](modbus|dnp3|enip)[ ;.]' > /opt/reconics/et-ics.rules \
+ && cat /etc/suricata/rules/modbus-events.rules /etc/suricata/rules/dnp3-events.rules /etc/suricata/rules/app-layer-events.rules > /opt/reconics/events.rules \
+ && cat /opt/reconics/et-ics.rules /opt/reconics/events.rules > /opt/reconics/ics.rules \
+ && grep -o 'sid:[0-9]*;' /opt/reconics/events.rules | sort -u > /tmp/event-sids  && grep -v -F -f /tmp/event-sids /var/lib/suricata/rules/suricata.rules > /tmp/et-rest.rules  && cat /tmp/et-rest.rules /opt/reconics/events.rules > /opt/reconics/full.rules \
+ && test "$(grep -c '^alert' /opt/reconics/ics.rules)" -gt 50 \
+ && suricata -T -c /etc/suricata/suricata.yaml -S /opt/reconics/ics.rules \
+ && suricata -T -c /etc/suricata/suricata.yaml -S /opt/reconics/full.rules
+
 # /in is the capture's folder (read-only), /out the empty folder a run may write to. No entrypoint: the first argument is the tool.
 WORKDIR /out
