@@ -74,7 +74,7 @@ Demo video: _link added with the Black Hat Arsenal submission_.
 - **OS:** Linux (Ubuntu/Debian tested) or Windows 10/11. macOS is not a target.
 - **Software:** JDK 21+, Maven 3.9+, Docker (Docker Desktop on Windows). Docker runs Zeek and the other engines.
 - **Memory:** 8 GB RAM recommended.
-- **Disk:** about 10 GB free. The two images are about 1.8 GB; each capture also writes logs of up to several times its own size.
+- **Disk:** about 10 GB free. The two images are about 1.8 GB; each capture also writes logs of up to several times its own size (the console shows the Zeek + ICSNPP log size per capture under Details, and in the run log; they are deleted after the run).
 - **Network:** no network interface is needed to analyze a capture. Internet is only needed once, to install.
 
 ## Installation

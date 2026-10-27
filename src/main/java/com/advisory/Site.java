@@ -295,6 +295,10 @@ final class Site {
             summary.put("identityFields", (double) r.identityFieldsDecoded());
             summary.put("devices", (double) r.assets().size());
             summary.put("tools", toolsSummary(result.document()));
+            if (result.document() != null && result.document().source != null && result.document().source.get("zeek") instanceof Map<?, ?> z && z.get("logBytes") instanceof Number lb) {
+                summary.put("zeekLogBytes", lb.doubleValue());
+                summary.put("zeekLargestLog", String.valueOf(z.get("largestLog")));
+            }
             synchronized (this) { progress(c, 7, "Merging into the site inventory"); merged(c, id, obs, summary); progress(c, 8, "Merged"); c.put("finishedAt", Instant.now().toString()); saveQuietly(c); }
         } catch (PcapException e) {
             fail(c, 4, e.getMessage());

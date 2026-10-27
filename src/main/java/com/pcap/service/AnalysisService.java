@@ -156,6 +156,30 @@ public final class AnalysisService {
         }
     }
 
+    /** Size of the *.log files Zeek left in {@code dir}: total, count and the largest; empty when there are none. */
+    private static Map<String, Object> logSize(Path dir) {
+        long total = 0, big = 0;
+        int n = 0;
+        String name = "";
+        try (var files = java.nio.file.Files.list(dir)) {
+            for (Path f : (Iterable<Path>) files::iterator) {
+                if (!f.getFileName().toString().endsWith(".log") || !java.nio.file.Files.isRegularFile(f)) continue;
+                long sz = java.nio.file.Files.size(f);
+                total += sz;
+                n++;
+                if (sz > big) { big = sz; name = f.getFileName().toString(); }
+            }
+        } catch (IOException | RuntimeException e) {
+            return Map.of();
+        }
+        return n == 0 ? Map.of() : Map.of("bytes", total, "files", n, "largest", name, "largestBytes", big);
+    }
+
+    private static String human(long b) {
+        return b >= 1L << 30 ? String.format(java.util.Locale.ROOT, "%.1f GB", b / (double) (1L << 30))
+                : b >= 1L << 20 ? String.format(java.util.Locale.ROOT, "%.1f MB", b / (double) (1L << 20)) : Math.max(1, b >> 10) + " KB";
+    }
+
     /** "Native decoder 820,000 frames · Zeek 42% · waiting on tshark, suricata · 31 s": what each engine is doing right now. */
     private String statusLine(long startedNanos) {
         List<String> p = new ArrayList<>();
@@ -286,6 +310,7 @@ public final class AnalysisService {
             com.pcap.inventory.HostFacts facts = new com.pcap.inventory.HostFacts();   // DHCP and web-server evidence: Zeek's logs, tshark's fields where Zeek has none
             String zeekVersion = "";
             String zeekHow = "";
+            Map<String, Object> zeekLogs = Map.of();
             if (useZeek) {
                 progress.step(3);
                 Path logDir;
@@ -306,6 +331,11 @@ public final class AnalysisService {
                 } else {
                     logDir = options.zeekLogs();
                     zeekHow = "logs from " + logDir;
+                }
+                zeekLogs = logSize(logDir);
+                if (!zeekLogs.isEmpty()) {
+                    progress.log("Zeek + ICSNPP wrote " + human((long) zeekLogs.get("bytes")) + " of logs in " + zeekLogs.get("files") + " files (largest: "
+                            + zeekLogs.get("largest") + ", " + human((long) zeekLogs.get("largestBytes")) + ")");
                 }
                 progress.log("Reading the Zeek and ICSNPP logs");
                 zeek = new ZeekLogReader(options.icsOnly(), options.keepScans()).read(logDir);
@@ -429,6 +459,10 @@ public final class AnalysisService {
                     z.put("version", zeekVersion);
                 }
                 z.putAll(zeek.stats().toMap());
+                if (!zeekLogs.isEmpty()) {
+                    z.put("logBytes", zeekLogs.get("bytes"));              // README: log size is worth knowing; modbus_detailed.log is usually the big one
+                    z.put("largestLog", zeekLogs.get("largest") + " (" + human((long) zeekLogs.get("largestBytes")) + ")");
+                }
                 doc.source.put("zeek", z);
             }
             if (aggregator.droppedOverCap() > 0) {

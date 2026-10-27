@@ -588,6 +588,7 @@ function captures() {
           fact('Frames processed', c.summary.frames.toLocaleString()), fact('Malformed / skipped', c.summary.malformed.toLocaleString()),
           fact('Protocol candidates', Object.entries(c.summary.protocols || {}).map(([k, v]) => k + ' ' + v).join(', ') || 'none', true),
           fact('Identity fields decoded', c.summary.identityFields)], fact('Devices in capture', c.summary.devices),
+        c.summary.zeekLogBytes != null ? fact('Zeek + ICSNPP logs', fmtSize(c.summary.zeekLogBytes) + ' on disk (largest ' + c.summary.zeekLargestLog + '); deleted after the run', true) : null,
         h('div', {}, h('div', { class: 'muted small' }, 'Change to inventory'), h('div', { class: 'row' },
           h('span', { class: 'badge ok' }, '+' + c.diff.new + ' new'), h('span', { class: 'badge warn' }, c.diff.changed + ' changed'), h('span', { class: 'badge lv-NONE' }, c.diff.notSeen + ' not seen'))))
         : c.state === 'failed' ? h('div', { class: 'card-b stack' }, h('div', {}, h('strong', {}, 'Exit ' + c.exit + '. '), c.error),
