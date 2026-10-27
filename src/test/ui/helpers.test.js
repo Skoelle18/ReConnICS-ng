@@ -16,8 +16,11 @@ test('helper functions', async (t) => {
     assert.equal(fn('fmtSize')(2 * 1024 * 1024 * 1024 + 1), '2.0 GB');
   });
 
-  await t.test('fmtTime drops seconds and the T separator', () => {
-    assert.equal(fn('fmtTime')('2026-10-18T10:20:30Z'), '2026-10-18 10:20Z');
+  await t.test('fmtTime reads as a date and a time; fmtDur as the shortest unit', () => {
+    assert.match(fn('fmtTime')('2026-10-18T10:20:30Z'), /^\d{1,2} Oct 2026, \d\d:\d\d$/);
+    assert.equal(fn('fmtDur')(850), '850 ms');
+    assert.equal(fn('fmtDur')(12400), '12.4 s');
+    assert.equal(fn('fmtDur')(125000), '2 min 05 s');
     assert.equal(fn('fmtTime')(null), '');
   });
 

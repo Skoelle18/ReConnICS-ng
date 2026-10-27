@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
@@ -185,6 +186,12 @@ final class Site {
 
     static final int PROGRESS_LOG_LINES = 300;
 
+    /** "[+12.3s]": time since the capture started running, so a log line says how far in it was. */
+    private static String since(Map<String, Object> c) {
+        try { return String.format(Locale.ROOT, "[+%.1fs]", Duration.between(Instant.parse((String) c.get("startedAt")), Instant.now()).toMillis() / 1000.0); }
+        catch (RuntimeException e) { return "[+?]"; }
+    }
+
     /**
      * What the console's capture queue shows while a capture runs: the current step (1..{@code steps}), when it started and a log. {@code step}
      * 0 only adds {@code line}; steps past the last mean done. Caller holds the lock; the log is kept after the run so a failure can be read.
@@ -200,7 +207,7 @@ final class Site {
             if (step <= com.pcap.service.Progress.STEPS.length && line == null) line = com.pcap.service.Progress.STEPS[step - 1];
         }
         if (line != null) {
-            log.add(Instant.now().toString().substring(11, 19) + "  " + Inventory.clean(line, 300));
+            log.add(since(c) + "  " + Inventory.clean(line, 300));
             while (log.size() > PROGRESS_LOG_LINES) log.remove(0);
         }
     }
@@ -262,6 +269,8 @@ final class Site {
             if (c == null || !"queued".equals(c.get("state"))) return;              // removed while waiting
             c.put("state", "running");
             c.remove("progress");                                                  // a rerun after a restart starts a fresh log
+            c.put("startedAt", Instant.now().toString());
+            c.remove("finishedAt");
             progress(c, 1, null);
             saveQuietly(c);
         }
@@ -284,7 +293,7 @@ final class Site {
             summary.put("identityFields", (double) r.identityFieldsDecoded());
             summary.put("devices", (double) r.assets().size());
             summary.put("tools", toolsSummary(result.document()));
-            synchronized (this) { progress(c, 7, "Merging into the site inventory"); merged(c, id, obs, summary); progress(c, 8, "Merged"); saveQuietly(c); }
+            synchronized (this) { progress(c, 7, "Merging into the site inventory"); merged(c, id, obs, summary); progress(c, 8, "Merged"); c.put("finishedAt", Instant.now().toString()); saveQuietly(c); }
         } catch (PcapException e) {
             fail(c, 4, e.getMessage());
         } catch (Exception | StackOverflowError e) {
@@ -408,6 +417,7 @@ final class Site {
 
     private synchronized void fail(Map<String, Object> c, int exit, String msg) {
         c.put("state", "failed");
+        c.put("finishedAt", Instant.now().toString());
         c.put("exit", (double) exit);
         c.put("error", Inventory.clean(Objects.toString(msg, "error"), 512));
         saveQuietly(c);
