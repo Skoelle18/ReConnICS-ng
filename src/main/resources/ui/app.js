@@ -35,7 +35,7 @@ const S = { engines: null, inv: null, rank: [], site: {}, flows: [], caps: [], c
   color: 'role', layout: 'force', path: null, pathPick: false, pathStart: null,
   hideUnknown: false, hideScans: true, hideSeenOnly: false, hideDecommissioned: true, showGroups: false, groups: [], macs: [], images: [], imageSummary: {}, protoOff: new Set(),
   capAssets: {}, assetCaps: new Map(), capOff: new Set(), inventoryGroupMac: false, bulkSelected: new Set(), macExpanded: new Set(),
-  findingsTab: 'advisories', advisorySearch: '', reviewSearch: '', logSearch: '', dataTab: 'captures' };
+  findingsTab: 'advisories', advLevels: new Set(), advisorySearch: '', reviewSearch: '', logSearch: '', dataTab: 'captures' };
 
 // ------------------------------------------------------------------ helpers
 
@@ -256,7 +256,7 @@ function chrome(route) {
     if (active) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current');
   });
   $('mode-findings-pills').replaceChildren(...['EXACT', 'PROBABLE', 'POSSIBLE'].map((l) => [l, assets().filter((a) => levelOf(a) === l).length]).filter(([, n]) => n)
-    .map(([l, n]) => h('b', { class: 'pill-' + l, title: n + ' ' + l + ' advisory matches' }, n)));
+    .map(([l, n]) => h('b', { class: 'pill-' + l, title: n + (n === 1 ? ' asset has an ' : ' assets have an ') + l + ' advisory match (open Findings for the key)' }, n)));
   $('tree-capture-count').textContent = S.caps.length || '';
   $('tree-advisory-count').textContent = advisoryRows().length || '';
   $('tree-review-count').textContent = reviewCount() || '';
@@ -545,6 +545,7 @@ function progressCard(x) {
     h('div', { class: 'card-b stack' },
       h('div', { class: 'steps', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(p.steps.length), 'aria-valuenow': String(p.step - 1), 'aria-valuetext': stepText(x) },
         p.steps.map((name, i) => h('div', { class: 'seg ' + (i + 1 < p.step ? 'done' : i + 1 === p.step ? 'now' : '') }, h('span', { class: 'bar' }), h('span', { class: 'small' }, name)))),
+      p.status ? h('div', { class: 'small mono', 'aria-live': 'off' }, p.status) : null,
       log));
 }
 
@@ -1028,18 +1029,36 @@ function findings() {
   return tab === 'review' ? review() : advisories();
 }
 
+const MATCH_MEANING = { EXACT: 'Vendor, model and firmware fall inside the affected range.',
+  PROBABLE: 'Vendor and model match; the firmware could not be checked against the version range.',
+  POSSIBLE: 'Vendor only: every advisory for this vendor is listed, so treat it as a lead, not a finding.' };
+
+/** The key to the numbers on the Findings tab: per match level, how many assets and advisories, what it means, and a click filters the table. */
+function matchKey(all) {
+  return h('div', { class: 'match-key' }, ['EXACT', 'PROBABLE', 'POSSIBLE'].map((l) => {
+    const nAssets = assets().filter((a) => levelOf(a) === l).length, nAdv = all.filter((r) => r.hits.some((x) => x.level === l)).length, on = S.advLevels.has(l);
+    return h('button', { class: 'match-chip' + (on ? ' on' : ''), 'aria-pressed': String(on), disabled: !nAdv, title: on ? 'Show all levels again' : 'Show only advisories with an ' + l + ' match',
+      onclick: () => { if (on) S.advLevels.delete(l); else S.advLevels.add(l); render(); } },
+      h('span', { class: 'row' }, levelBadge(l), h('strong', {}, nAssets + (nAssets === 1 ? ' asset' : ' assets'))),
+      h('span', { class: 'small' }, nAdv + (nAdv === 1 ? ' advisory' : ' advisories')), h('span', { class: 'small muted' }, MATCH_MEANING[l]));
+  }));
+}
+
 function advisories() {
   const query = S.advisorySearch.trim().toLowerCase();
-  const rows = advisoryRows().filter((r) => !query || [r.id, r.title, ...r.cves, ...r.affected].join(' ').toLowerCase().includes(query));
+  const all = advisoryRows();
+  const rows = all.filter((r) => (!S.advLevels.size || r.hits.some((x) => S.advLevels.has(x.level)))
+    && (!query || [r.id, r.title, ...r.cves, ...r.affected].join(' ').toLowerCase().includes(query)));
   return [
-    h('div', {}, h('h1', {}, 'Advisories', info('CISA CSAF ICS advisories that hit at least one asset. KEV-listed first, then CVSS.'))),
+    h('div', {}, h('h1', {}, 'Advisories', info('CISA CSAF ICS advisories that hit at least one asset. KEV-listed first, then CVSS. The numbers on the Findings tab are assets per match level (EXACT, PROBABLE, POSSIBLE); the key below explains each and filters the list.'))),
+    matchKey(all),
     h('label', { class: 'screen-search' }, h('span', { class: 'sr' }, 'Search advisories'), h('input', { type: 'search', value: S.advisorySearch, placeholder: 'Search advisories, CVEs or affected products', oninput: (e) => { S.advisorySearch = e.target.value; render(); const input = $('main .screen-search input'); if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); } } })),
     h('div', { class: 'card' }, h('div', { class: 'scroll' },
       h('div', { class: 'trow thead g-adv' }, ['Advisory', 'Title', 'CVSS', 'KEV', 'Assets'].map((t) => h('span', {}, t))),
-      rows.length === 0 ? h('div', { class: 'empty' }, query ? 'No advisory matches this search.' : 'No advisory matches any asset in this index.') : rows.map((r) => [
+      rows.length === 0 ? h('div', { class: 'empty' }, query || S.advLevels.size ? 'No advisory matches this search and level filter.' : 'No advisory matches any asset in this index.') : rows.map((r) => [
         h('button', { class: 'trow g-adv' + (S.openAdv === r.id ? ' sel' : ''), 'aria-expanded': String(S.openAdv === r.id), onclick: () => { S.openAdv = S.openAdv === r.id ? null : r.id; render(); } },
           h('span', { class: 'mono strong' }, r.id), h('span', {}, r.title), h('span', { class: 'mono' }, r.cvss.toFixed(1)),
-          h('span', {}, r.kev ? h('span', { class: 'badge kev' }, 'KEV') : null), h('span', {}, r.hits.length + (r.hits.length === 1 ? ' asset' : ' assets'))),
+          h('span', {}, r.kev ? h('span', { class: 'badge kev' }, 'KEV') : null), h('span', { class: 'row' }, r.hits.length + (r.hits.length === 1 ? ' asset' : ' assets'), ['EXACT', 'PROBABLE', 'POSSIBLE'].filter((l) => r.hits.some((x) => x.level === l)).map((l) => h('span', { class: 'dot-lv', title: r.hits.filter((x) => x.level === l).length + ' ' + l }, dot(LEVEL_COLOR[l]))))),
         S.openAdv === r.id ? h('div', { class: 'card-b stack', style: { background: 'var(--accent-tint)', paddingLeft: '32px' } },
           h('div', { class: 'small' }, h('strong', {}, 'Affected: '), [...r.affected].join('; ') || '?', ' · ', h('strong', {}, 'CVEs: '), h('span', { class: 'mono' }, r.cves.join(', '))),
           h('div', { class: 'row' }, r.hits.map((x) => h('a', { class: 'lane-chip', href: '#/asset/' + encodeURIComponent(x.a.id) }, nameOf(x.a), ' ', levelBadge(x.level))))) : null,

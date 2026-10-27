@@ -14,4 +14,7 @@ public interface Progress {
     void step(int n);
 
     void log(String line);
+
+    /** What is going on right now ("Zeek 42% · waiting on tshark"); replaces the previous one, never part of the log. */
+    default void status(String text) { }
 }

@@ -17,7 +17,21 @@ esac
 work=/work
 mkdir -p "$work"
 cd "$work"
-zeek -C -r "/in/$1" /opt/reconics/reconics.zeek
+# Zeek runs in the background so its read position can be reported: the console shows "Zeek 42%". The position is
+# the offset of Zeek's open file descriptor on the capture (/proc/PID/fdinfo), printed to stderr every 3 s as
+# "progress BYTES_READ BYTES_TOTAL"; ZeekRunner reads those lines and drops them from error messages.
+zeek -C -r "/in/$1" /opt/reconics/reconics.zeek &
+zp=$!
+total=$(stat -c %s "/in/$1")
+while kill -0 "$zp" 2>/dev/null; do
+  for fd in /proc/"$zp"/fd/*; do
+    [ "$(readlink "$fd" 2>/dev/null)" = "/in/$1" ] || continue
+    pos=$(sed -n 's/^pos:[[:space:]]*//p' /proc/"$zp"/fdinfo/"${fd##*/}" 2>/dev/null || true)
+    [ -n "$pos" ] && echo "progress $pos $total" >&2
+  done
+  sleep 3
+done
+wait "$zp"
 for f in ./*.log; do
   [ -e "$f" ] || continue
   cp -f "$f" /out/

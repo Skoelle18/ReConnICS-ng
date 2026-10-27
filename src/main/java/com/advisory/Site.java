@@ -277,6 +277,8 @@ final class Site {
         var prog = new com.pcap.service.Progress() {
             public void step(int n) { synchronized (Site.this) { progress(c, n, null); saveQuietly(c); } }
             public void log(String line) { synchronized (Site.this) { progress(c, 0, line); } }
+            @SuppressWarnings("unchecked")
+            public void status(String text) { synchronized (Site.this) { if (c.get("progress") instanceof Map<?, ?> p) ((Map<String, Object>) p).put("status", Inventory.clean(text, 300)); } }
         };
         try {
             var opts = new com.pcap.service.AnalysisOptions(false, true).withEngine(com.pcap.service.AnalysisOptions.Engine.valueOf(System.getProperty("reconics.engine", "AUTO")), null, null);

@@ -47,6 +47,12 @@ public final class AnalysisService {
     private final com.pcap.tools.Env toolEnv;
     private final AtomicBoolean cancelled = new AtomicBoolean(false);
     private Progress progress = Progress.NONE;
+    // what the status line (Progress.status) is built from; reset by each analyze()
+    private final java.util.concurrent.atomic.AtomicLong frames = new java.util.concurrent.atomic.AtomicLong();
+    private volatile boolean nativeDone;
+    private volatile int zeekPct = -1;
+    private volatile String zeekState = "off";
+    private final java.util.Set<String> pendingTools = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public AnalysisService() {
         this(Clock.systemUTC());
@@ -90,7 +96,13 @@ public final class AnalysisService {
         List<String> notes = new ArrayList<>();
         // Decide about Zeek before the long native pass, so a missing engine fails (or falls back) at once. Zeek then runs
         // beside the native pass: it only reads the capture file, and the two are merged afterwards.
-        ZeekRunner runner = new ZeekRunner(path, "docker", options.zeekTimeout());
+        frames.set(0); nativeDone = false; zeekPct = -1; zeekState = "off"; pendingTools.clear();
+        long started = System.nanoTime();
+        ZeekRunner runner = new ZeekRunner(path, "docker", options.zeekTimeout()).onPercent(pct -> {
+            int last = zeekPct;
+            zeekPct = pct;
+            if (pct / 10 > Math.max(last, 0) / 10) progress.log("Zeek + ICSNPP has read " + pct + "% of the capture");
+        });
         ZeekRunner.Engine zeekEngine = null;
         boolean useZeek = options.engine() != AnalysisOptions.Engine.NATIVE;
         if (useZeek && options.zeekLogs() == null) {
@@ -110,10 +122,12 @@ public final class AnalysisService {
         if (useZeek && options.zeekLogs() == null) {
             final ZeekRunner.Engine eng = zeekEngine;
             progress.log("Zeek + ICSNPP started (" + eng.describe() + ")");
+            zeekState = "running";
             zeekRun = CompletableFuture.supplyAsync(() -> {
                 long t0 = System.nanoTime();
                 try {
                     var r = runner.run(eng, capturePath);
+                    zeekState = "done";
                     progress.log("Zeek + ICSNPP finished its run in " + (System.nanoTime() - t0) / 1_000_000_000 + " s");
                     return r;
                 } catch (ZeekException e) {
@@ -121,17 +135,36 @@ public final class AnalysisService {
                 }
             });
         }
+        if (options.toolsEnabled()) com.pcap.tools.ToolPipeline.ADAPTERS.forEach(a -> pendingTools.add(a.component().id()));
         CompletableFuture<List<com.pcap.tools.ToolPipeline.Outcome>> toolsRun = options.toolsEnabled()
-                ? com.pcap.tools.ToolPipeline.start(toolEnv.withTimeout(options.zeekTimeout()), capturePath, progress::log) : null;
+                ? com.pcap.tools.ToolPipeline.start(toolEnv.withTimeout(options.zeekTimeout()), capturePath, line -> {
+                    progress.log(line);
+                    pendingTools.remove(line.substring(0, Math.max(0, line.indexOf(':'))));
+                }) : null;
         if (toolsRun != null) progress.log("tshark, Suricata, nDPI and p0f started (the ones installed)");
+        var heartbeat = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> { Thread t = new Thread(r, "reconics-status"); t.setDaemon(true); return t; });
+        heartbeat.scheduleWithFixedDelay(() -> progress.status(statusLine(started)), 0, 2, java.util.concurrent.TimeUnit.SECONDS);
         try {
             return analyzeWith(capturePath, verbose, options, notes, useZeek, zeekEngine, zeekRun, runner, toolsRun);
         } finally {
+            heartbeat.shutdownNow();
+            progress.status("");
             if (zeekRun != null) {
                 // whatever happened, the temp log directory must not outlive the call
                 zeekRun.thenAccept(r -> ZeekRunner.deleteTree(r.logDir()));
             }
         }
+    }
+
+    /** "Native decoder 820,000 frames · Zeek 42% · waiting on tshark, suricata · 31 s": what each engine is doing right now. */
+    private String statusLine(long startedNanos) {
+        List<String> p = new ArrayList<>();
+        p.add("Native decoder " + String.format(java.util.Locale.ROOT, "%,d", frames.get()) + " frames" + (nativeDone ? " (done)" : ""));
+        if (zeekState.equals("running")) p.add("Zeek " + (zeekPct >= 0 ? zeekPct + "%" : "running"));
+        else if (zeekState.equals("done")) p.add("Zeek (done)");
+        if (!pendingTools.isEmpty()) p.add("waiting on " + String.join(", ", new java.util.TreeSet<>(pendingTools)));
+        p.add((System.nanoTime() - startedNanos) / 1_000_000_000 + " s");
+        return String.join(" · ", p);
     }
 
     private AnalysisResult analyzeWith(Path capturePath, boolean verbose, AnalysisOptions options, List<String> notes, boolean useZeek,
@@ -178,6 +211,9 @@ public final class AnalysisService {
                 }
                 if (record == null) {
                     break;
+                }
+                if (reader.framesRead() % 1000 == 0) {
+                    frames.set(reader.framesRead());
                 }
                 if (reader.framesRead() % 100_000 == 0) {
                     progress.log(reader.framesRead() + " frames decoded");
@@ -239,6 +275,8 @@ public final class AnalysisService {
                 }
             }
 
+            frames.set(reader.framesRead());
+            nativeDone = true;
             progress.log(reader.framesRead() + " frames decoded in total (" + (malformed + truncated) + " malformed or truncated)");
             conversations.mergeInto(detector.flows(), options.icsOnly(), options.keepScans());
             if (!options.icsOnly()) {

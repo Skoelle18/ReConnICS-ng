@@ -77,8 +77,9 @@ public final class ToolPipeline {
         List<CompletableFuture<Outcome>> fs = new ArrayList<>();
         for (Adapter a : ADAPTERS) {
             fs.add(CompletableFuture.supplyAsync(() -> {
+                long t0 = System.nanoTime();
                 Outcome o = runOne(a, env, pcap);
-                log.accept(a.component().id() + ": " + o.status().state());
+                log.accept(a.component().id() + ": " + o.status().state() + " in " + (System.nanoTime() - t0) / 1_000_000_000 + " s");
                 return o;
             }, POOL));
         }

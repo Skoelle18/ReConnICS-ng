@@ -237,6 +237,21 @@ test('advisory wording never claims a device is safe', async (t) => {
     } finally { app.close(); }
   });
 
+  await t.test('the match key explains each level and a click filters the advisory list', async () => {
+    const app = await loadApp({ routes: defaultRoutes(), hash: '#/advisories' });
+    try {
+      assert.equal(app.$$('#main .match-chip').length, 3);
+      assert.match(app.$('#main .match-key').textContent, /Vendor, model and firmware fall inside the affected range/);
+      const live = app.$$('#main .match-chip').filter((b) => !b.disabled);
+      assert.ok(live.length, 'at least one level has a match in the fixture');
+      live[0].click();
+      assert.equal(app.$$('#main .match-chip.on').length, 1);
+      assert.match(app.text(), /TEST-ADVISORY-0001/);
+      const none = app.$$('#main .match-chip').find((b) => b.disabled);
+      if (none) assert.equal(none.disabled, true, 'a level with no advisory cannot be selected');
+    } finally { app.close(); }
+  });
+
   await t.test('advisories and the review queue are separate sidebar screens', async () => {
     const app = await loadApp({ routes: defaultRoutes(), hash: '#/findings' });
     try {

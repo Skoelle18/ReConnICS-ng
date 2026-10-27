@@ -46,6 +46,13 @@ public final class ZeekRunner {
     private final String path;
     private final String docker;
     private final Duration timeout;
+    private java.util.function.IntConsumer onPercent = p -> { };
+
+    /** Called every couple of seconds with how much of the capture Zeek has read (0-100), when the image reports it (docker/zeek/run.sh). */
+    public ZeekRunner onPercent(java.util.function.IntConsumer c) {
+        this.onPercent = c;
+        return this;
+    }
 
     public ZeekRunner() {
         this(System.getenv("PATH"), "docker", DEFAULT_TIMEOUT);
@@ -129,7 +136,12 @@ public final class ZeekRunner {
             throw new ZeekException(ZeekException.Kind.ENGINE, "cannot start " + cmd.get(0) + ": " + e.getMessage(), e);
         }
         try {
-            if (!p.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
+            long end = System.nanoTime() + timeout.toNanos();
+            boolean finished;
+            while (!(finished = p.waitFor(2, TimeUnit.SECONDS)) && System.nanoTime() < end) {
+                report(errFile);
+            }
+            if (!finished) {
                 p.destroyForcibly();
                 throw new ZeekException(ZeekException.Kind.ENGINE, "Zeek did not finish within " + timeout.toSeconds()
                         + " s and was stopped (raise it with --zeek-timeout SECONDS)");
@@ -147,10 +159,29 @@ public final class ZeekRunner {
         }
     }
 
+    private static final Pattern PROGRESS = Pattern.compile("^progress (\\d+) (\\d+)$");
+
+    /** The image's run.sh prints "progress BYTES_READ BYTES_TOTAL" to stderr every few seconds; the last one says how far Zeek is. */
+    private void report(Path errFile) {
+        try {
+            List<String> lines = Files.readAllLines(errFile, StandardCharsets.UTF_8);
+            for (int i = lines.size() - 1; i >= 0; i--) {
+                var m = PROGRESS.matcher(lines.get(i));
+                if (m.matches()) {
+                    long total = Long.parseLong(m.group(2));
+                    if (total > 0) onPercent.accept((int) Math.min(100, Long.parseLong(m.group(1)) * 100 / total));
+                    return;
+                }
+            }
+        } catch (IOException | RuntimeException e) {
+            // progress is a courtesy; the run itself is not affected
+        }
+    }
+
     /** Last 400 characters of Zeek's stderr with control characters flattened: it can echo capture-derived text. */
     private static String tail(Path f) {
         try {
-            String s = new String(Files.readAllBytes(f), StandardCharsets.UTF_8).replaceAll("[\\p{Cntrl}&&[^\\n]]", "?").strip();
+            String s = new String(Files.readAllBytes(f), StandardCharsets.UTF_8).replaceAll("(?m)^progress \\d+ \\d+\\n?", "").replaceAll("[\\p{Cntrl}&&[^\\n]]", "?").strip();
             s = s.length() > 400 ? s.substring(s.length() - 400) : s;
             return s.replace('\n', ' ');
         } catch (IOException e) {
