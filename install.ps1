@@ -47,6 +47,10 @@ function Done { Write-Host ("    done in {0:N0} s" -f ((Get-Date) - $script:t).T
 Step 1 'building the jar (Maven)';                                                                          Run mvn -B -ntp clean package -DskipTests; Done
 Step 2 'building the Zeek + ICSNPP image (Docker; the first build compiles Zeek and takes several minutes)'; Run docker build --progress=plain -t reconics-zeek docker/zeek; Done
 Step 3 'building the tools image (Docker; tshark, Suricata, nDPI, p0f)';                                    Run docker build --progress=plain -t reconics-tools docker/tools; Done
+# The optional reference data files come out of the tools image, so nothing else has to be installed: Wireshark's manuf (tshark -G manuf) and Nmap's two data files.
+New-Item -ItemType Directory -Force data/reference | Out-Null
+docker run --rm -v "$((Get-Location).Path)/data/reference:/out" reconics-tools sh -c 'tshark -G manuf > /out/manuf && cp /usr/share/nmap/nmap-mac-prefixes /usr/share/nmap/nmap-services /out/'
+if ($LASTEXITCODE -eq 0) { Write-Host '    reference data files written to data/reference' } else { Write-Host '    (reference data files skipped: they are optional)' }
 Step 4 'fetching the signed advisory index'
 New-Item -ItemType Directory -Force data | Out-Null
 $rel = 'https://github.com/Skoelle18/ReConnICS-ng/releases/download/advisory-index'

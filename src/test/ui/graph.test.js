@@ -594,3 +594,18 @@ test('edges', async (t) => {
     } finally { app.close(); }
   });
 });
+
+test('the Advisory nodes chip hides the advisory triangles and keeps the hosts', async () => {
+  const app = await loadApp({ routes: defaultRoutes(), hash: '#/graph' });
+  try {
+    const advNodes = () => app.window.eval('graphModel().nodes.filter((n) => n.adv).length');
+    const hosts = () => app.window.eval('graphModel().nodes.filter((n) => n.a).length');
+    const before = advNodes(), hostsBefore = hosts();
+    assert.ok(before > 0, 'the fixture has an EXACT or PROBABLE advisory');
+    const row = app.$$('#hidden-facet .row').find((r) => r.textContent.includes('Advisory nodes: ' + before));
+    assert.ok(row, 'the filter panel lists the advisory nodes with their count');
+    row.querySelector('button').click();
+    assert.equal(advNodes(), 0);
+    assert.equal(hosts(), hostsBefore);
+  } finally { app.close(); }
+});

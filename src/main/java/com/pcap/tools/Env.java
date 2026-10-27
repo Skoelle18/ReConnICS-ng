@@ -30,10 +30,11 @@ public final class Env {
         this.dataDirs = List.copyOf(dataDirs == null ? List.of() : dataDirs);
     }
 
-    /** This machine: PATH, {@code docker}, and the usual Wireshark / Nmap install folders plus {@code RECONICS_FOSS_DIR}. */
+    /** This machine: PATH, {@code docker}, {@code data/reference} (filled by the installer), the usual Wireshark / Nmap install folders and {@code RECONICS_FOSS_DIR}. */
     public static Env system() {
         List<Path> dirs = new ArrayList<>();
         addIfSet(dirs, System.getenv("RECONICS_FOSS_DIR"));
+        dirs.add(Path.of("data", "reference"));         // install.sh / install.ps1 copy manuf, nmap-mac-prefixes and nmap-services out of the tools image into this folder
         for (String v : new String[]{"ProgramFiles", "ProgramFiles(x86)"}) {
             String pf = System.getenv(v);
             if (pf != null) {

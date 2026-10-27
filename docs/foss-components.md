@@ -46,7 +46,8 @@ For each executable the adapter looks, in this order:
 1. On `PATH` (on Windows `.exe`, `.cmd` and `.bat` are tried, so a normal Wireshark/Nmap install on `PATH` works).
 2. In the Docker image `reconics-tools` (needs the `docker` client and a running daemon; the image is checked with `docker image inspect`).
 
-Data files (`manuf`, `nmap-mac-prefixes`, `nmap-services`) are looked for in the folder of the tool on `PATH`, in the default
+Data files (`manuf`, `nmap-mac-prefixes`, `nmap-services`) are looked for in `data/reference` (the installers write them there from the
+tools image: `tshark -G manuf`, and the `nmap-common` package; nothing else has to be installed), in the folder of the tool on `PATH`, in the default
 install folders (`Program Files\Wireshark`, `Program Files\Nmap`, `%APPDATA%\Wireshark`, `/usr/share/wireshark`, `/usr/share/nmap`,
 and the Homebrew/macOS equivalents) and in the folder named by the environment variable `RECONICS_FOSS_DIR`.
 

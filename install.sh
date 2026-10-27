@@ -41,6 +41,10 @@ step() { n=$1; shift; echo; echo "==> [$n/4] $1"; shift; t=$(date +%s); "$@"; ec
 step 1 "building the jar (Maven)"                       mvn -B -ntp clean package -DskipTests
 step 2 "building the Zeek + ICSNPP image (Docker; the first build compiles Zeek and takes several minutes)" docker build --progress=plain -t reconics-zeek docker/zeek
 step 3 "building the tools image (Docker; tshark, Suricata, nDPI, p0f)" docker build --progress=plain -t reconics-tools docker/tools
+# The optional reference data files come out of the tools image, so nothing else has to be installed: Wireshark's manuf (tshark -G manuf) and Nmap's two data files.
+mkdir -p data/reference
+docker run --rm -v "$PWD/data/reference:/out" reconics-tools sh -c 'tshark -G manuf > /out/manuf && cp /usr/share/nmap/nmap-mac-prefixes /usr/share/nmap/nmap-services /out/' \
+  && echo "    reference data files written to data/reference" || echo "    (reference data files skipped: they are optional)"
 echo; echo "==> [4/4] fetching the signed advisory index"
 mkdir -p data
 rel=https://github.com/Skoelle18/ReConnICS-ng/releases/download/advisory-index

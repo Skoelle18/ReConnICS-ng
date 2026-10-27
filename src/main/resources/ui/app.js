@@ -33,7 +33,7 @@ const SITE_DEFAULTS = { lifecycle: 'In service' };
 const S = { engines: null, inv: null, rank: [], site: {}, flows: [], caps: [], changes: [], index: null, search: '', levels: new Set(), purdueFilter: null, kevOnly: false, unvalOnly: false,
   openCap: null, openAdv: null, tab: 'attrs', editing: false, staged: null,
   color: 'role', layout: 'force', path: null, pathPick: false, pathStart: null,
-  hideUnknown: false, hideScans: true, hideSeenOnly: false, hideDecommissioned: true, showGroups: false, groups: [], macs: [], images: [], imageSummary: {}, protoOff: new Set(),
+  hideUnknown: false, hideAdvisories: false, hideScans: true, hideSeenOnly: false, hideDecommissioned: true, showGroups: false, groups: [], macs: [], images: [], imageSummary: {}, protoOff: new Set(),
   capAssets: {}, assetCaps: new Map(), capOff: new Set(), inventoryGroupMac: false, bulkSelected: new Set(), macExpanded: new Set(),
   findingsTab: 'advisories', advLevels: new Set(), advisorySearch: '', reviewSearch: '', logSearch: '', dataTab: 'captures' };
 
@@ -54,7 +54,7 @@ const sv = (tag, props, ...kids) => build(document.createElementNS('http://www.w
 const $ = (id) => document.getElementById(id);
 const store = { get(k) { try { return localStorage.getItem(k) || ''; } catch { return ''; } }, set(k, v) { try { localStorage.setItem(k, v); } catch { /* private window */ } } };
 // Which captures and host classes the graph shows survives a reload; the inventory uses the same view.
-const VIEW_KEYS = ['hideUnknown', 'hideScans', 'hideSeenOnly', 'hideDecommissioned', 'showGroups'];
+const VIEW_KEYS = ['hideUnknown', 'hideAdvisories', 'hideScans', 'hideSeenOnly', 'hideDecommissioned', 'showGroups'];
 try {
   const v = JSON.parse(store.get('view') || '{}');
   VIEW_KEYS.forEach((k) => { if (typeof v[k] === 'boolean') S[k] = v[k]; });
@@ -294,6 +294,7 @@ const isSeenOnly = (a) => !!a.seenOnly;
 const isDecommissioned = (a) => String(siteOf(a).lifecycle || '').toLowerCase() === 'decommissioned';
 function hiddenClasses() {
   return [
+    { label: 'Advisory nodes', n: advisoryRows().filter((r) => r.hits.some((x) => x.level === 'EXACT' || x.level === 'PROBABLE')).length, hidden: S.hideAdvisories, flip: () => { S.hideAdvisories = !S.hideAdvisories; relayoutSoon(); } },
     { label: 'Broadcast / multicast addresses', n: S.groups.length, hidden: !S.showGroups, flip: () => { S.showGroups = !S.showGroups; relayoutSoon(); } },
     { label: 'Scan-only conversations', n: S.flows.filter(isScan).length, hidden: S.hideScans, flip: () => { S.hideScans = !S.hideScans; } },
     { label: 'Seen-only hosts (low confidence)', n: assets().filter(isSeenOnly).length, hidden: S.hideSeenOnly, flip: () => { S.hideSeenOnly = !S.hideSeenOnly; } },
@@ -345,7 +346,7 @@ function focusCapture(id) {
 /** Clear every view filter and selection; captures, edits and the change log stay untouched. */
 function resetView() {
   S.search = ''; S.levels = new Set(); S.purdueFilter = null; S.kevOnly = false; S.unvalOnly = false;
-  S.hideUnknown = false; S.hideScans = true; S.hideSeenOnly = false; S.hideDecommissioned = true; S.showGroups = false; S.protoOff = new Set(); S.capOff = new Set();
+  S.hideUnknown = false; S.hideAdvisories = false; S.hideScans = true; S.hideSeenOnly = false; S.hideDecommissioned = true; S.showGroups = false; S.protoOff = new Set(); S.capOff = new Set();
   S.color = 'role'; S.layout = 'force'; S.path = null; S.pathPick = false; S.pathStart = null; S.openCap = null; S.openAdv = null;
   $('q').value = ''; $('start').value = ''; $('target').value = '';
   lastRoute = '';
@@ -1135,7 +1136,7 @@ function settingsScreen() {
   if (!S.settings) api('GET', 'settings').then((s) => { S.settings = s; render(); }).catch(() => {});
   return [h('div', {}, h('h1', {}, 'Settings', info('Choose the name recorded on future changes and the local console role.'))),
     h('div', { class: 'card card-b stack' }, h('label', { for: 'setting-rules', class: 'strong' }, 'Suricata rules', rules),
-      h('div', { class: 'small muted' }, 'ICS only loads about 110 rules (ET SCADA, Modbus, DNP3, ENIP and Suricata\'s own protocol events) and finishes a 60,000-frame capture in about a second. Full ET Open loads about 53,000 web, malware and policy rules and took 41 s for the same capture, over 10 minutes on a 2.3 million frame one. Applies to the next capture; stored on the server and written to the change log.')),
+      h('div', { class: 'small muted' }, 'ICS only checks traffic against a small set of rules for industrial protocols and SCADA attacks (Modbus, DNP3, EtherNet/IP), so it finishes quickly. Full ET Open adds tens of thousands of general web, malware and policy rules; it can take many minutes on a large capture and rarely matters on an industrial network. Applies to the next capture you upload.')),
     h('form', { class: 'card settings-form', onsubmit: (e) => {
       e.preventDefault();
       store.set('actor', actor.value.trim()); store.set('role', role.value);
@@ -1222,7 +1223,7 @@ function graphModel() {
     const f = { client: fs[0].client, server: fs[0].server, protocol: top, port: fs.length + ' ports', labels, messages: n, scanAttempts: scans, bytes: sum('bytes') || undefined, bytesToServer: sum('bytesToServer') || undefined, bytesToClient: sum('bytesToClient') || undefined, operations: fs.flatMap((x) => x.operations || []) };   // synthetic: what the drawing and the cards read
     edges.push({ id: 'm' + g[0].i, key: pairKey(g[0].from, g[0].to), kind: 'flow', from: g[0].from, to: g[0].to, f, n, members: fs, label: fs.length + ' threads' });
   }
-  {
+  if (!S.hideAdvisories) {
     for (const r of advisoryRows()) {
       const hits = r.hits.filter((x) => (x.level === 'EXACT' || x.level === 'PROBABLE') && (!S.levels.size || S.levels.has(x.level)) && assetVisible(x.a));   // vendor-only matches would hang every advisory on every device
       if (!hits.length) continue;

@@ -18,7 +18,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # wireshark-common asks whether non-root users may capture; offline reading needs no capture rights.
 RUN echo "wireshark-common wireshark-common/install-setuid boolean false" | debconf-set-selections \
  && apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates tshark suricata suricata-update libndpi-bin p0f \
+ && apt-get install -y --no-install-recommends ca-certificates tshark nmap-common suricata suricata-update libndpi-bin p0f \
  && rm -rf /var/lib/apt/lists/*
 
 # Rules: ET Open (suricata-update's default source) plus the rules Suricata ships for its own decoders and app-layer parsers

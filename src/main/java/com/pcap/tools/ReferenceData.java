@@ -60,7 +60,7 @@ public final class ReferenceData {
                                             java.util.function.Function<Iterator<String>, Map<String, String>> parser, String unit) {
         Optional<Path> p = env.dataFile(name, tool);
         if (p.isEmpty()) {
-            st.add(ToolStatus.notInstalled(id, "no " + name + " file found (looked beside " + tool + " on PATH, in the usual " + dirHint
+            st.add(ToolStatus.notInstalled(id, "no " + name + " file found (looked beside " + tool + " on PATH, in data/reference (the installer fills it), in the usual " + dirHint
                     + " folders and in RECONICS_FOSS_DIR)"));
             return Map.of();
         }
