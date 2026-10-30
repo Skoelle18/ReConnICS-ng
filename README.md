@@ -105,17 +105,12 @@ To start the console again later:
 java -jar target/reconnics-ng.jar serve --index data/index.json --pubkey keys/index-signing.pub --data data/site
 ```
 
-### Mandatory Flags
+### Frequently used flags
 
-| Command | Flag | What it does | Default |
-|---|---|---|---|
-| `serve` | `--index FILE` | Signed advisory snapshot to match devices against; must verify against `--pubkey` | required |
-| `serve` | `--pubkey FILE` | Public key that verifies the index | required unless `--insecure-no-verify` |
-| `serve` | `--data DIR` | Where the console stores uploaded captures, observations, edits and the change log | `data/site` |
+- `--index` points at the signed advisory **data file** (`data/index.json`). Git and the `advisory-index` release version and ship that file.
+- `--data` (default `data/site`) is the console's working directory: uploaded PCAPs, analyzer output, analyst edits and the append-only change log persist there across restarts. 
 
-- `--index` points at the signed advisory **data file** (`data/index.json`), not a git branch. Git and the `advisory-index` release version and ship that file; the console only reads it and refuses one whose signature does not verify.
-- `--data` (default `data/site`) is the console's working directory: uploaded PCAPs, analyzer output, analyst edits and the append-only change log persist there across restarts. Use a fresh directory for a clean demo.
-
+Refer to the documentation in [`docs/Site-console.md`](docs/Site-console.md) for more information about them.
 ## Project Structure
 
 ```
