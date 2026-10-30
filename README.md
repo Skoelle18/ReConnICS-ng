@@ -107,7 +107,7 @@ java -jar target/reconnics-ng.jar serve --index data/index.json --pubkey keys/in
 
 ### Frequently used flags
 
-- `--index` points at the signed advisory **data file** (`data/index.json`). Git and the `advisory-index` release version and ship that file.
+- `--index` points at the signed advisory **data file** (`data/index.json`). Git and the `advisory-index` release version ship that file.
 - `--data` (default `data/site`) is the console's working directory: uploaded PCAPs, analyzer output, analyst edits and the append-only change log persist there across restarts. 
 
 Refer to the documentation in [`docs/Site-console.md`](docs/Site-console.md) for more information about them.
