@@ -18,35 +18,7 @@ ReConnICS-ng is a passive OT asset inventory and network map built from packet c
 
 ## Workflow
 
-```mermaid
-flowchart TD
-    START([START<br/>ReConnICS-ng]) --> IN[/INPUT<br/>PCAP or PCAPNG capture/]
-    IN --> Q[Console capture queue<br/>one capture at a time]
-    Q --> NAT[Native decoders<br/>Modbus, EtherNet/IP, S7comm, SNMP, DNP3]
-    Q --> ZEEK{Zeek + ICSNPP<br/>available?}
-    Q --> TOOLS[Optional tools<br/>tshark, Suricata, nDPI, p0f]
-    ZEEK -- Yes --> Z[Zeek + ICSNPP<br/>Docker, no network, read-only capture]
-    ZEEK -- No --> NOTE[Native decoders only<br/>no operations table]
-    NAT --> MERGE[Merge into one set of hosts and conversations]
-    Z --> MERGE
-    NOTE --> MERGE
-    TOOLS --> MERGE
-    MERGE --> CLS[Classify hosts<br/>port hints, roles, seen-only hosts]
-    CLS --> VAL[[Validate against the ingest schema]]
-    VAL --> INV[Merge into the site inventory<br/>score the 14 CISA attributes]
-    INV --> SIG{Advisory index<br/>signature valid?}
-    SIG -- No --> REF[Refuse the index<br/>console will not start with it]
-    SIG -- Yes --> MATCH[Match devices to advisories<br/>EXACT, PROBABLE, POSSIBLE]
-    MATCH --> UI[Console<br/>graph, inventory, findings, review queue]
-    UI --> EDIT[Analyst validates and fills in<br/>criticality, zone, Purdue level]
-    EDIT --> LOG[(Append-only change log)]
-    EDIT --> OUT[/OUTPUT<br/>inventory.csv, inventory.json, report.html/]
-    UI --> OUT
-    OUT --> STOP([STOP<br/>ReConnICS-ng])
-    REF --> STOP
-    BAD[Unreadable capture<br/>marked failed with its exit code] -.-> STOP
-    Q -.-> BAD
-```
+![ReConnICS-ng inventory analysis pipeline](assets/inventory-analysis-pipeline.png)
 
 1. A capture is uploaded in the console (or sent with `analyze --post`) and queued. Captures run one at a time.
 2. The built-in decoders and, when available, Zeek with the ICSNPP parsers read the same file. A missing optional tool is shown as "not installed", never as an error.
