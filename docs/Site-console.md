@@ -35,6 +35,16 @@ no remote content. `serve` needs an index and refuses one whose signature does n
 [`docs/ingest-api.md`](docs/ingest-api.md#site-console-routes). Design:
 [`docs/plans/2026-10-17-ui.md`](docs/plans/2026-10-17-ui.md).
 
+The `--data` directory (default `data/site`) holds:
+
+```text
+DIR/captures/c0001.pcap        uploaded capture
+DIR/captures/c0001.json        queue entry (state, summary, diff)
+DIR/captures/c0001.obs.json    analyzer output (observations)
+DIR/edits.json                 {assetId: {field: {value, by, at}}}
+DIR/changes.jsonl              append-only change log
+```
+
 Tour:
 
 - **Asset graph** (the start page): a dark, full-bleed node-link view. Assets are round icon nodes coloured by role (or by advisory risk), observed
