@@ -35,12 +35,12 @@ Not done: Explore beyond USB for file transfer protocols and also see what OT de
 
 ## Architecture
 
-![architecture of local advisory index](/docs/local-advisory-arch.png)
+![architecture of local advisory index](local-advisory-arch.png)
 
 
 ## End users
 
-![swimlane diagram of end users](/docs/local-advisory-swimlane.png)
+![swimlane diagram of end users](local-advisory-swimlane.png)
 
 ## Running it
 
@@ -57,7 +57,7 @@ java -jar target/reconnics-ng.jar match --index data/index.json --pubkey keys/in
 java -jar target/reconnics-ng.jar serve --index data/index.json --pubkey keys/index-signing.pub   # ingest API for the PCAP project
 ```
 
-Plan and connector design: [docs/plan.md](docs/plan.md). Ingest contract for the PCAP project: [docs/ingest-api.md](docs/ingest-api.md).
+Plan and connector design: [docs/plan.md](plan.md). Ingest contract for the PCAP project: [docs/ingest-api.md](ingest-api.md).
 
 ## Implementation progress
 

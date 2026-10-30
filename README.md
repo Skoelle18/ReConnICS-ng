@@ -121,7 +121,7 @@ ReConnICS-ng/
 
 ## Documentation
 
-Everything technical (command line, Zeek setup, engines, ingest API, advisory index, troubleshooting) is in the wiki (the `docs/` folder): [`docs/Home.md`](docs/Home.md).
+Everything technical (command line, Zeek setup, engines, ingest API, advisory index, troubleshooting) is in the [wiki](https://github.com/Skoelle18/ReConnICS-ng/wiki) (source: [`docs/Home.md`](docs/Home.md)).
 
 ## Credits
 

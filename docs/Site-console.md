@@ -32,8 +32,8 @@ evidence for every CISA attribute, fill in what passive capture cannot (critical
 validate records, see matched advisories, import a new signed index and export JSON/CSV/HTML. Every edit lands in an
 append-only change log. State lives in plain files under `--data`; the server only listens on 127.0.0.1 and serves
 no remote content. `serve` needs an index and refuses one whose signature does not verify against `--pubkey`. Routes:
-[`docs/ingest-api.md`](docs/ingest-api.md#site-console-routes). Design:
-[`docs/plans/2026-10-17-ui.md`](docs/plans/2026-10-17-ui.md).
+[`docs/ingest-api.md`](ingest-api.md#site-console-routes). Design:
+[`docs/plans/2026-10-17-ui.md`](plans/2026-10-17-ui.md).
 
 Tour:
 

@@ -20,4 +20,4 @@ Reference:
 - [foss-components.md](foss-components.md): open-source tools wrapped, licences, what was not adopted
 - [Evaluation](https://github.com/Skoelle18/ReConnICS-ng/blob/main/eval/README.md): how detection and identity are measured
 
-This folder is the wiki: to publish it, copy `docs/` into the `ReConnICS-ng.wiki` repository (the GitHub wiki).
+This folder is the wiki source; `python3 scripts/publish-wiki.py` publishes it to the [GitHub wiki](https://github.com/Skoelle18/ReConnICS-ng/wiki).

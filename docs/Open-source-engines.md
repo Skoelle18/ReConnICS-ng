@@ -21,4 +21,4 @@ docker build -t reconics-tools docker/tools                  # tshark, Suricata 
 
 The console has an **Engines** screen (`#/engines`) with each tool's state, version, licence and which captures used it, and small
 source badges next to attribute evidence. What each tool is used for, how it is invoked, what was not adopted (for example Nmap's
-active OS detection) and what has only been unit-tested: [`docs/foss-components.md`](docs/foss-components.md). Licences: [`NOTICE`](NOTICE).
+active OS detection) and what has only been unit-tested: [`docs/foss-components.md`](foss-components.md). Licences: [`NOTICE`](../NOTICE).

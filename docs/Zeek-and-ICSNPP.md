@@ -4,7 +4,7 @@
 which address, how many registers, which values) and the hosts only Zeek sees. The jar still works on its own: the bare flag default
 is `--engine native`, which needs nothing installed. Zeek + the CISA [ICSNPP](https://github.com/cisagov/ICSNPP)
 parsers read the same capture. The native decoders always run too, and the two results are merged (see
-[`docs/architecture.md`](docs/architecture.md)). Everything is deterministic parsing and lookup tables; nothing in the tool is AI.
+[`docs/architecture.md`](architecture.md)). Everything is deterministic parsing and lookup tables; nothing in the tool is AI.
 
 | Flag | Meaning |
 |---|---|
