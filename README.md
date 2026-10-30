@@ -77,6 +77,12 @@ To start the console again later:
 java -jar target/reconnics-ng.jar serve --index data/index.json --pubkey keys/index-signing.pub --data data/site
 ```
 
+### Frequently used flags
+
+- `--index` points at the signed advisory **data file** (`data/index.json`).
+- `--data` (default `data/site`) is the console's working directory: uploaded PCAPs, analyzer output, analyst edits and the append-only change log persist there across restarts. 
+
+Refer to the documentation in [`docs/Site-console.md`](docs/Site-console.md) for more information about them.
 ## Project Structure
 
 ```

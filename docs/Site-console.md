@@ -35,7 +35,25 @@ no remote content. `serve` needs an index and refuses one whose signature does n
 [`docs/ingest-api.md`](ingest-api.md#site-console-routes). Design:
 [`docs/plans/2026-10-17-ui.md`](plans/2026-10-17-ui.md).
 
-Tour:
+### Commonly used Commands
+
+| Command | Flag | What it does | Default |
+|---|---|---|---|
+| `serve` | `--index FILE` | Signed advisory snapshot to match devices against; must verify against `--pubkey` | required |
+| `serve` | `--pubkey FILE` | Public key that verifies the index | required unless `--insecure-no-verify` |
+| `serve` | `--data DIR` | Where the console stores uploaded captures, observations, edits and the change log | `data/site` |
+
+- `--index` points at the signed advisory **data file** (`data/index.json`), not a git branch. Git and the `advisory-index` release version and ship that file; the console only reads it and refuses one whose signature does not verify.
+- `--data` (default `data/site`) is the console's working directory: uploaded PCAPs, analyzer output, analyst edits and the append-only change log persist there across restarts. Use a fresh directory for a clean demo.
+```text
+DIR/captures/c0001.pcap        uploaded capture
+DIR/captures/c0001.json        queue entry (state, summary, diff)
+DIR/captures/c0001.obs.json    analyzer output (observations)
+DIR/edits.json                 {assetId: {field: {value, by, at}}}
+DIR/changes.jsonl              append-only change log
+```
+
+### Tour:
 
 - **Asset graph** (the start page): a dark, full-bleed node-link view. Assets are round icon nodes coloured by role (or by advisory risk), observed
   conversations are labelled arrows (`Modbus FC43/14 request`, `ENIP ListIdentity`, `S7 SZL read request`), and EXACT/PROBABLE advisories hang off assets
