@@ -1,0 +1,3420 @@
+{
+ "file": "eval/captures/public/4SICS-GeekLounge-151022.pcap",
+ "frames": 2274747,
+ "linktypes": [
+  1
+ ],
+ "ip_fragments": 0,
+ "multi_ip_macs": {
+  "00:07:7c:1a:61:83": [
+   "192.168.2.110",
+   "192.168.2.133",
+   "192.168.2.137",
+   "192.168.2.166",
+   "192.168.2.199",
+   "192.168.2.21",
+   "192.168.2.22",
+   "192.168.2.44",
+   "192.168.2.53",
+   "192.168.2.64",
+   "192.168.88.1",
+   "21.2.2.2"
+  ],
+  "a0:99:9b:1c:d8:65": [
+   "192.168.143.155",
+   "192.168.88.53",
+   "192.168.88.54",
+   "192.168.88.55"
+  ],
+  "a2:f4:01:00:01:d6": [
+   "108.160.163.110",
+   "141.82.217.52",
+   "17.110.224.213",
+   "17.110.230.30",
+   "17.130.137.73",
+   "17.130.137.75",
+   "173.252.90.4",
+   "192.168.2.137",
+   "193.182.190.178",
+   "193.209.237.4",
+   "199.16.156.198",
+   "199.16.156.231",
+   "199.16.156.48",
+   "199.16.156.70",
+   "199.16.156.72",
+   "52.4.151.114",
+   "52.5.95.205",
+   "54.210.217.83",
+   "54.241.179.26",
+   "74.125.205.188",
+   "77.245.33.76",
+   "83.140.27.11",
+   "93.158.110.200",
+   "93.158.110.218"
+  ]
+ },
+ "vrrp": [],
+ "tcp_gaps": 2,
+ "hosts": {
+  "8.8.8.8": {
+   "first_frame": 8,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 5979,
+   "src_macs": {},
+   "dst_macs": {
+    "00:0a:dc:64:85:c2": [
+     5979,
+     8
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.0.1.82": {
+   "first_frame": 230223,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 0,
+   "src_macs": {},
+   "dst_macs": {},
+   "arp_macs": {
+    "28:cf:e9:18:b5:ed": [
+     7,
+     230223
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    1
+   ],
+   "ttls": {},
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.10.10.1": {
+   "first_frame": 1260379,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 0,
+   "src_macs": {},
+   "dst_macs": {},
+   "arp_macs": {
+    "04:18:d6:83:db:16": [
+     7,
+     1260379
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    1,
+    2
+   ],
+   "ttls": {},
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.10.10.10": {
+   "first_frame": 1,
+   "sent": 132329,
+   "sent_unicast": 132329,
+   "peers": {
+    "10.10.10.20": 113748,
+    "10.10.10.30": 18535,
+    "192.168.1.10": 42,
+    "192.168.2.137": 4
+   },
+   "recv_unicast": 237415,
+   "src_macs": {
+    "28:63:36:89:59:82": [
+     132329,
+     2
+    ]
+   },
+   "dst_macs": {
+    "28:63:36:89:59:82": [
+     237415,
+     1
+    ]
+   },
+   "arp_macs": {
+    "28:63:36:89:59:82": [
+     15,
+     51876
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    2
+   ],
+   "ttls": {
+    "30": 132329
+   },
+   "protos": [
+    "arp",
+    "s7"
+   ],
+   "tcp_served": [
+    102
+   ],
+   "udp_served": []
+  },
+  "10.10.10.20": {
+   "first_frame": 1,
+   "sent": 212757,
+   "sent_unicast": 212757,
+   "peers": {
+    "10.10.10.10": 212757
+   },
+   "recv_unicast": 113748,
+   "src_macs": {
+    "00:1c:06:27:64:11": [
+     212757,
+     1
+    ]
+   },
+   "dst_macs": {
+    "00:1c:06:27:64:11": [
+     113748,
+     2
+    ]
+   },
+   "arp_macs": {
+    "00:1c:06:27:64:11": [
+     1248,
+     170
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    2
+   ],
+   "ttls": {
+    "30": 212757
+   },
+   "protos": [
+    "arp",
+    "s7"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.10.10.30": {
+   "first_frame": 785923,
+   "sent": 24608,
+   "sent_unicast": 24608,
+   "peers": {
+    "10.10.10.10": 24600,
+    "172.16.184.40": 8
+   },
+   "recv_unicast": 18535,
+   "src_macs": {
+    "54:ee:75:3f:4a:db": [
+     24608,
+     785923
+    ]
+   },
+   "dst_macs": {
+    "54:ee:75:3f:4a:db": [
+     18535,
+     1256684
+    ]
+   },
+   "arp_macs": {
+    "54:ee:75:3f:4a:db": [
+     194,
+     786009
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    1,
+    2
+   ],
+   "ttls": {
+    "128": 24608
+   },
+   "protos": [
+    "arp",
+    "s7"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.100.152.1": {
+   "first_frame": 2234423,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 0,
+   "src_macs": {},
+   "dst_macs": {},
+   "arp_macs": {
+    "a2:f4:01:00:01:d6": [
+     36,
+     2234423
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    2
+   ],
+   "ttls": {},
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.100.152.10": {
+   "first_frame": 2237370,
+   "sent": 2,
+   "sent_unicast": 2,
+   "peers": {
+    "10.100.152.128": 2
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "1c:e8:5d:69:c5:c2": [
+     2,
+     2239447
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {
+    "1c:e8:5d:69:c5:c2": [
+     4,
+     2237370
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    1
+   ],
+   "ttls": {
+    "255": 2
+   },
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.100.152.15": {
+   "first_frame": 2263766,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 12,
+   "src_macs": {},
+   "dst_macs": {
+    "78:31:c1:ca:8d:82": [
+     12,
+     2263766
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.100.152.92": {
+   "first_frame": 230224,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 0,
+   "src_macs": {},
+   "dst_macs": {},
+   "arp_macs": {
+    "28:cf:e9:18:b5:ed": [
+     7,
+     230224
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    1
+   ],
+   "ttls": {},
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.100.152.119": {
+   "first_frame": 2239267,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 30,
+   "src_macs": {},
+   "dst_macs": {
+    "6c:40:08:95:a0:66": [
+     30,
+     2239267
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.100.152.128": {
+   "first_frame": 2234337,
+   "sent": 7915,
+   "sent_unicast": 7915,
+   "peers": {
+    "77.245.33.76": 7914,
+    "83.140.27.11": 1
+   },
+   "recv_unicast": 8494,
+   "src_macs": {
+    "00:0c:be:04:f3:0a": [
+     7915,
+     2234338
+    ]
+   },
+   "dst_macs": {
+    "00:0c:be:04:f3:0a": [
+     8494,
+     2234337
+    ]
+   },
+   "arp_macs": {
+    "00:0c:be:04:f3:0a": [
+     16,
+     2234422
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    1
+   ],
+   "ttls": {
+    "64": 7915
+   },
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.100.158.168": {
+   "first_frame": 2261248,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 5,
+   "src_macs": {},
+   "dst_macs": {
+    "20:62:74:23:0a:60": [
+     5,
+     2261248
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.100.158.185": {
+   "first_frame": 2235575,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 8,
+   "src_macs": {},
+   "dst_macs": {
+    "20:c9:d0:78:96:ef": [
+     8,
+     2235575
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.100.159.27": {
+   "first_frame": 2239530,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 5,
+   "src_macs": {},
+   "dst_macs": {
+    "9c:f3:87:d9:d7:e0": [
+     5,
+     2239530
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.100.159.125": {
+   "first_frame": 2235274,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 2,
+   "src_macs": {},
+   "dst_macs": {
+    "c0:ee:fb:42:90:27": [
+     2,
+     2235274
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.100.159.151": {
+   "first_frame": 2239355,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 19,
+   "src_macs": {},
+   "dst_macs": {
+    "9c:f3:87:c1:4c:d6": [
+     19,
+     2239355
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.100.159.207": {
+   "first_frame": 2234320,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 12,
+   "src_macs": {},
+   "dst_macs": {
+    "f0:25:b7:76:4b:12": [
+     12,
+     2234320
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.100.159.218": {
+   "first_frame": 2239340,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 1,
+   "src_macs": {},
+   "dst_macs": {
+    "30:a8:db:bc:ed:46": [
+     1,
+     2239340
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.100.159.227": {
+   "first_frame": 2268509,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 13,
+   "src_macs": {},
+   "dst_macs": {
+    "38:b1:db:e1:e9:cf": [
+     13,
+     2268509
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.100.159.228": {
+   "first_frame": 2237487,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 10,
+   "src_macs": {},
+   "dst_macs": {
+    "90:b9:31:05:b8:80": [
+     10,
+     2237487
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.100.159.247": {
+   "first_frame": 2265873,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 2,
+   "src_macs": {},
+   "dst_macs": {
+    "a4:5e:60:d9:2e:1b": [
+     2,
+     2265873
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.100.159.253": {
+   "first_frame": 2234500,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 2,
+   "src_macs": {},
+   "dst_macs": {
+    "ec:1f:72:41:95:72": [
+     2,
+     2234500
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "10.218.104.244": {
+   "first_frame": 1109826,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 4,
+   "src_macs": {},
+   "dst_macs": {
+    "00:07:7c:1a:61:83": [
+     2,
+     1109826
+    ],
+    "00:0a:dc:64:85:c2": [
+     2,
+     1983890
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "17.110.224.213": {
+   "first_frame": 2271709,
+   "sent": 8,
+   "sent_unicast": 8,
+   "peers": {
+    "10.100.159.228": 8
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     8,
+     2271709
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "40": 8
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "17.110.230.30": {
+   "first_frame": 2235575,
+   "sent": 8,
+   "sent_unicast": 8,
+   "peers": {
+    "10.100.158.185": 8
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     8,
+     2235575
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "40": 8
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "17.130.137.73": {
+   "first_frame": 2265759,
+   "sent": 1,
+   "sent_unicast": 1,
+   "peers": {
+    "10.100.159.151": 1
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     1,
+     2265759
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "244": 1
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "17.130.137.75": {
+   "first_frame": 2265764,
+   "sent": 1,
+   "sent_unicast": 1,
+   "peers": {
+    "10.100.159.151": 1
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     1,
+     2265764
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "243": 1
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "17.253.34.253": {
+   "first_frame": 230389,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 9,
+   "src_macs": {},
+   "dst_macs": {
+    "00:0a:dc:64:85:c2": [
+     2,
+     230389
+    ],
+    "00:07:7c:1a:61:83": [
+     7,
+     232366
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "17.253.54.251": {
+   "first_frame": 2120481,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 1,
+   "src_macs": {},
+   "dst_macs": {
+    "00:07:7c:1a:61:83": [
+     1,
+     2120481
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "21.2.2.2": {
+   "first_frame": 230761,
+   "sent": 371,
+   "sent_unicast": 371,
+   "peers": {
+    "192.168.88.52": 226,
+    "192.168.88.53": 68,
+    "192.168.88.61": 34,
+    "192.168.88.60": 14,
+    "192.168.88.55": 14,
+    "192.168.88.49": 7,
+    "192.168.88.95": 6,
+    "192.168.88.51": 2
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "00:07:7c:1a:61:83": [
+     371,
+     230761
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "63": 371
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "52.4.151.114": {
+   "first_frame": 2239355,
+   "sent": 3,
+   "sent_unicast": 3,
+   "peers": {
+    "10.100.159.151": 3
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     3,
+     2239355
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "47": 3
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "52.5.95.205": {
+   "first_frame": 2239746,
+   "sent": 1,
+   "sent_unicast": 1,
+   "peers": {
+    "10.100.159.151": 1
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     1,
+     2239746
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "41": 1
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "54.210.217.83": {
+   "first_frame": 2263766,
+   "sent": 3,
+   "sent_unicast": 3,
+   "peers": {
+    "10.100.152.15": 3
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     3,
+     2263766
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "41": 3
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "54.241.179.26": {
+   "first_frame": 2267443,
+   "sent": 8,
+   "sent_unicast": 8,
+   "peers": {
+    "10.100.159.207": 8
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     8,
+     2267443
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "49": 8
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "74.125.205.188": {
+   "first_frame": 2268509,
+   "sent": 13,
+   "sent_unicast": 13,
+   "peers": {
+    "10.100.159.227": 13
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     13,
+     2268509
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "49": 13
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "77.245.33.76": {
+   "first_frame": 2234337,
+   "sent": 8491,
+   "sent_unicast": 8491,
+   "peers": {
+    "10.100.152.128": 8491
+   },
+   "recv_unicast": 7914,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     8491,
+     2234337
+    ]
+   },
+   "dst_macs": {
+    "a2:f4:01:00:01:d6": [
+     7914,
+     2234338
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "52": 8491
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "83.140.27.11": {
+   "first_frame": 2239340,
+   "sent": 2,
+   "sent_unicast": 2,
+   "peers": {
+    "10.100.159.218": 1,
+    "10.100.152.128": 1
+   },
+   "recv_unicast": 1,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     2,
+     2239340
+    ]
+   },
+   "dst_macs": {
+    "a2:f4:01:00:01:d6": [
+     1,
+     2239456
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "63": 2
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "93.158.94.210": {
+   "first_frame": 2120423,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 114,
+   "src_macs": {},
+   "dst_macs": {
+    "00:07:7c:1a:61:83": [
+     114,
+     2120423
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "93.158.110.200": {
+   "first_frame": 2239530,
+   "sent": 5,
+   "sent_unicast": 5,
+   "peers": {
+    "10.100.159.27": 5
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     5,
+     2239530
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "60": 5
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "93.158.110.218": {
+   "first_frame": 2261248,
+   "sent": 5,
+   "sent_unicast": 5,
+   "peers": {
+    "10.100.158.168": 5
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     5,
+     2261248
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "60": 5
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "108.160.163.110": {
+   "first_frame": 2265873,
+   "sent": 2,
+   "sent_unicast": 2,
+   "peers": {
+    "10.100.159.247": 2
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     2,
+     2265873
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "51": 2
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "141.82.217.52": {
+   "first_frame": 2239267,
+   "sent": 30,
+   "sent_unicast": 30,
+   "peers": {
+    "10.100.152.119": 30
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     30,
+     2239267
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "57": 30
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "172.16.184.40": {
+   "first_frame": 785923,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 8,
+   "src_macs": {},
+   "dst_macs": {
+    "04:18:d6:83:db:16": [
+     8,
+     785923
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "173.252.90.4": {
+   "first_frame": 2234500,
+   "sent": 2,
+   "sent_unicast": 2,
+   "peers": {
+    "10.100.159.253": 2
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     2,
+     2234500
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "77": 2
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.0.2": {
+   "first_frame": 2237409,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 0,
+   "src_macs": {},
+   "dst_macs": {},
+   "arp_macs": {
+    "34:12:98:dc:df:fb": [
+     3,
+     2237409
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    1
+   ],
+   "ttls": {},
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.0.3": {
+   "first_frame": 230491,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 40,
+   "src_macs": {},
+   "dst_macs": {
+    "00:0a:dc:64:85:c2": [
+     5,
+     230491
+    ],
+    "00:07:7c:1a:61:83": [
+     35,
+     231096
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.1.2": {
+   "first_frame": 234954,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 35,
+   "src_macs": {},
+   "dst_macs": {
+    "00:07:7c:1a:61:83": [
+     35,
+     234954
+    ]
+   },
+   "arp_macs": {
+    "18:34:51:d5:4f:9a": [
+     3,
+     2239497
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    1
+   ],
+   "ttls": {},
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.1.10": {
+   "first_frame": 1260378,
+   "sent": 54,
+   "sent_unicast": 54,
+   "peers": {
+    "10.10.10.10": 54
+   },
+   "recv_unicast": 42,
+   "src_macs": {
+    "04:18:d6:83:db:16": [
+     54,
+     1260378
+    ]
+   },
+   "dst_macs": {
+    "04:18:d6:83:db:16": [
+     42,
+     1260380
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "126": 30,
+    "127": 24
+   },
+   "protos": [
+    "s7"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.1.68": {
+   "first_frame": 232080,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 7,
+   "src_macs": {},
+   "dst_macs": {
+    "00:07:7c:1a:61:83": [
+     7,
+     232080
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.1.71": {
+   "first_frame": 230760,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 61,
+   "src_macs": {},
+   "dst_macs": {
+    "00:07:7c:1a:61:83": [
+     56,
+     230760
+    ],
+    "00:0a:dc:64:85:c2": [
+     5,
+     1786742
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.1.79": {
+   "first_frame": 1785871,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 5,
+   "src_macs": {},
+   "dst_macs": {
+    "00:0a:dc:64:85:c2": [
+     5,
+     1785871
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.2.21": {
+   "first_frame": 1285012,
+   "sent": 2303,
+   "sent_unicast": 2303,
+   "peers": {
+    "192.168.88.60": 2301,
+    "192.168.88.50": 2
+   },
+   "recv_unicast": 2029,
+   "src_macs": {
+    "00:07:7c:1a:61:83": [
+     2303,
+     1285012
+    ]
+   },
+   "dst_macs": {
+    "00:07:7c:1a:61:83": [
+     2029,
+     1285013
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "62": 1249,
+    "253": 1054
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.2.22": {
+   "first_frame": 1291939,
+   "sent": 280145,
+   "sent_unicast": 280145,
+   "peers": {
+    "192.168.88.15": 48142,
+    "192.168.88.60": 37825,
+    "192.168.88.30": 37026,
+    "192.168.88.51": 36994,
+    "192.168.88.49": 36750,
+    "192.168.88.50": 36219,
+    "192.168.88.25": 32847,
+    "192.168.88.61": 3246
+   },
+   "recv_unicast": 227663,
+   "src_macs": {
+    "00:07:7c:1a:61:83": [
+     280145,
+     1291939
+    ]
+   },
+   "dst_macs": {
+    "00:07:7c:1a:61:83": [
+     227663,
+     1291959
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "48": 12102,
+    "49": 12025,
+    "46": 12019,
+    "53": 12009
+   },
+   "protos": [
+    "enip",
+    "s7"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.2.44": {
+   "first_frame": 292021,
+   "sent": 5700,
+   "sent_unicast": 5700,
+   "peers": {
+    "192.168.88.20": 5312,
+    "192.168.88.60": 173,
+    "192.168.88.50": 48,
+    "192.168.88.100": 47,
+    "192.168.88.61": 38,
+    "192.168.88.2": 12,
+    "192.168.88.130": 11,
+    "192.168.88.115": 8
+   },
+   "recv_unicast": 1669,
+   "src_macs": {
+    "00:07:7c:1a:61:83": [
+     5700,
+     292021
+    ]
+   },
+   "dst_macs": {
+    "00:07:7c:1a:61:83": [
+     1669,
+     292026
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "253": 5046,
+    "62": 654
+   },
+   "protos": [
+    "enip",
+    "modbus",
+    "s7"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.2.53": {
+   "first_frame": 1903935,
+   "sent": 86690,
+   "sent_unicast": 86690,
+   "peers": {
+    "192.168.88.95": 9369,
+    "192.168.88.115": 8042,
+    "192.168.88.60": 7762,
+    "192.168.88.75": 7482,
+    "192.168.88.61": 7369,
+    "192.168.88.51": 6960,
+    "192.168.88.49": 5674,
+    "192.168.88.50": 5061
+   },
+   "recv_unicast": 66573,
+   "src_macs": {
+    "00:07:7c:1a:61:83": [
+     86690,
+     1903935
+    ]
+   },
+   "dst_macs": {
+    "00:07:7c:1a:61:83": [
+     66573,
+     1903937
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "62": 86556,
+    "1": 6,
+    "2": 6,
+    "3": 6
+   },
+   "protos": [
+    "enip"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.2.64": {
+   "first_frame": 1991694,
+   "sent": 199,
+   "sent_unicast": 199,
+   "peers": {
+    "192.168.88.105": 131,
+    "192.168.88.60": 43,
+    "192.168.88.85": 20,
+    "192.168.88.61": 3,
+    "192.168.88.50": 2
+   },
+   "recv_unicast": 48,
+   "src_macs": {
+    "00:07:7c:1a:61:83": [
+     199,
+     1991694
+    ]
+   },
+   "dst_macs": {
+    "00:07:7c:1a:61:83": [
+     48,
+     1991695
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "62": 199
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.2.110": {
+   "first_frame": 2078077,
+   "sent": 2,
+   "sent_unicast": 2,
+   "peers": {
+    "192.168.88.30": 2
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "00:07:7c:1a:61:83": [
+     2,
+     2078077
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "1": 2
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.2.133": {
+   "first_frame": 374265,
+   "sent": 6502,
+   "sent_unicast": 6502,
+   "peers": {
+    "192.168.88.60": 1073,
+    "192.168.88.95": 1035,
+    "192.168.88.61": 974,
+    "192.168.88.20": 695,
+    "192.168.88.75": 625,
+    "192.168.88.25": 521,
+    "192.168.88.30": 504,
+    "192.168.88.50": 363
+   },
+   "recv_unicast": 4519,
+   "src_macs": {
+    "00:07:7c:1a:61:83": [
+     6502,
+     374265
+    ]
+   },
+   "dst_macs": {
+    "00:07:7c:1a:61:83": [
+     4519,
+     374289
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "62": 3304,
+    "57": 198,
+    "51": 177,
+    "56": 147
+   },
+   "protos": [
+    "enip",
+    "modbus",
+    "s7"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.2.137": {
+   "first_frame": 252293,
+   "sent": 203975,
+   "sent_unicast": 203975,
+   "peers": {
+    "192.168.88.60": 93594,
+    "192.168.88.50": 70822,
+    "192.168.88.95": 6752,
+    "192.168.88.75": 6340,
+    "192.168.88.61": 4790,
+    "192.168.88.51": 4391,
+    "192.168.88.115": 4274,
+    "192.168.88.49": 3674
+   },
+   "recv_unicast": 190762,
+   "src_macs": {
+    "00:07:7c:1a:61:83": [
+     203969,
+     252293
+    ],
+    "00:07:7c:1a:61:85": [
+     4,
+     791505
+    ],
+    "a2:f4:01:00:01:d6": [
+     2,
+     2239703
+    ]
+   },
+   "dst_macs": {
+    "00:07:7c:1a:61:83": [
+     190754,
+     252298
+    ],
+    "00:07:7c:1a:61:85": [
+     4,
+     791506
+    ],
+    "a2:f4:01:00:01:d6": [
+     4,
+     2239699
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "62": 203973,
+    "255": 2
+   },
+   "protos": [
+    "enip",
+    "modbus",
+    "s7"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.2.166": {
+   "first_frame": 371762,
+   "sent": 69827,
+   "sent_unicast": 69827,
+   "peers": {
+    "192.168.88.60": 18728,
+    "192.168.88.61": 18725,
+    "192.168.88.95": 18590,
+    "192.168.88.15": 2059,
+    "192.168.88.51": 1839,
+    "192.168.88.75": 1759,
+    "192.168.88.25": 1553,
+    "192.168.88.115": 1476
+   },
+   "recv_unicast": 66768,
+   "src_macs": {
+    "00:07:7c:1a:61:83": [
+     69827,
+     371762
+    ]
+   },
+   "dst_macs": {
+    "00:07:7c:1a:61:83": [
+     66768,
+     371763
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "126": 55220,
+    "53": 679,
+    "56": 673,
+    "49": 664
+   },
+   "protos": [
+    "modbus"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.2.199": {
+   "first_frame": 329252,
+   "sent": 396051,
+   "sent_unicast": 396051,
+   "peers": {
+    "192.168.88.75": 144170,
+    "192.168.88.85": 68629,
+    "192.168.88.50": 58504,
+    "192.168.88.60": 49351,
+    "192.168.88.130": 45569,
+    "192.168.88.51": 6406,
+    "192.168.88.61": 3999,
+    "192.168.88.30": 3382
+   },
+   "recv_unicast": 188979,
+   "src_macs": {
+    "00:07:7c:1a:61:83": [
+     396051,
+     329252
+    ]
+   },
+   "dst_macs": {
+    "00:07:7c:1a:61:83": [
+     188979,
+     330285
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "41": 17311,
+    "51": 17181,
+    "54": 17046,
+    "44": 17032
+   },
+   "protos": [
+    "enip",
+    "modbus",
+    "s7"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.57.2": {
+   "first_frame": 437946,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 5,
+   "src_macs": {},
+   "dst_macs": {
+    "00:71:00:ff:11:a2": [
+     5,
+     437946
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.57.3": {
+   "first_frame": 437946,
+   "sent": 5,
+   "sent_unicast": 5,
+   "peers": {
+    "192.168.57.2": 5
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "00:1e:ec:26:d2:ac": [
+     5,
+     437946
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "128": 5
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.88.1": {
+   "first_frame": 10,
+   "sent": 26831,
+   "sent_unicast": 26831,
+   "peers": {
+    "192.168.88.61": 26322,
+    "192.168.88.52": 427,
+    "192.168.88.53": 56,
+    "192.168.88.254": 12,
+    "192.168.88.54": 9,
+    "192.168.88.55": 3,
+    "192.168.88.25": 1,
+    "192.168.88.51": 1
+   },
+   "recv_unicast": 26922,
+   "src_macs": {
+    "00:07:7c:1a:61:83": [
+     26831,
+     11
+    ]
+   },
+   "dst_macs": {
+    "00:07:7c:1a:61:83": [
+     26922,
+     10
+    ]
+   },
+   "arp_macs": {
+    "00:07:7c:1a:61:83": [
+     5304,
+     91
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    1,
+    2
+   ],
+   "ttls": {
+    "64": 26831
+   },
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [
+    22,
+    53,
+    80,
+    443
+   ],
+   "udp_served": []
+  },
+  "192.168.88.2": {
+   "first_frame": 252292,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 3189,
+   "src_macs": {},
+   "dst_macs": {
+    "00:0a:dc:64:85:c3": [
+     3189,
+     252293
+    ]
+   },
+   "arp_macs": {
+    "00:0a:dc:64:85:c3": [
+     81,
+     252292
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    2
+   ],
+   "ttls": {},
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.88.15": {
+   "first_frame": 252301,
+   "sent": 64,
+   "sent_unicast": 64,
+   "peers": {
+    "192.168.2.166": 23,
+    "192.168.2.133": 20,
+    "192.168.2.199": 11,
+    "192.168.2.22": 10
+   },
+   "recv_unicast": 54978,
+   "src_macs": {
+    "00:e0:62:00:17:0a": [
+     64,
+     371819
+    ]
+   },
+   "dst_macs": {
+    "00:e0:62:00:17:0a": [
+     54978,
+     252302
+    ]
+   },
+   "arp_macs": {
+    "00:e0:62:00:17:0a": [
+     221,
+     252301
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    2
+   ],
+   "ttls": {
+    "32": 64
+   },
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.88.20": {
+   "first_frame": 252303,
+   "sent": 10806,
+   "sent_unicast": 10806,
+   "peers": {
+    "192.168.2.53": 4271,
+    "192.168.2.137": 3259,
+    "192.168.2.44": 1397,
+    "192.168.2.166": 1276,
+    "192.168.2.133": 576,
+    "192.168.2.199": 27
+   },
+   "recv_unicast": 14964,
+   "src_macs": {
+    "00:a0:45:6f:4b:83": [
+     10806,
+     252305
+    ]
+   },
+   "dst_macs": {
+    "00:a0:45:6f:4b:83": [
+     14964,
+     252304
+    ]
+   },
+   "arp_macs": {
+    "00:a0:45:6f:4b:83": [
+     32,
+     252303
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    2
+   ],
+   "ttls": {
+    "64": 10689,
+    "255": 117
+   },
+   "protos": [
+    "arp",
+    "enip",
+    "modbus",
+    "s7"
+   ],
+   "tcp_served": [
+    80,
+    502,
+    1962
+   ],
+   "udp_served": []
+  },
+  "192.168.88.25": {
+   "first_frame": 354947,
+   "sent": 42373,
+   "sent_unicast": 42373,
+   "peers": {
+    "192.168.2.22": 32820,
+    "192.168.2.53": 4513,
+    "192.168.2.199": 3233,
+    "192.168.2.166": 1422,
+    "192.168.2.133": 384,
+    "192.168.88.1": 1
+   },
+   "recv_unicast": 42944,
+   "src_macs": {
+    "00:d0:c9:a5:c9:2d": [
+     42373,
+     354947
+    ]
+   },
+   "dst_macs": {
+    "00:d0:c9:a5:c9:2d": [
+     42944,
+     354948
+    ]
+   },
+   "arp_macs": {
+    "00:d0:c9:a5:c9:2d": [
+     213,
+     355341
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    2
+   ],
+   "ttls": {
+    "64": 42372,
+    "255": 1
+   },
+   "protos": [
+    "arp",
+    "enip",
+    "modbus",
+    "s7"
+   ],
+   "tcp_served": [
+    21,
+    80,
+    81
+   ],
+   "udp_served": []
+  },
+  "192.168.88.30": {
+   "first_frame": 252308,
+   "sent": 48414,
+   "sent_unicast": 48414,
+   "peers": {
+    "192.168.2.22": 36701,
+    "192.168.2.53": 4182,
+    "192.168.2.137": 3269,
+    "192.168.2.199": 2737,
+    "192.168.2.166": 1169,
+    "192.168.2.133": 356
+   },
+   "recv_unicast": 50134,
+   "src_macs": {
+    "00:1c:06:01:d4:23": [
+     48414,
+     252335
+    ]
+   },
+   "dst_macs": {
+    "00:1c:06:01:d4:23": [
+     50134,
+     252309
+    ]
+   },
+   "arp_macs": {
+    "00:1c:06:01:d4:23": [
+     221,
+     252308
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    2
+   ],
+   "ttls": {
+    "30": 48414
+   },
+   "protos": [
+    "arp",
+    "enip",
+    "modbus",
+    "s7"
+   ],
+   "tcp_served": [
+    102,
+    5001
+   ],
+   "udp_served": []
+  },
+  "192.168.88.49": {
+   "first_frame": 252315,
+   "sent": 50162,
+   "sent_unicast": 50162,
+   "peers": {
+    "192.168.2.22": 36668,
+    "192.168.2.53": 5498,
+    "192.168.2.137": 3506,
+    "192.168.2.199": 3157,
+    "192.168.2.166": 1198,
+    "192.168.2.133": 129,
+    "192.168.2.44": 6
+   },
+   "recv_unicast": 50676,
+   "src_macs": {
+    "00:40:8c:7f:0b:bc": [
+     50162,
+     252326
+    ]
+   },
+   "dst_macs": {
+    "00:40:8c:7f:0b:bc": [
+     50676,
+     252319
+    ]
+   },
+   "arp_macs": {
+    "00:40:8c:7f:0b:bc": [
+     368,
+     252315
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    1,
+    2
+   ],
+   "ttls": {
+    "64": 50162
+   },
+   "protos": [
+    "arp",
+    "enip",
+    "modbus",
+    "s7"
+   ],
+   "tcp_served": [
+    21,
+    80,
+    49152
+   ],
+   "udp_served": []
+  },
+  "192.168.88.50": {
+   "first_frame": 252317,
+   "sent": 169493,
+   "sent_unicast": 169493,
+   "peers": {
+    "192.168.2.137": 68699,
+    "192.168.2.199": 58113,
+    "192.168.2.22": 36207,
+    "192.168.2.53": 5027,
+    "192.168.2.166": 1178,
+    "192.168.2.133": 231,
+    "192.168.2.44": 34,
+    "192.168.2.21": 2
+   },
+   "recv_unicast": 172337,
+   "src_macs": {
+    "00:05:e4:01:24:d3": [
+     169493,
+     252369
+    ]
+   },
+   "dst_macs": {
+    "00:05:e4:01:24:d3": [
+     172337,
+     252321
+    ]
+   },
+   "arp_macs": {
+    "00:05:e4:01:24:d3": [
+     308,
+     252317
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    2
+   ],
+   "ttls": {
+    "128": 169493
+   },
+   "protos": [
+    "arp",
+    "enip",
+    "modbus",
+    "s7"
+   ],
+   "tcp_served": [
+    502,
+    789,
+    790
+   ],
+   "udp_served": []
+  },
+  "192.168.88.51": {
+   "first_frame": 252314,
+   "sent": 55447,
+   "sent_unicast": 55447,
+   "peers": {
+    "192.168.2.22": 36825,
+    "192.168.2.53": 6580,
+    "192.168.2.199": 6084,
+    "192.168.2.137": 4116,
+    "192.168.2.166": 1699,
+    "192.168.2.133": 133,
+    "192.168.2.44": 7,
+    "10.218.104.244": 2
+   },
+   "recv_unicast": 56769,
+   "src_macs": {
+    "00:d0:c9:bd:2e:57": [
+     55447,
+     252322
+    ]
+   },
+   "dst_macs": {
+    "00:d0:c9:bd:2e:57": [
+     56769,
+     252318
+    ]
+   },
+   "arp_macs": {
+    "00:d0:c9:bd:2e:57": [
+     260,
+     252314
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    2
+   ],
+   "ttls": {
+    "128": 55447
+   },
+   "protos": [
+    "arp",
+    "enip",
+    "modbus",
+    "s7"
+   ],
+   "tcp_served": [
+    23,
+    80,
+    135,
+    443,
+    1234,
+    5120
+   ],
+   "udp_served": []
+  },
+  "192.168.88.52": {
+   "first_frame": 230349,
+   "sent": 661,
+   "sent_unicast": 661,
+   "peers": {
+    "192.168.88.1": 435,
+    "192.195.142.13": 73,
+    "192.168.1.71": 56,
+    "192.168.0.3": 35,
+    "192.168.1.2": 35,
+    "192.195.142.14": 13,
+    "192.168.1.68": 7,
+    "17.253.34.253": 7
+   },
+   "recv_unicast": 2664,
+   "src_macs": {
+    "28:cf:e9:18:b5:ed": [
+     615,
+     230349
+    ],
+    "20:c9:d0:44:d1:e7": [
+     46,
+     2084639
+    ]
+   },
+   "dst_macs": {
+    "28:cf:e9:18:b5:ed": [
+     607,
+     230351
+    ],
+    "20:c9:d0:44:d1:e7": [
+     2057,
+     2084640
+    ]
+   },
+   "arp_macs": {
+    "28:cf:e9:18:b5:ed": [
+     25,
+     230759
+    ],
+    "20:c9:d0:44:d1:e7": [
+     33,
+     2085489
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    2
+   ],
+   "ttls": {
+    "64": 628,
+    "255": 33
+   },
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.88.53": {
+   "first_frame": 2119968,
+   "sent": 172,
+   "sent_unicast": 172,
+   "peers": {
+    "93.158.94.210": 114,
+    "192.168.88.1": 57,
+    "17.253.54.251": 1
+   },
+   "recv_unicast": 124,
+   "src_macs": {
+    "a0:99:9b:1c:d8:65": [
+     172,
+     2119968
+    ]
+   },
+   "dst_macs": {
+    "a0:99:9b:1c:d8:65": [
+     124,
+     2120154
+    ]
+   },
+   "arp_macs": {
+    "a0:99:9b:1c:d8:65": [
+     8,
+     2120239
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    2
+   ],
+   "ttls": {
+    "64": 116,
+    "255": 56
+   },
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.88.54": {
+   "first_frame": 2120030,
+   "sent": 9,
+   "sent_unicast": 9,
+   "peers": {
+    "192.168.88.1": 9
+   },
+   "recv_unicast": 9,
+   "src_macs": {
+    "a0:99:9b:1c:d8:65": [
+     9,
+     2120030
+    ]
+   },
+   "dst_macs": {
+    "a0:99:9b:1c:d8:65": [
+     9,
+     2120031
+    ]
+   },
+   "arp_macs": {
+    "a0:99:9b:1c:d8:65": [
+     1,
+     2120113
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    2
+   ],
+   "ttls": {
+    "64": 9
+   },
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.88.55": {
+   "first_frame": 2123714,
+   "sent": 17,
+   "sent_unicast": 17,
+   "peers": {
+    "192.168.143.254": 14,
+    "192.168.88.1": 3
+   },
+   "recv_unicast": 17,
+   "src_macs": {
+    "a0:99:9b:1c:d8:65": [
+     17,
+     2123714
+    ]
+   },
+   "dst_macs": {
+    "a0:99:9b:1c:d8:65": [
+     17,
+     2123715
+    ]
+   },
+   "arp_macs": {
+    "a0:99:9b:1c:d8:65": [
+     13,
+     2123786
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    1,
+    2
+   ],
+   "ttls": {
+    "64": 17
+   },
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.88.60": {
+   "first_frame": 252328,
+   "sent": 202581,
+   "sent_unicast": 202581,
+   "peers": {
+    "192.168.2.137": 87614,
+    "192.168.2.199": 49025,
+    "192.168.2.22": 37375,
+    "192.168.2.166": 18573,
+    "192.168.2.53": 7020,
+    "192.168.2.21": 2027,
+    "192.168.2.133": 762,
+    "192.168.2.44": 142
+   },
+   "recv_unicast": 210864,
+   "src_macs": {
+    "00:90:e8:26:40:23": [
+     202581,
+     252334
+    ]
+   },
+   "dst_macs": {
+    "00:90:e8:26:40:23": [
+     210864,
+     252330
+    ]
+   },
+   "arp_macs": {
+    "00:90:e8:26:40:23": [
+     344,
+     252328
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    2
+   ],
+   "ttls": {
+    "64": 202581
+   },
+   "protos": [
+    "arp",
+    "enip",
+    "modbus",
+    "s7"
+   ],
+   "tcp_served": [
+    22,
+    23,
+    80,
+    443,
+    502,
+    4000,
+    4001,
+    44818
+   ],
+   "udp_served": []
+  },
+  "192.168.88.61": {
+   "first_frame": 10,
+   "sent": 63202,
+   "sent_unicast": 63202,
+   "peers": {
+    "192.168.88.1": 26322,
+    "192.168.2.166": 18569,
+    "192.168.2.53": 6688,
+    "192.168.2.137": 4339,
+    "192.168.2.199": 3670,
+    "192.168.2.22": 2894,
+    "192.168.2.133": 695,
+    "192.168.2.44": 22
+   },
+   "recv_unicast": 65500,
+   "src_macs": {
+    "00:90:e8:27:8c:37": [
+     63202,
+     10
+    ]
+   },
+   "dst_macs": {
+    "00:90:e8:27:8c:37": [
+     65500,
+     11
+    ]
+   },
+   "arp_macs": {
+    "00:90:e8:27:8c:37": [
+     1551,
+     92
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    2
+   ],
+   "ttls": {
+    "64": 63202
+   },
+   "protos": [
+    "arp",
+    "enip",
+    "modbus",
+    "s7"
+   ],
+   "tcp_served": [
+    22,
+    23,
+    80,
+    443,
+    502,
+    4000,
+    4001
+   ],
+   "udp_served": []
+  },
+  "192.168.88.75": {
+   "first_frame": 252349,
+   "sent": 70781,
+   "sent_unicast": 70781,
+   "peers": {
+    "192.168.2.199": 57306,
+    "192.168.2.53": 6104,
+    "192.168.2.137": 3058,
+    "192.168.2.22": 2380,
+    "192.168.2.166": 1519,
+    "192.168.2.133": 408,
+    "192.168.2.44": 6
+   },
+   "recv_unicast": 162956,
+   "src_macs": {
+    "00:80:63:b5:b6:bb": [
+     70781,
+     252351
+    ]
+   },
+   "dst_macs": {
+    "00:80:63:b5:b6:bb": [
+     162956,
+     252350
+    ]
+   },
+   "arp_macs": {
+    "00:80:63:b5:b6:bb": [
+     163,
+     252349
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    1,
+    2
+   ],
+   "ttls": {
+    "255": 67211,
+    "64": 3570
+   },
+   "protos": [
+    "arp",
+    "enip",
+    "modbus",
+    "s7"
+   ],
+   "tcp_served": [
+    22,
+    443
+   ],
+   "udp_served": []
+  },
+  "192.168.88.80": {
+   "first_frame": 252294,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 2088,
+   "src_macs": {},
+   "dst_macs": {
+    "00:90:e8:26:7b:17": [
+     2088,
+     252295
+    ]
+   },
+   "arp_macs": {
+    "00:90:e8:26:7b:17": [
+     20,
+     252294
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    2
+   ],
+   "ttls": {},
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.88.85": {
+   "first_frame": 252316,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 70745,
+   "src_macs": {},
+   "dst_macs": {
+    "ac:cf:23:02:23:6e": [
+     70745,
+     252320
+    ]
+   },
+   "arp_macs": {
+    "ac:cf:23:02:23:6e": [
+     149,
+     252316
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    2
+   ],
+   "ttls": {},
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.88.95": {
+   "first_frame": 252342,
+   "sent": 40617,
+   "sent_unicast": 40617,
+   "peers": {
+    "192.168.2.166": 18589,
+    "192.168.2.53": 8948,
+    "192.168.2.137": 6463,
+    "192.168.2.199": 3008,
+    "192.168.2.22": 2932,
+    "192.168.2.133": 672,
+    "192.168.2.44": 5
+   },
+   "recv_unicast": 42010,
+   "src_macs": {
+    "00:0a:dc:5b:27:a0": [
+     40617,
+     252344
+    ]
+   },
+   "dst_macs": {
+    "00:0a:dc:5b:27:a0": [
+     42010,
+     252343
+    ]
+   },
+   "arp_macs": {
+    "00:0a:dc:5b:27:a0": [
+     131,
+     252342
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    2
+   ],
+   "ttls": {
+    "60": 40617
+   },
+   "protos": [
+    "arp",
+    "enip",
+    "modbus",
+    "s7"
+   ],
+   "tcp_served": [
+    22,
+    23,
+    80,
+    443,
+    502,
+    514,
+    20000
+   ],
+   "udp_served": []
+  },
+  "192.168.88.100": {
+   "first_frame": 252329,
+   "sent": 2401,
+   "sent_unicast": 2401,
+   "peers": {
+    "192.168.2.137": 2339,
+    "192.168.2.44": 42,
+    "192.168.2.133": 19,
+    "192.168.2.166": 1
+   },
+   "recv_unicast": 2637,
+   "src_macs": {
+    "00:e0:62:40:57:66": [
+     2401,
+     252338
+    ]
+   },
+   "dst_macs": {
+    "00:e0:62:40:57:66": [
+     2637,
+     252331
+    ]
+   },
+   "arp_macs": {
+    "00:e0:62:40:57:66": [
+     20,
+     252329
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    2
+   ],
+   "ttls": {
+    "255": 2399,
+    "56": 1,
+    "39": 1
+   },
+   "protos": [
+    "arp",
+    "enip",
+    "modbus",
+    "s7"
+   ],
+   "tcp_served": [
+    80,
+    502
+   ],
+   "udp_served": []
+  },
+  "192.168.88.105": {
+   "first_frame": 252354,
+   "sent": 2,
+   "sent_unicast": 2,
+   "peers": {
+    "192.168.2.137": 2
+   },
+   "recv_unicast": 2232,
+   "src_macs": {
+    "00:11:22:7b:c5:50": [
+     2,
+     305836
+    ]
+   },
+   "dst_macs": {
+    "00:11:22:7b:c5:50": [
+     2232,
+     252354
+    ]
+   },
+   "arp_macs": {
+    "00:11:22:7b:c5:50": [
+     28,
+     252409
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    2
+   ],
+   "ttls": {
+    "255": 2
+   },
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [
+    80
+   ],
+   "udp_served": []
+  },
+  "192.168.88.115": {
+   "first_frame": 252296,
+   "sent": 18983,
+   "sent_unicast": 18983,
+   "peers": {
+    "192.168.2.53": 7741,
+    "192.168.2.137": 4090,
+    "192.168.2.22": 2850,
+    "192.168.2.199": 2608,
+    "192.168.2.166": 1552,
+    "192.168.2.133": 134,
+    "192.168.2.44": 8
+   },
+   "recv_unicast": 19758,
+   "src_macs": {
+    "00:40:9d:28:ee:0d": [
+     18983,
+     252298
+    ]
+   },
+   "dst_macs": {
+    "00:40:9d:28:ee:0d": [
+     19758,
+     252297
+    ]
+   },
+   "arp_macs": {
+    "00:40:9d:28:ee:0d": [
+     96,
+     252296
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    1,
+    2
+   ],
+   "ttls": {
+    "255": 13348,
+    "64": 5635
+   },
+   "protos": [
+    "arp",
+    "enip",
+    "modbus",
+    "s7"
+   ],
+   "tcp_served": [
+    22,
+    23,
+    80,
+    443,
+    7000,
+    7001,
+    7002,
+    7004,
+    7007,
+    7019,
+    7025
+   ],
+   "udp_served": []
+  },
+  "192.168.88.130": {
+   "first_frame": 252323,
+   "sent": 2,
+   "sent_unicast": 2,
+   "peers": {
+    "192.168.2.22": 1,
+    "192.168.2.53": 1
+   },
+   "recv_unicast": 50963,
+   "src_macs": {
+    "00:90:e8:10:af:c8": [
+     2,
+     1298631
+    ]
+   },
+   "dst_macs": {
+    "00:90:e8:10:af:c8": [
+     50963,
+     252324
+    ]
+   },
+   "arp_macs": {
+    "00:90:e8:10:af:c8": [
+     202,
+     252323
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    2
+   ],
+   "ttls": {
+    "255": 1,
+    "60": 1
+   },
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [
+    80
+   ],
+   "udp_served": []
+  },
+  "192.168.88.254": {
+   "first_frame": 1927304,
+   "sent": 98,
+   "sent_unicast": 98,
+   "peers": {
+    "192.168.88.1": 94,
+    "192.168.2.137": 4
+   },
+   "recv_unicast": 34,
+   "src_macs": {
+    "00:0c:be:04:f3:0a": [
+     4,
+     2239699
+    ],
+    "00:0c:be:04:f3:0b": [
+     94,
+     2261898
+    ]
+   },
+   "dst_macs": {
+    "00:0c:be:04:f3:0b": [
+     32,
+     1927305
+    ],
+    "00:0c:be:04:f3:0a": [
+     2,
+     2239703
+    ]
+   },
+   "arp_macs": {
+    "00:0c:be:04:f3:0b": [
+     12,
+     1927304
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    1,
+    2
+   ],
+   "ttls": {
+    "124": 12,
+    "38": 6,
+    "42": 6,
+    "51": 6
+   },
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [
+    443
+   ],
+   "udp_served": []
+  },
+  "192.168.89.1": {
+   "first_frame": 9,
+   "sent": 5998,
+   "sent_unicast": 5998,
+   "peers": {
+    "192.168.89.2": 5998
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "00:0a:dc:64:85:c2": [
+     5998,
+     9
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {
+    "00:0a:dc:64:85:c2": [
+     2426,
+     196
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    1,
+    2
+   ],
+   "ttls": {
+    "64": 5998
+   },
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.89.2": {
+   "first_frame": 8,
+   "sent": 5998,
+   "sent_unicast": 5998,
+   "peers": {
+    "8.8.8.8": 5979,
+    "192.168.0.3": 5,
+    "192.168.1.79": 5,
+    "192.168.1.71": 5,
+    "17.253.34.253": 2,
+    "10.218.104.244": 2
+   },
+   "recv_unicast": 5998,
+   "src_macs": {
+    "70:71:bc:3a:0d:e8": [
+     5998,
+     8
+    ]
+   },
+   "dst_macs": {
+    "70:71:bc:3a:0d:e8": [
+     5998,
+     9
+    ]
+   },
+   "arp_macs": {
+    "70:71:bc:3a:0d:e8": [
+     2425,
+     197
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    1,
+    2
+   ],
+   "ttls": {
+    "64": 5996,
+    "128": 2
+   },
+   "protos": [
+    "arp",
+    "enip"
+   ],
+   "tcp_served": [],
+   "udp_served": [
+    44818
+   ]
+  },
+  "192.168.143.1": {
+   "first_frame": 2123388,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 4,
+   "src_macs": {},
+   "dst_macs": {
+    "00:50:56:c0:00:01": [
+     4,
+     2123388
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.143.155": {
+   "first_frame": 2123388,
+   "sent": 4,
+   "sent_unicast": 4,
+   "peers": {
+    "192.168.143.1": 4
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a0:99:9b:1c:d8:65": [
+     4,
+     2123388
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {
+    "a0:99:9b:1c:d8:65": [
+     2,
+     2123465
+    ]
+   },
+   "bcast_frames": 0,
+   "arp_ops": [
+    1
+   ],
+   "ttls": {
+    "64": 4
+   },
+   "protos": [
+    "arp"
+   ],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.168.143.254": {
+   "first_frame": 2125228,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 14,
+   "src_macs": {},
+   "dst_macs": {
+    "00:07:7c:1a:61:83": [
+     14,
+     2125228
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.195.142.13": {
+   "first_frame": 230893,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 73,
+   "src_macs": {},
+   "dst_macs": {
+    "00:07:7c:1a:61:83": [
+     73,
+     230893
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "192.195.142.14": {
+   "first_frame": 2114079,
+   "sent": 0,
+   "sent_unicast": 0,
+   "peers": {},
+   "recv_unicast": 13,
+   "src_macs": {},
+   "dst_macs": {
+    "00:07:7c:1a:61:83": [
+     13,
+     2114079
+    ]
+   },
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {},
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "193.182.190.178": {
+   "first_frame": 2266134,
+   "sent": 9,
+   "sent_unicast": 9,
+   "peers": {
+    "10.100.152.15": 9
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     9,
+     2266134
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "245": 9
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "193.209.237.4": {
+   "first_frame": 2237487,
+   "sent": 2,
+   "sent_unicast": 2,
+   "peers": {
+    "10.100.159.228": 2
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     2,
+     2237487
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "113": 1,
+    "114": 1
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "199.16.156.48": {
+   "first_frame": 2239520,
+   "sent": 1,
+   "sent_unicast": 1,
+   "peers": {
+    "10.100.159.151": 1
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     1,
+     2239520
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "52": 1
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "199.16.156.70": {
+   "first_frame": 2234320,
+   "sent": 2,
+   "sent_unicast": 2,
+   "peers": {
+    "10.100.159.207": 2
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     2,
+     2234320
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "52": 2
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "199.16.156.72": {
+   "first_frame": 2234327,
+   "sent": 2,
+   "sent_unicast": 2,
+   "peers": {
+    "10.100.159.207": 2
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     2,
+     2234327
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "52": 2
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "199.16.156.198": {
+   "first_frame": 2235274,
+   "sent": 2,
+   "sent_unicast": 2,
+   "peers": {
+    "10.100.159.125": 2
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     2,
+     2235274
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "52": 2
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  },
+  "199.16.156.231": {
+   "first_frame": 2262577,
+   "sent": 12,
+   "sent_unicast": 12,
+   "peers": {
+    "10.100.159.151": 12
+   },
+   "recv_unicast": 0,
+   "src_macs": {
+    "a2:f4:01:00:01:d6": [
+     12,
+     2262577
+    ]
+   },
+   "dst_macs": {},
+   "arp_macs": {},
+   "bcast_frames": 0,
+   "arp_ops": [],
+   "ttls": {
+    "52": 12
+   },
+   "protos": [],
+   "tcp_served": [],
+   "udp_served": []
+  }
+ },
+ "identity": {},
+ "events": {
+  "arp_op1": 6823,
+  "arp_op2": 9374,
+  "enip_cmd_00": 1,
+  "enip_cmd_316": 2,
+  "enip_cmd_3a": 1,
+  "enip_cmd_63": 2,
+  "enip_cmd_d300": 1,
+  "ethertype_86dd": 26,
+  "ethertype_9000": 5360,
+  "modbus_desync": 351,
+  "modbus_fc_01_req": 25681,
+  "modbus_fc_02_req": 946,
+  "modbus_fc_03_req": 945,
+  "modbus_fc_04_req": 1146,
+  "modbus_fc_04_resp": 489,
+  "modbus_fc_05_req": 194,
+  "modbus_fc_06_req": 193,
+  "modbus_fc_0f_req": 10296,
+  "modbus_fc_10_req": 1,
+  "modbus_fc_11_req": 21,
+  "modbus_fc_17_req": 10296,
+  "modbus_fc_2b_req": 24,
+  "modbus_fc_80_resp": 20,
+  "modbus_fc_81_resp": 25667,
+  "modbus_fc_82_resp": 939,
+  "modbus_fc_83_resp": 938,
+  "modbus_fc_84_resp": 652,
+  "modbus_fc_85_resp": 194,
+  "modbus_fc_86_resp": 193,
+  "modbus_fc_8f_resp": 10296,
+  "modbus_fc_90_resp": 1,
+  "modbus_fc_91_resp": 21,
+  "modbus_fc_97_resp": 10298,
+  "modbus_fc_a0_resp": 2,
+  "modbus_fc_ab_resp": 21,
+  "modbus_fc_c2_resp": 2,
+  "modbus_fc_f0_resp": 2,
+  "s7_rosctr_1": 53217,
+  "s7_rosctr_3": 53217,
+  "tpkt_desync": 50
+ }
+}

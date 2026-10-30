@@ -1,0 +1,99 @@
+﻿ReConnICS-ng 4SICS capture processing record
+
+Source record: data/site/captures/c0003.json
+Observation export: data/site/captures/c0003.obs.json
+Application version: 0.1.0
+Capture file: 4SICS-GeekLounge-151022.pcap
+Capture bytes: 209236002
+Capture SHA-256: 82529c23906416dc73d7f1926a0d38b82527f1f2a7ff8c6f755ce3208feb9643
+Run started (UTC): 2026-10-27T12:23:52.237935500Z
+Main inventory merge finished (UTC): 2026-10-27T12:28:12.711199400Z
+Late tool completion (UTC): 2026-10-27T12:32:00.257546600Z
+
+Application progress log:
+[+0.0s]  Starting engines
+[+0.2s]  Zeek + ICSNPP started (docker image reconics-zeek)
+[+0.2s]  tshark, Suricata, nDPI and p0f started (the ones installed)
+[+0.2s]  Decoding packets
+[+0.2s]  Reading c0003.pcap (CLASSIC_PCAP, link type ETHERNET)
+[+1.3s]  100000 frames decoded
+[+1.9s]  200000 frames decoded
+[+2.6s]  300000 frames decoded
+[+3.3s]  400000 frames decoded
+[+4.1s]  500000 frames decoded
+[+5.0s]  600000 frames decoded
+[+5.8s]  700000 frames decoded
+[+6.4s]  800000 frames decoded
+[+7.1s]  900000 frames decoded
+[+7.7s]  1000000 frames decoded
+[+8.4s]  1100000 frames decoded
+[+8.9s]  1200000 frames decoded
+[+9.5s]  1300000 frames decoded
+[+10.1s]  1400000 frames decoded
+[+10.6s]  1500000 frames decoded
+[+11.2s]  1600000 frames decoded
+[+11.9s]  1700000 frames decoded
+[+12.7s]  1800000 frames decoded
+[+13.6s]  1900000 frames decoded
+[+14.2s]  Zeek + ICSNPP has read 11% of the capture
+[+14.4s]  2000000 frames decoded
+[+15.1s]  2100000 frames decoded
+[+15.8s]  2200000 frames decoded
+[+16.5s]  2274747 frames decoded in total (5 malformed or truncated)
+[+16.9s]  Zeek + ICSNPP logs
+[+16.9s]  Waiting for Zeek + ICSNPP
+[+26.2s]  Zeek + ICSNPP has read 20% of the capture
+[+42.3s]  Zeek + ICSNPP has read 30% of the capture
+[+47.5s]  ndpi: ran in 47 s
+[+66.3s]  Zeek + ICSNPP has read 40% of the capture
+[+91.8s]  p0f: ran in 91 s
+[+94.3s]  Zeek + ICSNPP has read 51% of the capture
+[+108.3s]  Zeek + ICSNPP has read 62% of the capture
+[+120.3s]  Zeek + ICSNPP has read 72% of the capture
+[+123.8s]  tshark: ran in 123 s
+[+132.3s]  Zeek + ICSNPP has read 81% of the capture
+[+142.3s]  Zeek + ICSNPP has read 90% of the capture
+[+160.5s]  Zeek + ICSNPP finished its run in 160 s
+[+160.6s]  Zeek + ICSNPP wrote 1.8 GB of logs in 27 files (largest: modbus_detailed.log, 1.3 GB)
+[+160.6s]  Reading the Zeek and ICSNPP logs
+[+201.2s]  Zeek logs read: 5000 conversations, 429 host observations
+[+201.6s]  Other tools
+[+201.6s]  Waiting for the other tools
+[+201.6s]  suricata is still running: the capture is merged without it, its alerts are added when it finishes
+[+201.6s]  Merging flows and hosts
+[+204.0s]  Resolving hosts and identities
+[+204.0s]  102 hosts resolved
+[+204.3s]  Classifying hosts, extracting images
+[+204.6s]  Extracting images from HTTP bodies
+[+260.1s]  Merging into the site inventory
+[+260.5s]  Merged without Suricata, which is still running
+[+488.0s]  suricata: ran in 487 s
+[+488.0s]  suricata finished: ran (97789 alert events, 357 protocol anomalies)
+
+Recorded run summary:
+Frames processed: 2274747
+Malformed or truncated frames: 5
+Fragmented frames: 0
+Unsupported frames: 26
+Resolved devices: 102
+Identity fields decoded: 102
+Inventory change: +107 new, 0 changed, 0 not seen
+Protocol candidates:
+  dnp3: 280
+  ethernet-ip: 12
+  modbus: 199326
+  s7comm: 212037
+  snmp: 268
+  unknown: 16197
+
+Engine results:
+  Zeek: ran (zeek version 8.0.9); docker image reconics-zeek
+  CISA ICSNPP: ran; ICSNPP logs read: modbus.log, modbus_detailed.log, modbus_read_device_identification.log, dnp3.log, dnp3_objects.log, enip.log, s7comm.log, cotp.log (per package: source.zeek.packages)
+  Wireshark (tshark, capinfos): ran (4.4.19); capinfos: 2274747 packets, ether. 1827804 conversations over the 20000 cap were not tracked. 20000 conversations from 2274747 packets
+  Suricata: ran (7.0.10); 97789 alert events, 357 protocol anomalies
+  nDPI (ndpiReader): ran (4.2.0); 33996 of 34089 flows named
+  p0f v3: ran (3.09b); 21 hosts with an OS signature
+  Nmap nmap-services: found; data\reference\nmap-services: 12058 ports
+Zeek + ICSNPP log output: 1882303462 bytes in 27 files; largest modbus_detailed.log (1.3 GB)
+
+Note: this report preserves the application run record and embedded progress log. The raw temporary Zeek/ICSNPP output files are not included here.

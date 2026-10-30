@@ -109,6 +109,16 @@ Built on [Zeek](https://zeek.org) and the CISA [ICSNPP](https://github.com/cisag
 and the IEEE OUI registry. The idea of a GUI over existing network tools follows
 [GRASSMARLIN](https://github.com/nsacyber/GRASSMARLIN). No code of any of them is copied into this repository. Licences: [`NOTICE`](NOTICE).
 
+### Dataset Attribution
+
+**4SICS Geek Lounge ICS/SCADA PCAP Dataset**
+
+Evaluation of ReConnICS-ng uses publicly available network captures from the 4SICS Geek Lounge ICS/SCADA dataset, published by [Netresec](https://www.netresec.com/?page=PCAP4SICS). The dataset originates from the 4SICS event organised by CS3Sthlm. We acknowledge Netresec and CS3Sthlm as the original source and organisers.
+
+The [4SICS-GeekLounge-151022 processing log](eval/logs/4SICS-GeekLounge-151022-20261027.txt) records the capture run and its engine results.
+
+The associated [4SICS inventory report](eval/reports/4SICS-GeekLounge-151022-inventory-report.html) contains the generated asset inventory and advisory matches.
+
 ## License
 
 See [`LICENSE`](LICENSE).

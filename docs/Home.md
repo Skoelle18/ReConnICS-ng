@@ -16,6 +16,6 @@ Reference:
 - [data-contract.md](data-contract.md): confidence and evidence mapping
 - [limitations.md](limitations.md): supported vs unsupported
 - [ethics.md](ethics.md): passive-only rules
-- [ui-tour.md](ui-tour.md): screenshot tour of every console screen
+- [ui-tour.md](ui-tour.md): screenshot tour of the console screens and detail panels
 - [foss-components.md](foss-components.md): open-source tools wrapped, licences, what was not adopted
 - [Evaluation](https://github.com/Skoelle18/ReConnICS-ng/blob/main/eval/README.md): how detection and identity are measured
