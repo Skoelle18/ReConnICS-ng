@@ -1118,13 +1118,20 @@ function indexScreen() {
   ];
 }
 
+// PDF = browser print of the report (Save as PDF); no server-side PDF library.
+function printReport() {
+  const f = h('iframe', { src: '/api/v1/export/report.html?inline=1', style: 'position:fixed;width:0;height:0;border:0' });
+  f.onload = () => { f.contentWindow.print(); setTimeout(() => f.remove(), 60000); };
+  document.body.append(f);
+}
+
 function exportScreen() {
   return [h('div', {}, h('h1', {}, 'Export', info('Download the current site inventory and report.'))),
     h('div', { class: 'card export-list' },
       h('a', { class: 'btn', href: '/api/v1/export/inventory.csv', download: 'inventory.csv' }, 'inventory.csv'),
       h('a', { class: 'btn', href: '/api/v1/export/inventory.json', download: 'inventory.json' }, 'inventory.json'),
       h('a', { class: 'btn', href: '/api/v1/export/report.html', download: 'report.html' }, 'report.html'),
-      h('button', { class: 'btn', type: 'button', onclick: () => toast('PDF export is not available yet. Use report.html.') }, 'report.pdf'))];
+      h('button', { class: 'btn', type: 'button', onclick: printReport }, 'report.pdf'))];
 }
 
 function settingsScreen() {

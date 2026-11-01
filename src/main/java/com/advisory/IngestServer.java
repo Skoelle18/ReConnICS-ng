@@ -192,7 +192,7 @@ final class IngestServer {
                 if (!InventoryReport.OUTPUTS.contains(name)) { error(ex, 404, "no such export"); return true; }
                 Inventory inv = site.inventory();
                 var ranked = InventoryReport.rank(inv);
-                ex.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + name + "\"");
+                if (!"1".equals(query(ex, "inline"))) ex.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + name + "\"");
                 switch (name) {
                     case "inventory.csv" -> send(ex, 200, InventoryReport.csv(inv, ranked), "text/csv");
                     case "report.html" -> send(ex, 200, InventoryReport.html(inv, ranked), "text/html");
