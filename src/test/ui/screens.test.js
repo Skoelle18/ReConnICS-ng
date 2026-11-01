@@ -461,7 +461,7 @@ test('the data screens open from the sidebar and the audit log filters', async (
     assert.match(app.text(), /S. Owner/);
     assert.doesNotMatch(app.text(), /R. Analyst/);
     app.$('#tree a[href="#/export"]').click(); await app.go('#/export');
-    assert.equal(app.$$('#main a[download]').length, 3, 'only export endpoints documented by the server are offered');
+    assert.equal(app.$$('#main a[download]').length, 4,'only export endpoints documented by the server are offered');
   } finally { app.close(); }
 });
 

@@ -54,7 +54,7 @@ allowed page can look but not change anything.
 | `GET` | `/api/v1/changes` | Change log, newest first (captures merged, edits, index swaps). |
 | `GET` | `/api/v1/engines` | The open-source components this machine has: `[{id, name, url, licence, kind, optional, role, status: {state, via, version, detail}}]`. Detection starts a few processes, so the answer is cached for 20 s. Capture entries carry the same per-capture states in `summary.tools`. See [`foss-components.md`](foss-components.md). |
 | `POST` | `/api/v1/index[?dry=1]` | New index as the body, signature in `X-Index-Signature`. Verified against `--pubkey` first (`403` if it fails); `dry=1` only reports its metadata, otherwise it replaces the served index and re-matches. |
-| `GET` | `/api/v1/export/{inventory.json,inventory.csv,report.html}` | The inventory outputs for the current site. |
+| `GET` | `/api/v1/export/{inventory.json,inventory.csv,report.html,report.pdf}` | The inventory outputs for the current site. `report.pdf` is a short brief (summary, fix-first top 20, next steps, role/vendor breakdown, fill rate) that stays a few pages long whatever the asset count. |
 
 ## `POST /api/v1/assets`
 
