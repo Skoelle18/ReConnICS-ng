@@ -70,6 +70,7 @@
                 <version>3.5.2</version>
                 <configuration>
                     <systemPropertyVariables><reconics.engine>NATIVE</reconics.engine></systemPropertyVariables>   <!-- console tests expect native-only output, whatever is installed -->
+                    <redirectTestOutputToFile>true</redirectTestOutputToFile>   <!-- expected test noise goes to target/surefire-reports/*-output.txt -->
                 </configuration>
             </plugin>
             <plugin>

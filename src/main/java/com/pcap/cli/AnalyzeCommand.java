@@ -196,6 +196,7 @@ public final class AnalyzeCommand {
 
     private void configureLogging() {
         Logger root = Logger.getLogger("com.pcap");
+        for (var h : root.getHandlers()) root.removeHandler(h); // repeated runs in one JVM (tests) must not stack handlers
         root.setUseParentHandlers(false);
         ConsoleHandler handler = new ConsoleHandler();
         handler.setLevel(verbose ? Level.FINE : Level.WARNING);
