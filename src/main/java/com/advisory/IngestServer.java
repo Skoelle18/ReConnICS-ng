@@ -189,13 +189,20 @@ final class IngestServer {
                 send(ex, 200, Json.write(site.importIndex(b, ex.getRequestHeaders().getFirst("X-Index-Signature"), actor, !"1".equals(query(ex, "dry")))));
             } else if (method.equals("GET") && path.startsWith("/api/v1/export/")) {
                 String name = path.substring("/api/v1/export/".length());
-                if (!InventoryReport.OUTPUTS.contains(name)) { error(ex, 404, "no such export"); return true; }
+                if (!InventoryReport.OUTPUTS.contains(name) && !name.equals("report.pdf")) { error(ex, 404, "no such export"); return true; }
                 Inventory inv = site.inventory();
                 var ranked = InventoryReport.rank(inv);
-                ex.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + name + "\"");
+                if (!"1".equals(query(ex, "inline"))) ex.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + name + "\"");
                 switch (name) {
                     case "inventory.csv" -> send(ex, 200, InventoryReport.csv(inv, ranked), "text/csv");
                     case "report.html" -> send(ex, 200, InventoryReport.html(inv, ranked), "text/html");
+                    case "report.pdf" -> {
+                        byte[] b = InventoryPdf.pdf(inv, ranked);
+                        ex.getResponseHeaders().set("Content-Type", "application/pdf");
+                        ex.sendResponseHeaders(200, b.length);
+                        ex.getResponseBody().write(b);
+                        ex.getResponseBody().flush();
+                    }
                     default -> send(ex, 200, InventoryReport.json(inv));
                 }
             } else return false;

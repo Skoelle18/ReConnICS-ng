@@ -16,6 +16,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <jackson.version>2.18.3</jackson.version>
         <junit.version>5.11.4</junit.version>
+        <!-- default for `mvn exec:java`; override with -Dexec.args="analyze assets/modbus.pcap" -->
+        <exec.args>serve --index data/index.json --pubkey keys/index-signing.pub --data data/site</exec.args>
     </properties>
 
     <dependencies>
@@ -23,6 +25,12 @@
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
             <version>${jackson.version}</version>
+        </dependency>
+        <dependency>
+            <!-- report.pdf layout (tables, paging); all its own dependencies are optional, so this is one jar -->
+            <groupId>com.github.librepdf</groupId>
+            <artifactId>openpdf</artifactId>
+            <version>2.0.5</version>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -49,6 +57,12 @@
         <finalName>reconnics-ng</finalName>
         <plugins>
             <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <configuration><mainClass>com.pcap.Main</mainClass></configuration>
+            </plugin>
+            <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.13.0</version>
@@ -62,6 +76,7 @@
                 <version>3.5.2</version>
                 <configuration>
                     <systemPropertyVariables><reconics.engine>NATIVE</reconics.engine></systemPropertyVariables>   <!-- console tests expect native-only output, whatever is installed -->
+                    <redirectTestOutputToFile>true</redirectTestOutputToFile>   <!-- expected test noise goes to target/surefire-reports/*-output.txt -->
                 </configuration>
             </plugin>
             <plugin>

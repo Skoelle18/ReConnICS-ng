@@ -35,7 +35,7 @@ ReConnICS-ng is a passive OT asset inventory and network map built from packet c
 4. **Offline advisory matching.** A signed index of CISA CSAF OT advisories and KEV, carried across the air gap.
 5. **Asset graph.** Conversations as directed edges, start-to-target path finding, filters by level, protocol, KEV and capture.
 6. **Nothing is silently dropped.** Low-value hosts and flows are classified and can be hidden in the view, never deleted.
-7. **Export.** `inventory.csv`, `inventory.json` and `report.html` from the Export screen.
+7. **Export.** `inventory.csv`, `inventory.json`, `report.html` and a short `report.pdf` brief from the Export screen.
 
 ## Demo
 

@@ -1124,7 +1124,7 @@ function exportScreen() {
       h('a', { class: 'btn', href: '/api/v1/export/inventory.csv', download: 'inventory.csv' }, 'inventory.csv'),
       h('a', { class: 'btn', href: '/api/v1/export/inventory.json', download: 'inventory.json' }, 'inventory.json'),
       h('a', { class: 'btn', href: '/api/v1/export/report.html', download: 'report.html' }, 'report.html'),
-      h('button', { class: 'btn', type: 'button', onclick: () => toast('PDF export is not available yet. Use report.html.') }, 'report.pdf'))];
+      h('a', { class: 'btn', href: '/api/v1/export/report.pdf', download: 'report.pdf' }, 'report.pdf'))];
 }
 
 function settingsScreen() {

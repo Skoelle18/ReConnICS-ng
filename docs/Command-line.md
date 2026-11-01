@@ -17,6 +17,7 @@ Runnable shaded JAR: `target/reconnics-ng.jar`
 ## Test
 
 ```bash
+mvn compile exec:java        # serve the UI on :8088 with default paths; override: -Dexec.args="analyze assets/modbus.pcap"
 mvn test
 ```
 
