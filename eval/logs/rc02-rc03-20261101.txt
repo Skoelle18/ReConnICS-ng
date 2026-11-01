@@ -1,0 +1,48 @@
+ReConnICS-ng RC-02 / RC-03 execution record
+
+Date (UTC): 2026-11-01
+Commit: ad1f3f0aa3de5e52c3b08b81db368e0e54d5b3de (application code identical to 2b6af55, the 27 Oct jar build)
+Jar: target/reconnics-ng.jar rebuilt with 'mvn -B -q package -DskipTests', SHA-256 20444e95efca9cfe6d1a5147b876938f8be5265fd5f8f7b773b2df41b3851bf6
+Host: Windows 10 Pro 19045, Java 25.0.1. Docker not running, so Zeek/ICSNPP, tshark, Suricata, nDPI and p0f
+were not used by the application in these runs (native decoders only). tshark 4.4 was used separately for the SNMP cross-check.
+Capture: eval/captures/public/4SICS-GeekLounge-151022.pcap, 209236002 bytes,
+SHA-256 82529c23906416dc73d7f1926a0d38b82527f1f2a7ff8c6f755ce3208feb9643
+
+RC-02  Detection accuracy against an independent answer key
+  Answer key: eval/captures/public/4SICS-GeekLounge-151022.truth.json, built by eval/truth_decoder/build_truth.py from
+  eval/truth_decoder/dec/4SICS-GeekLounge-151022.json (stdlib decoder, not the application's code). Judgement calls
+  (routed hosts, SNMP identity of 192.168.88.30) are in build_truth.py O['4SICS-GeekLounge-151022'] with frame evidence.
+  Command: python eval/run_eval.py --dirs eval/captures/public --only 4SICS-GeekLounge-151022
+           --index data/index.json --pubkey keys/index-signing.pub --out eval/out/rc02-ad1f3f0
+  Score:   eval/reports/4SICS-GeekLounge-151022-rc02-score.json
+  Truth hosts 102 (65 required = sent unicast traffic; 37 optional = ARP-only / receive-only)
+  Inventory assets 107; required found 65/65 (recall 1.00); optional found 37/37; duplicates 0
+  Extra 5 (10.0.1.1, 10.100.152.96, 10.100.152.102, 192.168.0.1, 192.168.1.1): ARP-request targets that never answered,
+    kept by design and flagged seenOnly=true. Precision 0.93 counting them, 1.00 excluding seenOnly.
+  Identity (1 identifiable device, 192.168.88.30): vendor, model, firmware, serial, role all correct (1.00).
+    Source: SNMP sysDescr.0 GetResponse frames 1721160/1723908; tshark decodes the same string:
+    'Siemens, SIMATIC S7, CPU-1200, 6ES7 212-1BD30-0XB0 SZVA3YU6014773  , 1, V.1.0.1, SZVA3YU6014773  '
+  MAC wrongly assigned 0. MAC mismatch 1: 192.168.88.52 (truth 28:cf:e9:18:b5:ed by frame majority, tool 20:c9:d0:44:d1:e7;
+    both Apple MACs used this IP during the capture).
+  Moxa 192.168.88.60/.61: vendor from MAC OUI only (00:90:e8); no identity reply in the capture, so not scored.
+
+RC-03  Restart persistence
+  java -jar target/reconnics-ng.jar serve --index data/index.json --pubkey keys/index-signing.pub --data <fresh dir>
+  11:37:51Z  POST /api/v1/captures?name=4SICS-GeekLounge-151022.pcap -> c0001 queued (server-side SHA-256 matches above)
+  11:38:02Z  c0001 done, diff new=107 changed=0 notSeen=0
+             GET /api/v1/export/inventory.json -> 107 assets, SHA-256 040ae0a27b72f656791b103308356e30a0b0547110b53a23de8d2f8ec01ee1be
+  11:38:25Z  server process killed (Stop-Process -Force), port 8088 confirmed closed
+  11:38:40Z  server restarted on the same --data dir
+             GET /api/v1/export/inventory.json -> 107 assets, SHA-256 040ae0a27b72f656791b103308356e30a0b0547110b53a23de8d2f8ec01ee1be (byte-identical)
+             GET /api/v1/captures -> c0001 done; GET /api/v1/changes -> merge entry of 11:38:02Z present
+  Result: PASS. State is kept in plain files under --data (captures/c0001.json, c0001.obs.json, c0001.pcap, changes.jsonl).
+
+RC-03  Passive operation (zero probes)
+  Static review of src/main/java at ad1f3f0. Network-capable code:
+    IngestServer: HTTP server bound to InetAddress.getLoopbackAddress() only.
+    AnalyzeCommand: optional --post of results to a user-given URL.
+    IndexBuilder: downloads advisory sources, only in the separate advisory-index build command.
+  External tools are given the capture file, never an interface: tshark/p0f '-r {IN}', ndpiReader '-i {IN}' (file), Zeek and
+  Suricata read the PCAP. No raw-socket, ARP, ICMP or port-scan code; no live-interface capture path.
+  NOT DONE: a packet capture of the analysis host's NIC during a run showing zero emitted frames. Npcap is not installed
+  on this host. Repeat on a host with tcpdump/Npcap, filter 'not port 8088', and attach the empty capture.

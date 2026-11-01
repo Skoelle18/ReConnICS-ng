@@ -66,6 +66,33 @@ O['4SICS-GeekLounge-151021'] = dict(
           'The EtherNet/IP traffic is scan SYNs only - no ListIdentity reply. UNCERTAIN: 192.168.88.1 is also claimed by b0:99:28:d9:1a:24 '
           '(14 frames from 991210, ARP 991233) at the end of the capture (IP conflict / rogue); truth keeps the router MAC (43k frames). '
           'Lots of hosts are ARP-only or receive-only (scan targets); those are optional.')
+_R22 = '00:07:7c:1a:61:83'
+
+O['4SICS-GeekLounge-151022'] = dict(
+    # every IP whose frames carry the Westermo router MAC (ARP-bound to 192.168.88.1) or the locally-administered
+    # gateway MAC a2:f4:01:00:01:d6 (fronts Internet IPs, TTL 40-245; ARP-owned by 10.100.152.1) is remote -> mac=null
+    routed={'192.168.2.110', '192.168.2.133', '192.168.2.137', '192.168.2.166', '192.168.2.199', '192.168.2.21',
+            '192.168.2.22', '192.168.2.44', '192.168.2.53', '192.168.2.64', '21.2.2.2', '108.160.163.110',
+            '141.82.217.52', '17.110.224.213', '17.110.230.30', '17.130.137.73', '17.130.137.75', '173.252.90.4',
+            '193.182.190.178', '193.209.237.4', '199.16.156.198', '199.16.156.231', '199.16.156.48', '199.16.156.70',
+            '199.16.156.72', '52.4.151.114', '52.5.95.205', '54.210.217.83', '54.241.179.26', '74.125.205.188',
+            '77.245.33.76', '83.140.27.11', '93.158.110.200', '93.158.110.218'},
+    # a2:f4:01:00:01:d6 is not listed as mac_not_assignable: 10.100.152.1 ARP-replies with it (frame 2234423), so it is that gateway's own MAC
+    router_mac=_R22, router_owner='192.168.88.1',
+    # decode.py has no SNMP decoder; this identity is the SNMP sysDescr.0 GetResponse from 192.168.88.30, frames
+    # 1721160 and 1723908, decoded independently with tshark 4.4 (snmp.value.octets):
+    # 'Siemens, SIMATIC S7, CPU-1200, 6ES7 212-1BD30-0XB0 SZVA3YU6014773  , 1, V.1.0.1, SZVA3YU6014773  '
+    patch={'192.168.88.30': dict(vendor='Siemens', vendor_aliases=['Siemens AG'], model='6ES7 212-1BD30-0XB0',
+                                 model_aliases=['CPU-1200', 'SIMATIC S7-1200'], firmware='V1.0.1',
+                                 firmware_aliases=['1.0.1'], serial='SZVA3YU6014773', role='plc', identifiable=True,
+                                 evidence=dict(snmp_sysDescr='frames 1721160, 1723908 (tshark-decoded)'))},
+    uncertain=True,
+    notes='CS3Sthlm 4SICS Geek Lounge day 2, 2,274,747 frames, same site as 151021. Router 192.168.88.1 '
+          '(00:07:7c:1a:61:83, Westermo) fronts the 192.168.2.0/24 segment and 21.2.2.2; a2:f4:01:00:01:d6 fronts Internet '
+          'hosts. a0:99:9b:1c:d8:65 (Apple) holds 192.168.143.155 and 192.168.88.53-55: one roaming client, ARP-bound to '
+          'each, kept as separate IP devices. No S7 SZL, CIP ListIdentity or Modbus FC43 identity reply in decode.py; the only '
+          'identity is SNMP sysDescr from 192.168.88.30 (patched, tshark-checked). Moxa .60/.61 vendor is OUI-only, so '
+          'truth vendor stays null (not identifiable). Hosts with no unicast send are optional.')
 O['iti_wincc_s400_production'] = dict(
     notes='WinCC <-> S7-400 cyclic reads. 194.250.63.170 has a Siemens OUI (00:1b:1b) but TTL 60, which is atypical for a CP443 (64) - '
           'kept on-segment because the OUI matches the device. Only SZL 0x0131/0x0132/0x0424 read -> no order number or firmware (not identifiable).')
@@ -180,6 +207,7 @@ def build(stem, cap_path, rel_file):
                  protocols=sorted({'s7': 's7comm'}.get(p, p) for p in set(h['protos']) - {'arp'}))
         if ip in dec['identity']:
             d.update(device_from_ident(ip, dec['identity'][ip]))
+        d.update(o.get('patch', {}).get(ip, {}))
         if optional:
             d['optional'] = True
         d['seen'] = dict(first_frame=h['first_frame'], sent_unicast=h['sent_unicast'], ttl=h['ttls'])

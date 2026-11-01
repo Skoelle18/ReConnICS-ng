@@ -1,0 +1,45 @@
+{
+ "scenario": "4SICS-GeekLounge-151022",
+ "truth_devices": 102,
+ "required_devices": 65,
+ "inventory_assets": 107,
+ "true_positives": 65,
+ "optional_found": 37,
+ "precision": 0.9286,
+ "recall": 1.0,
+ "f1": 0.963,
+ "field_accuracy": {
+  "vendor": 1.0,
+  "model": 1.0,
+  "firmware": 1.0,
+  "serial": 1.0,
+  "role": 1.0,
+  "hostname": null
+ },
+ "identity_accuracy_overall": 1.0,
+ "mac_wrongly_assigned": 0,
+ "mac_mismatch": 1,
+ "forbidden_devices_found": [],
+ "unsafe_strings": 0,
+ "missing": [],
+ "extra": [
+  "10.0.1.1",
+  "10.100.152.96",
+  "10.100.152.102",
+  "192.168.0.1",
+  "192.168.1.1"
+ ],
+ "duplicates": [],
+ "details": {
+  "field_errors": {},
+  "mac_wrong": [],
+  "mac_mismatch": [
+   {
+    "id": "192.168.88.52",
+    "truth_mac": "28:cf:e9:18:b5:ed",
+    "found_mac": "20:c9:d0:44:d1:e7"
+   }
+  ],
+  "unsafe": []
+ }
+}
