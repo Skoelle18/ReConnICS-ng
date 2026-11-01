@@ -16,6 +16,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <jackson.version>2.18.3</jackson.version>
         <junit.version>5.11.4</junit.version>
+        <!-- default for `mvn exec:java`; override with -Dexec.args="analyze assets/modbus.pcap" -->
+        <exec.args>serve --index data/index.json --pubkey keys/index-signing.pub --data data/site</exec.args>
     </properties>
 
     <dependencies>
@@ -48,6 +50,12 @@
         </resources>
         <finalName>reconnics-ng</finalName>
         <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <configuration><mainClass>com.pcap.Main</mainClass></configuration>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
