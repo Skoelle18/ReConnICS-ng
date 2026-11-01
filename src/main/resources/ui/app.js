@@ -1120,7 +1120,7 @@ function indexScreen() {
 
 // PDF = browser print of the report (Save as PDF); no server-side PDF library.
 function printReport() {
-  const f = h('iframe', { src: '/api/v1/export/report.html?inline=1', style: 'position:fixed;width:0;height:0;border:0' });
+  const f = h('iframe', { src: '/api/v1/export/report.html?inline=1', style: { position: 'fixed', width: '0', height: '0', border: '0' } });
   f.onload = () => { f.contentWindow.print(); setTimeout(() => f.remove(), 60000); };
   document.body.append(f);
 }
